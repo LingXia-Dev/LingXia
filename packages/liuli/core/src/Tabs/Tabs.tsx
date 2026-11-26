@@ -97,7 +97,7 @@ export function Tabs({ label, items, bind, value: own, onChange: ownChange, vari
           <view role="tablist" aria-label={label} data-testid={testId} {...dataOf(attributes)} className={cx(r.list.base, !segmented && r.list.underline)}>
             {/* One box a tab wide, moved along the row. It moves in a left-to-right box that
                 right-to-left mirrors, so the same translate slides it toward the end either way. */}
-            {place && (
+            {place && items.length > 0 && (
               <view aria-hidden className={r.track.base}>
                 <view dir="ltr" className={r.track.inner}>
                   <view className={cx(r.indicator.base, segmented ? cx(s.thumb.base, s.thumb.row, items.some(item => item.isLabelHidden) && s.thumb.edged) : r.indicator.underline)} style={place} />

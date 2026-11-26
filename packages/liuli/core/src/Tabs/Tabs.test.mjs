@@ -103,3 +103,11 @@ test('Icons: a count is read with the name ("Inbox, 3"); an icon-only tab is sti
   assert.equal(textOf(grid).trim(), '', 'icon only: no visible label');
   assert.equal(screen.getByTestId('mail-inbox').props.ariaLive, undefined, 'the count is not announced');
 });
+
+test('with no tabs there is no indicator to draw', async () => {
+  const screen = await renderPage(`
+    import { Tabs } from '@liulidesign/core/Tabs';
+    export function render() { return <page><Tabs label="Sections" value="" onChange={() => {}} items={[]} data-testid="tabs" /></page>; }
+  `);
+  assert.equal(indicator(screen), undefined);
+});

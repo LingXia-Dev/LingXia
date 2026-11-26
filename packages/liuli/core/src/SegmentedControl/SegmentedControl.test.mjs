@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { textOf } from '@lingxia/view/testing';
-import { renderExample } from '../testing/harness.mjs';
+import { renderExample, renderPage } from '../testing/harness.mjs';
 
 const thumb = screen => screen.queryAll(node => node.props.widthPercent !== undefined)[0];
 
@@ -76,4 +76,27 @@ test('Icons: an icon-only segment keeps its label as its name and is chosen as a
   assert.equal(list.props.accessibilityLabel, 'List');
   screen.press(list);
   assert.equal(screen.getByTestId('view-list').props.stateChecked, 1);
+});
+
+test('a value longer than the 64 characters a box name holds still draws its segment', async () => {
+  const long = 'v'.repeat(80);
+  const screen = await renderPage(`
+    import { useLocal } from '@lingxia/view';
+    import { SegmentedControl } from '@liulidesign/core/SegmentedControl';
+    export function render() {
+      const value = useLocal('value', '${long}');
+      return <page><SegmentedControl label="Mode" bind={value} items={[{ value: '${long}', label: 'Long' }, { value: 'short', label: 'Short' }]} data-testid="mode" /></page>;
+    }
+  `);
+  assert.equal(screen.getByTestId(`mode-${long}`).props.stateChecked, 1);
+  screen.press(screen.getByTestId('mode-short'));
+  assert.equal(screen.getByTestId('mode-short').props.stateChecked, 1);
+});
+
+test('with no items there is no thumb to draw', async () => {
+  const screen = await renderPage(`
+    import { SegmentedControl } from '@liulidesign/core/SegmentedControl';
+    export function render() { return <page><SegmentedControl label="Mode" value="" onChange={() => {}} items={[]} data-testid="mode" /></page>; }
+  `);
+  assert.equal(thumb(screen), undefined);
 });

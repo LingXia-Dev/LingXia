@@ -73,8 +73,8 @@ export function SegmentedControl(props: SegmentedControlProps) {
   const share = 100 / Math.max(1, items.length);
   // Labels keep their width in both layouts, so they decide; segments place the thumb in a row.
   const root = useBox('root');
-  const labelBoxes = items.map(option => useBox(`label-${option.value}`));
-  const segmentBoxes = items.map(option => useBox(`segment-${option.value}`));
+  const labelBoxes = items.map((_, at) => useBox(`label-${at}`));
+  const segmentBoxes = items.map((_, at) => useBox(`segment-${at}`));
   const labels = labelBoxes.map(box => box.value?.width);
   const extents = segmentBoxes.map(box => box.value?.width);
   const room = root.value?.width;
@@ -91,11 +91,13 @@ export function SegmentedControl(props: SegmentedControlProps) {
     <view box={root} role="radiogroup" aria-label={label} data-testid={testId} {...dataOf(props)} className={cx(r.root.base, r.root[layout], className)}>
       {/* One box a segment wide, moved by its own width per segment, in a left-to-right box that
           right-to-left mirrors; stacked, one segment tall. */}
-      <view aria-hidden className={r.track.base}>
-        <view dir="ltr" className={r.track.inner}>
-          <view className={cx(r.thumb.base, r.thumb[layout], items.some(option => option.isLabelHidden) && r.thumb.edged)} style={thumb} />
+      {items.length > 0 && (
+        <view aria-hidden className={r.track.base}>
+          <view dir="ltr" className={r.track.inner}>
+            <view className={cx(r.thumb.base, r.thumb[layout], items.some(option => option.isLabelHidden) && r.thumb.edged)} style={thumb} />
+          </view>
         </view>
-      </view>
+      )}
       {items.map((option, at) => {
         const isChecked = option.value === items[index]?.value;
         return (
