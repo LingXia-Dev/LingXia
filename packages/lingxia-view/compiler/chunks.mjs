@@ -212,6 +212,7 @@ export async function buildSharedChunk(root, output, {
   version,
   dev,
   literalColors,
+  appColors,
   tsconfig,
   runtime,
   publicEntry,
@@ -272,7 +273,7 @@ export async function buildSharedChunk(root, output, {
           const contents = await readFile(path, 'utf8');
           const loader = scriptLoader(path);
           const label = relative(root, path).split('\\').join('/');
-          const analysed = analyse(path, contents, label, sourceLabel(root, path), loader, literalColors, dev);
+          const analysed = analyse(path, contents, label, sourceLabel(root, path), loader, literalColors, dev, appColors);
           const owner = authored(root, path) ? null : packageOf(path);
           modules.set(pathKey(path), { names: analysed.names, file: analysed.file, problems: analysed.problems, owner });
           return { contents: analysed.annotated, loader, resolveDir: dirname(path) };

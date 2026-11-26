@@ -679,6 +679,36 @@ test('page colours are roles: palette classes, dark: colours and hex literals fa
   });
 });
 
+test("an app's own colours from theme.json are classes, style values and plot series; other names fail listing them", async () => {
+  const theme = JSON.stringify({ name: 'h', version: 1, colors: {
+    'trend-up': { light: '#0f7b3f', dark: '#5bd28a', use: 'text' },
+    'brand-band': { light: '#1d4ed8', dark: '#1e40af', use: 'fill' },
+  } });
+  const page = `export function render() { return <view className="bg-brand-band border-trend-up"><text className="text-on-brand-band">A</text><text style={{ color: 'app.trend-up/40' }}>B</text></view>; }`;
+  await project({ 'theme.json': theme, 'page.tsx': page }, async (root, build) => {
+    await build();
+    await load(root);
+    const view = tree(describePage());
+    assert.equal(view.props.background, 'app.brand-band');
+    assert.equal(view.props.borderColor, 'app.trend-up');
+    assert.deepEqual(view.children.map(child => child.props.color), ['app.on-brand-band', 'app.trend-up/40']);
+    const fails = async (source, message) => {
+      await writeFile(join(root, 'page.tsx'), source);
+      await assert.rejects(build(), error => { assert.ok(error.message.includes(message), error.message); return true; });
+    };
+    await fails('export function render() { return <text className="text-gray-500">Hi</text>; }',
+      "or one of this app's colours: bg-trend-up, bg-brand-band, text-on-brand-band");
+    await fails(`export function render() { return <text style={{ color: 'app.trend-down' }}>Hi</text>; }`,
+      `UI_COLOR: "app.trend-down" is not in this app's theme; this app's colours: app.trend-up, app.brand-band, app.on-brand-band`);
+    await fails(`export function render() { return <plot kind="line" aria-label="Trend" values={[1, 2]} colors={['app.trend-down']} />; }`,
+      'UI_COLOR: "app.trend-down" is not a role');
+    await writeFile(join(root, 'page.tsx'), `export function render() { return <plot kind="line" aria-label="Trend" values={[1, 2]} colors={['app.trend-up', 'chart-2']} />; }`);
+    await build();
+    await writeFile(join(root, 'theme.json'), JSON.stringify({ name: 'h', version: 1, colors: { center: { light: '#0f7b3f', dark: '#5bd28a', use: 'graphic' } } }));
+    await fails(page, 'theme.json: UI_COLOR: colour center would make bg-center, which Tailwind already defines; rename it');
+  });
+});
+
 test('renderer test fixtures may keep literal colours only through the build option', async () => {
   await project({ 'page.tsx': `export function render() { return <view className="bg-[#ff0000] dark:bg-white" style={{ borderColor: '#0000ff' }} />; }` }, async root => {
     await assert.rejects(build(root, ['page.tsx'], join(root, 'dist')), /UI_COLOR/);

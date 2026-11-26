@@ -2,7 +2,7 @@ import { utf8Bytes, has } from './data.js';
 import { limits } from '../generated/contract.js';
 import { fieldOptions } from '../generated/wire.js';
 import { checkKeys, keyPayload, settled } from './keys.js';
-import { seriesProblem, isRole } from '../style/color.js';
+import { seriesProblem, isColorName } from '../style/color.js';
 import { pathSegments, pathSegmentsProblem } from './vector-path.js';
 
 // Per-element value checks; native decoding re-validates everything it receives.
@@ -36,7 +36,7 @@ function vectorGradient(id, gradient) {
       (gradient.spread !== undefined && !['pad', 'reflect', 'repeat'].includes(gradient.spread)) ||
       !Array.isArray(gradient.stops) || !gradient.stops.length || gradient.stops.length > 16 ||
       gradient.stops.some(stop => !plain(stop) || Object.keys(stop).some(k => !['offset', 'color', 'opacity'].includes(k)) ||
-        !finiteWithin(stop.offset, 1) || stop.offset < 0 || !(hexColor(stop.color) || isRole(stop.color)) ||
+        !finiteWithin(stop.offset, 1) || stop.offset < 0 || !(hexColor(stop.color) || isColorName(stop.color)) ||
         (stop.opacity !== undefined && (!finiteWithin(stop.opacity, 1) || stop.opacity < 0)))) invalid();
 }
 
@@ -59,7 +59,7 @@ export function vector(props, fit) {
     if (segments) throw Error(segments);
     for (const key of ['fill', 'stroke']) {
       const value = path[key];
-      if (value === undefined || value === 'none' || value === 'currentColor' || hexColor(value) || isRole(value)) continue;
+      if (value === undefined || value === 'none' || value === 'currentColor' || hexColor(value) || isColorName(value)) continue;
       const id = typeof value === 'string' && value.match(/^url\(#(.+)\)$/)?.[1];
       if (!id) throw Error(`UI_VECTOR: ${key} takes 'none', 'currentColor', a hex color, a theme role or url(#id); got ${show(value)}`);
       if (!has(gradients, id)) throw Error(`UI_VECTOR: unknown gradient ${id}`);

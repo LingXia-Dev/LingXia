@@ -155,7 +155,7 @@ function values(value, count, lower) {
 }
 
 function parseColor(value) {
-  const role = value.match(/^role\(([a-z0-9-]+)\)$/);
+  const role = value.match(/^role\(((?:app\.)?[a-z0-9-]+)\)$/);
   if (role) return { role: role[1] };
   const mix = value.match(/^color-mix\(in (?:srgb|oklab), (.+) ([\d.]+)%, transparent\)$/);
   const result = mix ? parseColor(mix[1]) : parse(value);
@@ -174,11 +174,13 @@ function color(value) {
 
 // Set for one compileUtilities pass of a renderer test fixture.
 let literalColors = false;
+// The app colours of the compile in progress, named in a refusal so the author sees them.
+let appColorClasses = '';
 
-// Class colours must be roles; transparent is the one literal they keep.
+// Class colours must be roles or app colours; transparent is the one literal they keep.
 function roleColor(value) {
   const lowered = color(value);
-  if (!literalColors && lowered.startsWith('#') && !/^#[0-9a-f]{6}00$/.test(lowered)) throw new RoleError(`not a role; ${roleClasses}`);
+  if (!literalColors && lowered.startsWith('#') && !/^#[0-9a-f]{6}00$/.test(lowered)) throw new RoleError(`not a role; ${roleClasses}${appColorClasses}`);
   return lowered;
 }
 
@@ -217,6 +219,22 @@ export const viewExtensions = `@custom-variant exit (&:where(.lx-exit));
   transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));
   transition-duration: var(--tw-duration, var(--default-transition-duration));
 }`;
+/** The `@theme` for an app's own colours: `bg-trend-up` lowers to `app.trend-up`. */
+export const appColorTheme = names => names.length ? `@theme inline {\n${names.map(name => `  --color-${name}: role(app.${name});`).join('\n')}\n}` : '';
+
+// Colour utilities an app colour's name must not already complete.
+const colorUtilities = ['bg', 'text', 'border', 'outline', 'ring', 'divide', 'fill', 'stroke', 'from', 'via', 'to', 'decoration', 'shadow', 'accent', 'caret', 'placeholder'];
+
+/** For each name, the colour utility Tailwind already gives a meaning without the app's colours. */
+export async function appColorClashes(names) {
+  const candidates = names.flatMap(name => colorUtilities.map(prefix => `${prefix}-${name}`));
+  const taken = new Set((await compileUtilities(new Set(candidates))).map(rule => rule.name));
+  return names.flatMap(name => {
+    const clash = colorUtilities.map(prefix => `${prefix}-${name}`).find(utility => taken.has(utility));
+    return clash ? [{ name, utility: clash }] : [];
+  });
+}
+
 export const roleTheme = `@theme inline {\n${roles.map(role => `  --color-${role.replace(/^text-/, '')}: role(${role});`).join('\n')}\n}`;
 
 // Steps stay symbolic: the host's pack decides their values at run time, as for colours.
@@ -1106,7 +1124,7 @@ function compilerFor(theme) {
 }
 
 /** Lowered rules for every candidate Tailwind generates; unsupported ones carry an error. */
-export async function compileUtilities(candidates, theme = '', { literalColors: literal = false } = {}) {
+export async function compileUtilities(candidates, theme = '', { literalColors: literal = false, appColors = [] } = {}) {
   candidates = candidates instanceof Set ? candidates : new Set(candidates);
   const tokens = postcss.parse(theme);
   const converted = classRulesAsUtilities(tokens);
@@ -1132,6 +1150,7 @@ export async function compileUtilities(candidates, theme = '', { literalColors: 
       for (const decl of rule.nodes) if (decl.type === 'decl' && decl.prop.startsWith('--')) palettes[name][decl.prop] = decl.value;
   });
   literalColors = literal;
+  appColorClasses = appColors.length ? `, or one of this app's colours: ${appColors.map(name => name.startsWith("on-") ? `text-${name}` : `bg-${name}`).join(', ')}` : '';
   try { root.walkRules(rule => {
     const target = selectorTarget(rule.selector);
     if (!target || !candidates.has(target.name) || markers.has(target.name)) return;
@@ -1168,7 +1187,7 @@ export async function compileUtilities(candidates, theme = '', { literalColors: 
       if (!(error instanceof Unsupported) && !String(error.message).startsWith('UI_ANIMATION')) throw error;
       rules.push({ name, error: { category: error instanceof RoleError ? 'color' : 'unsupported', message: error.message } });
     }
-  }); } finally { literalColors = false; }
+  }); } finally { literalColors = false; appColorClasses = ''; }
   for (const name of markers) if (candidates.has(name)) rules.push({ name, when: {}, style: {} });
   return rules;
 }

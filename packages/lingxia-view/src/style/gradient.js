@@ -1,4 +1,4 @@
-import { isRole } from './color.js';
+import { isColorName } from './color.js';
 
 const hex = /^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/;
 const directions = ['top', 'right', 'bottom', 'left', 'top-right', 'bottom-right', 'bottom-left', 'top-left'];
@@ -35,7 +35,7 @@ export function normalizeGradient(value) {
     if (!stop || typeof stop !== 'object' || Array.isArray(stop) ||
         Object.keys(stop).some(key => key !== 'offset' && key !== 'color') ||
         typeof stop.offset !== 'number' || !Number.isFinite(stop.offset) || stop.offset < low || stop.offset > high || stop.offset < previous ||
-        typeof stop.color !== 'string' || !(hex.test(stop.color) || isRole(stop.color))) invalid();
+        typeof stop.color !== 'string' || !(hex.test(stop.color) || isColorName(stop.color))) invalid();
     previous = stop.offset;
     return { offset: stop.offset, color: stop.color };
   });

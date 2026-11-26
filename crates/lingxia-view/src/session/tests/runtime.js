@@ -287,19 +287,31 @@
 
   // src/style/color.js
   var names = new Set(roles);
+  var alpha = (percent2) => percent2 === void 0 || Number(percent2) <= 100;
   function isRole(value) {
     const match = typeof value === "string" && /^([a-z0-9-]+)(?:\/(\d{1,3}))?$/.exec(value);
-    return Boolean(match) && names.has(match[1]) && (match[2] === void 0 || Number(match[2]) <= 100);
+    return Boolean(match) && names.has(match[1]) && alpha(match[2]);
   }
-  function colorProblem(value, where2 = "a page colour") {
+  function appColorName(value) {
+    const match = typeof value === "string" && /^app\.([a-z][a-z0-9]*(?:-[a-z0-9]+)*)(?:\/(\d{1,3}))?$/.exec(value);
+    return match && alpha(match[2]) ? match[1] : void 0;
+  }
+  var isColorName = (value) => isRole(value) || appColorName(value) !== void 0;
+  var appList = (appColors) => appColors?.size ? `; this app's colours: ${[...appColors].map((name) => `app.${name}`).join(", ")}` : "";
+  function colorProblem(value, where2 = "a page colour", appColors) {
     if (value === "currentColor" || value === "transparent" || /^#[0-9a-fA-F]{6}00$/.test(value) || isRole(value)) return void 0;
-    return `UI_COLOR: ${JSON.stringify(value)} is not a role; ${where2} uses a role such as 'surface', 'text-muted', 'line', 'accent' or 'accent/12'`;
+    const app = appColorName(value);
+    if (app !== void 0) return !appColors || appColors.has(app) ? void 0 : `UI_COLOR: ${JSON.stringify(value)} is not in this app's theme${appList(appColors)}`;
+    return `UI_COLOR: ${JSON.stringify(value)} is not a role; ${where2} uses a role such as 'surface', 'text-muted', 'line', 'accent' or 'accent/12'${appList(appColors)}`;
   }
   function wireColorProblem(value, where2) {
     return /^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(value) ? void 0 : colorProblem(value, where2);
   }
-  function seriesProblem(value) {
-    return isRole(value) ? void 0 : `UI_COLOR: ${JSON.stringify(value)} is not a role; plot series use 'chart-1' to 'chart-8'`;
+  function seriesProblem(value, appColors) {
+    if (isRole(value)) return void 0;
+    const app = appColorName(value);
+    if (app !== void 0 && (!appColors || appColors.has(app))) return void 0;
+    return `UI_COLOR: ${JSON.stringify(value)} is not a role; plot series use 'chart-1' to 'chart-8'${appList(appColors)}`;
   }
   var defaultSeries = ["chart-1", "chart-2", "chart-3", "chart-4", "chart-5"];
 
@@ -328,13 +340,13 @@
         result[key] = number;
       }
       result.color = shadow.color === void 0 ? "currentColor" : shadow.color;
-      if (result.color !== "currentColor" && (typeof result.color !== "string" || !(/^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(result.color) || isRole(result.color)))) invalid2();
+      if (result.color !== "currentColor" && (typeof result.color !== "string" || !(/^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(result.color) || isColorName(result.color)))) invalid2();
       return result;
     });
   }
   var ringColor = (value, invalid2) => {
     const color = value === void 0 ? "currentColor" : value;
-    if (color !== "currentColor" && (typeof color !== "string" || !(/^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(color) || isRole(color)))) invalid2();
+    if (color !== "currentColor" && (typeof color !== "string" || !(/^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(color) || isColorName(color)))) invalid2();
     return color;
   };
   function normalizeRing(value) {
@@ -434,7 +446,7 @@
     const [low, high] = kind === "linear" ? [-16, 16] : kind === "radial" ? [0, 16] : [0, 1];
     let previous = -Infinity;
     const stops = value.stops.map((stop) => {
-      if (!stop || typeof stop !== "object" || Array.isArray(stop) || Object.keys(stop).some((key) => key !== "offset" && key !== "color") || typeof stop.offset !== "number" || !Number.isFinite(stop.offset) || stop.offset < low || stop.offset > high || stop.offset < previous || typeof stop.color !== "string" || !(hex.test(stop.color) || isRole(stop.color))) invalid2();
+      if (!stop || typeof stop !== "object" || Array.isArray(stop) || Object.keys(stop).some((key) => key !== "offset" && key !== "color") || typeof stop.offset !== "number" || !Number.isFinite(stop.offset) || stop.offset < low || stop.offset > high || stop.offset < previous || typeof stop.color !== "string" || !(hex.test(stop.color) || isColorName(stop.color))) invalid2();
       previous = stop.offset;
       return { offset: stop.offset, color: stop.color };
     });
@@ -798,7 +810,7 @@
     const fail = () => invalid("maskImage", value, "'none' or 1..4 layers of { to: 'top'|'bottom'|'left'|'right', stops: 2..16 { alpha: 0..1, offset | px } }");
     const position = (stop) => stop.offset !== void 0 !== (stop.px !== void 0) && (stop.offset === void 0 || finite(stop.offset) && Math.abs(stop.offset) <= 16) && (stop.px === void 0 || finite(stop.px) && Math.abs(stop.px) <= limits.styleNumber);
     if (!Array.isArray(value) || !value.length || value.length > 4 || value.some((layer) => !layer || !["top", "bottom", "left", "right"].includes(layer.to) || Object.keys(layer).some((key) => !["to", "stops"].includes(key)) || !Array.isArray(layer.stops) || layer.stops.length < 2 || layer.stops.length > 16 || layer.stops.some((stop) => !stop || Object.keys(stop).some((key) => !["alpha", "offset", "px"].includes(key)) || !finite(stop.alpha) || stop.alpha < 0 || stop.alpha > 1 || !position(stop)))) fail();
-    return JSON.stringify(value.map(({ to, stops }) => ({ to, stops: stops.map(({ alpha, offset, px }) => offset === void 0 ? { px, alpha } : { offset, alpha }) })));
+    return JSON.stringify(value.map(({ to, stops }) => ({ to, stops: stops.map(({ alpha: alpha2, offset, px }) => offset === void 0 ? { px, alpha: alpha2 } : { offset, alpha: alpha2 }) })));
   }
   function transitionValue(value) {
     if (value === "none") return void 0;
@@ -4446,7 +4458,7 @@
     const invalid2 = () => {
       throw Error(`UI_VECTOR: invalid gradient ${id}`);
     };
-    if (!/^[A-Za-z0-9_-]{1,64}$/.test(id) || !plain2(gradient) || Object.keys(gradient).some((k) => !gradientKeys.includes(k)) || !["linear", "radial", "conic"].includes(gradient.type) || { linear: ["cx", "cy", "r", "fx", "fy", "fr", "from"], radial: ["x1", "y1", "x2", "y2", "from"], conic: ["x1", "y1", "x2", "y2", "r", "fx", "fy", "fr"] }[gradient.type].some((k) => gradient[k] !== void 0) || gradient.from !== void 0 && !finiteWithin(gradient.from, 36e3) || ["x1", "y1", "x2", "y2", "cx", "cy", "fx", "fy"].some((k) => gradient[k] !== void 0 && !finiteWithin(gradient[k], 16384)) || ["r", "fr"].some((k) => gradient[k] !== void 0 && (!finiteWithin(gradient[k], 16384) || gradient[k] < 0)) || gradient.units !== void 0 && !["objectBoundingBox", "userSpaceOnUse"].includes(gradient.units) || gradient.spread !== void 0 && !["pad", "reflect", "repeat"].includes(gradient.spread) || !Array.isArray(gradient.stops) || !gradient.stops.length || gradient.stops.length > 16 || gradient.stops.some((stop) => !plain2(stop) || Object.keys(stop).some((k) => !["offset", "color", "opacity"].includes(k)) || !finiteWithin(stop.offset, 1) || stop.offset < 0 || !(hexColor(stop.color) || isRole(stop.color)) || stop.opacity !== void 0 && (!finiteWithin(stop.opacity, 1) || stop.opacity < 0))) invalid2();
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(id) || !plain2(gradient) || Object.keys(gradient).some((k) => !gradientKeys.includes(k)) || !["linear", "radial", "conic"].includes(gradient.type) || { linear: ["cx", "cy", "r", "fx", "fy", "fr", "from"], radial: ["x1", "y1", "x2", "y2", "from"], conic: ["x1", "y1", "x2", "y2", "r", "fx", "fy", "fr"] }[gradient.type].some((k) => gradient[k] !== void 0) || gradient.from !== void 0 && !finiteWithin(gradient.from, 36e3) || ["x1", "y1", "x2", "y2", "cx", "cy", "fx", "fy"].some((k) => gradient[k] !== void 0 && !finiteWithin(gradient[k], 16384)) || ["r", "fr"].some((k) => gradient[k] !== void 0 && (!finiteWithin(gradient[k], 16384) || gradient[k] < 0)) || gradient.units !== void 0 && !["objectBoundingBox", "userSpaceOnUse"].includes(gradient.units) || gradient.spread !== void 0 && !["pad", "reflect", "repeat"].includes(gradient.spread) || !Array.isArray(gradient.stops) || !gradient.stops.length || gradient.stops.length > 16 || gradient.stops.some((stop) => !plain2(stop) || Object.keys(stop).some((k) => !["offset", "color", "opacity"].includes(k)) || !finiteWithin(stop.offset, 1) || stop.offset < 0 || !(hexColor(stop.color) || isColorName(stop.color)) || stop.opacity !== void 0 && (!finiteWithin(stop.opacity, 1) || stop.opacity < 0))) invalid2();
   }
   function vector(props, fit) {
     const box = props.viewBox ?? [0, 0, 24, 24];
@@ -4465,7 +4477,7 @@
       if (segments) throw Error(segments);
       for (const key of ["fill", "stroke"]) {
         const value = path[key];
-        if (value === void 0 || value === "none" || value === "currentColor" || hexColor(value) || isRole(value)) continue;
+        if (value === void 0 || value === "none" || value === "currentColor" || hexColor(value) || isColorName(value)) continue;
         const id = typeof value === "string" && value.match(/^url\(#(.+)\)$/)?.[1];
         if (!id) throw Error(`UI_VECTOR: ${key} takes 'none', 'currentColor', a hex color, a theme role or url(#id); got ${show3(value)}`);
         if (!has(gradients, id)) throw Error(`UI_VECTOR: unknown gradient ${id}`);

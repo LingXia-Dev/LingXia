@@ -14,7 +14,7 @@ import { sourceChecker, moduleChecker, parseSource, scriptModule, scriptLoader }
 import { moduleBanner } from './compatibility.mjs';
 import { fieldFloor } from './field-floor.mjs';
 import { resolveChunkPolicy, discoverSharedPackages, buildSharedChunk, packageProxySource } from './chunks.mjs';
-import { compileUtilities, tailwindWarm } from './tailwind.mjs';
+import { compileUtilities, tailwindWarm, appColorTheme, appColorClashes } from './tailwind.mjs';
 import { nearestSupported } from './suggest.mjs';
 import { loadStylesheet, validateTokens, fontFaces } from './stylesheets.mjs';
 import { checkerOptions, viewTsconfig } from './tsconfig.mjs';
@@ -153,7 +153,7 @@ function pageRoot(node) {
   return name === 'render';
 }
 
-export function audit(source, filename, { literalColors = false } = {}) {
+export function audit(source, filename, { literalColors = false, appColors } = {}) {
   const file = parseSource(filename, source);
   const checker = sourceChecker(file);
   const problems = [];
@@ -203,7 +203,7 @@ export function audit(source, filename, { literalColors = false } = {}) {
           report(prop, `UI_PROP: ${key} is not a property of <${tag}>${propHint(key)}`);
         const series = tag === 'plot' && key === 'colors' && prop.initializer && ts.isJsxExpression(prop.initializer) && prop.initializer.expression;
         if (!literalColors && series && ts.isArrayLiteralExpression(series)) for (const item of series.elements) {
-          const problem = ts.isStringLiteralLike(item) && seriesProblem(item.text);
+          const problem = ts.isStringLiteralLike(item) && seriesProblem(item.text, appColors);
           if (problem) report(item, problem);
         }
         const style = key === 'style' && prop.initializer && ts.isJsxExpression(prop.initializer) && prop.initializer.expression;
@@ -213,7 +213,7 @@ export function audit(source, filename, { literalColors = false } = {}) {
           if (name === 'animation') report(entry, 'UI_ANIMATION: inline animation is not supported; use animate-* utilities');
           else { const problem = styleProblem(elementKind(node), name); if (problem) report(entry, problem); }
           const literal = ts.isPropertyAssignment(entry) && ts.isStringLiteralLike(entry.initializer) && entry.initializer.text;
-          const colorIssue = !literalColors && literal !== false && styleTable[name]?.lower === 'color' && colorProblem(literal, name);
+          const colorIssue = !literalColors && literal !== false && styleTable[name]?.lower === 'color' && colorProblem(literal, name, appColors);
           if (colorIssue) report(entry, colorIssue);
           const valueExpr = ts.isPropertyAssignment(entry) ? entry.initializer : entry.name;
           for (const number of numericStyleLiterals(checker, valueExpr)) {
@@ -342,7 +342,7 @@ function edgeRole(style) {
     const value = style[key];
     if (value && typeof value === 'object') { const found = edgeRole(value); if (found) return found; }
     else if (edgeColor.test(key) && typeof value === 'string') {
-      const role = value.match(/^([a-z][a-z-]*)\/\d+$/)?.[1];
+      const role = value.match(/^((?:app\.)?[a-z][a-z0-9-]*)\/\d+$/)?.[1];
       if (role && !lineRoles.has(role)) return value;
     }
   }
@@ -444,8 +444,8 @@ const analyses = new Map();
 let analysisHits = 0, analysisMisses = 0;
 // `label` names the file in source positions, `id` in component and closure ids.
 // `dev` builds map the transformed text back to the author's for esbuild's source map.
-function analyse(path, contents, label, id, loader, literalColors, dev) {
-  const key = `${literalColors}\0${dev}\0${label}\0${id}\0${path}`;
+function analyse(path, contents, label, id, loader, literalColors, dev, appColors) {
+  const key = `${literalColors}\0${dev}\0${[...appColors ?? []]}\0${label}\0${id}\0${path}`;
   const cached = analyses.get(key);
   if (cached?.contents === contents) { analysisHits++; return cached; }
   analysisMisses++;
@@ -466,7 +466,7 @@ function analyse(path, contents, label, id, loader, literalColors, dev) {
   const transformed = loader.endsWith('x') ? stabilizeClosures(sited, path, id, stages) : stamped;
   const annotated = identify(transformed, path, id);
   const analysed = {
-    contents, file, names, problems: audit(contents, path, { literalColors }),
+    contents, file, names, problems: audit(contents, path, { literalColors, appColors }),
     annotated: dev ? annotated + insertionMapComment(contents, annotated, stages, basename(path)) : annotated,
   };
   analyses.delete(key);
@@ -479,6 +479,19 @@ function analyse(path, contents, label, id, loader, literalColors, dev) {
 function packageRelative(root, line) {
   const match = /^(.+?\.(?:[cm]?[jt]sx?|css)):(\d+)/.exec(line);
   return match && isAbsolute(match[1]) ? sourceLabel(root, match[1]) + line.slice(match[1].length) : line;
+}
+
+/**
+ * The colours the lxapp's `theme.json` names, with `on-<name>` for each fill's label: their class
+ * names, their `@theme`, and each name that a colour utility already completes.
+ */
+async function appColorNames(root) {
+  const path = join(root, 'theme.json');
+  const colors = existsSync(path) ? JSON.parse(await readFile(path, 'utf8')).colors ?? {} : {};
+  const list = Object.entries(colors).flatMap(([name, color]) => color?.use === 'fill' ? [name, `on-${name}`] : [name]);
+  const problems = (await appColorClashes(list))
+    .map(({ name, utility }) => `theme.json: UI_COLOR: colour ${name} would make ${utility}, which Tailwind already defines; rename it`);
+  return { list, names: new Set(list), theme: appColorTheme(list), problems };
 }
 
 /**
@@ -545,6 +558,8 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
   const { strictClasses } = appSettings(root);
   // Every page's authoring problems are collected, so one build names all of them.
   const inputs = {}, warnings = [], failures = [];
+  const appColors = await appColorNames(root);
+  if (appColors.problems.length) failures.push(appColors.problems.join('\n'));
   // Each place a className cannot be followed to literals, once per build.
   const untracedClasses = new Map();
   const tsconfig = viewTsconfig(root);
@@ -573,7 +588,7 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
       tsconfig, runtimeRoot, publicEntry, jsx, compiledMessages,
     });
     chunk = await buildSharedChunk(root, output, {
-      version, dev, literalColors, tsconfig, runtime, publicEntry, host, jsx, runtimeRoot,
+      version, dev, literalColors, appColors: appColors.names, tsconfig, runtime, publicEntry, host, jsx, runtimeRoot,
       compiledMessages, sharedPackages, analyse, writeAtomic, shimDir: dirname(recordPath),
     });
     if (dev && chunk.chunkInputs.length) inputs['lx:view'] = chunk.chunkInputs;
@@ -686,7 +701,7 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
             const contents = await readFile(path, 'utf8');
             const loader = scriptLoader(path);
             const label = relative(root, path).split('\\').join('/');
-            const analysed = analyse(path, contents, label, sourceLabel(root, path), loader, literalColors, dev);
+            const analysed = analyse(path, contents, label, sourceLabel(root, path), loader, literalColors, dev, appColors.names);
             problems.push(...analysed.problems);
             sourceFiles.push(analysed.file);
             for (const name of analysed.names) candidates.add(name);
@@ -701,7 +716,7 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
     if (themes.size > 1) problems.push(`${page}: UI_CSS: import one shared @theme stylesheet per page`);
     const tokenPackages = peerTokenPackages(root, bundledPackages, problems);
     // Packages' tokens sit below the app's own, so the app's stylesheet overrides any of them.
-    const theme = [...await packageTokens(root, tokenPackages, problems), ...themes.values()].join('\n');
+    const theme = [...await packageTokens(root, tokenPackages, problems), ...themes.values(), appColors.theme].join('\n');
     warm &&= tailwindWarm(theme);
     const checker = moduleChecker(sourceFiles, checkerOptions(root));
     const { usages, untraced } = collectClassAnalysis(sourceFiles, checker);
@@ -713,7 +728,7 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
     // (a template over known parts, a cx map passed by name); one with any untraced part adds none.
     for (const { value, complete } of usages) if (complete) for (const name of value.split(/\s+/)) if (name) candidates.add(name);
     // `font-sans` lowers the theme's `--font-sans`; a non-default one is the page's family.
-    const classes = await compileUtilities(new Set([...candidates, 'font-sans']), theme, { literalColors });
+    const classes = await compileUtilities(new Set([...candidates, 'font-sans']), theme, { literalColors, appColors: appColors.list });
     const sans = classes.find(rule => rule.name === 'font-sans');
     if (sans?.error && !candidates.has('font-sans')) problems.push(`${page}: UI_FONT: --font-sans: ${sans.error.message}`);
     const pageFamily = sans?.style?.fontFamily === 'sans-serif' ? undefined : sans?.style?.fontFamily;
@@ -722,7 +737,7 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
     const unknown = [...new Set(usages.flatMap(({ value }) => value.split(/\s+/)).filter(name => name && !rulesByName.has(name)))];
     const suggestions = await nearestSupported(unknown, theme);
     // A name the checks reach but the collection missed is a valid utility the table lacks, not a typo.
-    const uncollected = new Map(unknown.length ? (await compileUtilities(new Set(unknown), theme, { literalColors })).map(rule => [rule.name, rule]) : []);
+    const uncollected = new Map(unknown.length ? (await compileUtilities(new Set(unknown), theme, { literalColors, appColors: appColors.list })).map(rule => [rule.name, rule]) : []);
     const edges = [];
     for (const { value, location, tag, focusable, disabled } of usages) {
       const names = value.split(/\s+/).filter(Boolean);
@@ -795,7 +810,7 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
     // View runtime's. Installed packages, the View included, do not change under a session.
     if (bundled.metafile) {
       const tokenFiles = [...tokenPackages.values()].filter(owner => typeof owner.tokens === 'string').map(owner => relative(root, resolve(owner.dir, owner.tokens)));
-      inputs[page] = [...Object.keys(bundled.metafile.inputs), ...tokenFiles]
+      inputs[page] = [...Object.keys(bundled.metafile.inputs), ...tokenFiles, ...(appColors.list.length ? ['theme.json'] : [])]
         .filter(path => path !== '<stdin>' && !path.split(/[\\/]/).includes('node_modules'))
         .map(path => path.split('\\').join('/'));
     }
