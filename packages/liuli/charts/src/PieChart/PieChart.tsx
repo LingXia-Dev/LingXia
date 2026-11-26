@@ -77,7 +77,8 @@ export function PieChart<Row extends ChartRecord<Row>>({
   otherLabel, maxParts = 5, legend = 'bottom', legendLabel, value: selectedKey, onChange: onSelect, size = 'md',
   isLoading = false, error, emptyLabel, emptyHint, onRetry, retryLabel, className, 'data-testid': testId,
 }: PieChartProps<Row>) {
-  const data: readonly ChartRow[] = rows;
+  // Only the fields named are read, and each of those holds a datum.
+  const data = rows as readonly ChartRow[];
   const formatValue = format ?? plain;
   const keys = keysOf(data, keyField ?? name, [otherKey]);
   const listed = data

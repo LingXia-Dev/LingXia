@@ -143,7 +143,8 @@ export function BarChart<Row extends ChartRecord<Row>>({
   value: selectedKey, onChange: onSelect, hiddenSeries = [], onHiddenSeriesChange, references: given = [], domainMin, domainMax, size = 'md',
   isLoading = false, error, emptyLabel, emptyHint, onRetry, retryLabel, className, 'data-testid': testId,
 }: BarChartProps<Row>) {
-  const data: readonly ChartRow[] = rows;
+  // Only the fields named are read, and each of those holds a datum.
+  const data = rows as readonly ChartRow[];
   const formatValue = format ?? plain;
   const references = given.filter(each => Number.isFinite(each.value));
   const all = seriesOf(y).map((series, index) => ({ ...series, color: colorOf(index, series.color) }));

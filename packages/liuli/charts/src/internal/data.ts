@@ -6,10 +6,13 @@ import type { ColorRole } from '@lingxia/view';
 export type ChartDatum = string | number | null | undefined;
 /** One record: a day, a product, a region. Charts read the fields their encoding names. */
 export type ChartRow = Readonly<Record<string, ChartDatum>>;
-/** A row type whose every field is a datum: an app's own record type, interfaces included. */
-export type ChartRecord<Row> = { readonly [K in keyof Row]: ChartDatum };
-/** A field of `Row` by name, so a misspelt column fails to compile. */
-export type ChartField<Row> = keyof Row & string;
+/** An app's own record type, interfaces included; only the fields a chart names must hold datums. */
+export type ChartRecord<Row> = { readonly [K in keyof Row]: unknown };
+/** A field of `Row` that holds a datum, by name, so a misspelt column, or one holding a date or a list, fails to compile. */
+export type ChartField<Row> = [Row] extends [never]
+  // No rows to read, as `rows={[]}` while loading: any name will do.
+  ? string
+  : { [K in keyof Row]-?: Row[K] extends ChartDatum ? K : never }[keyof Row] & string;
 /** A series colour: the theme's `chart-1` to `chart-8`. */
 export type ChartColor = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
 
