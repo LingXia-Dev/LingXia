@@ -425,13 +425,13 @@ fn capsule_shown(appid: &str) -> bool {
     HOST_HOME_APP_ID.get().is_none_or(|home| home != appid)
 }
 
-/// The configured simulated appearance (the `runner.set` pin, `System` when
+/// The configured simulated appearance (the `runner.set` pin, `Auto` when
 /// following the OS).
 fn simulated_appearance() -> lingxia::dev::Appearance {
     match APPEARANCE.load(Ordering::Acquire) {
         1 => lingxia::dev::Appearance::Light,
         2 => lingxia::dev::Appearance::Dark,
-        _ => lingxia::dev::Appearance::System,
+        _ => lingxia::dev::Appearance::Auto,
     }
 }
 
@@ -452,7 +452,7 @@ pub(crate) fn effective_appearance_dark() -> bool {
 /// point keeps the glyph honest.
 fn set_appearance(appearance: lingxia::dev::Appearance) -> Result<(), String> {
     let scheme = match appearance {
-        lingxia::dev::Appearance::System => lingxia_windows_sdk::WindowsPreferredColorScheme::Auto,
+        lingxia::dev::Appearance::Auto => lingxia_windows_sdk::WindowsPreferredColorScheme::Auto,
         lingxia::dev::Appearance::Light => lingxia_windows_sdk::WindowsPreferredColorScheme::Light,
         lingxia::dev::Appearance::Dark => lingxia_windows_sdk::WindowsPreferredColorScheme::Dark,
     };
@@ -461,7 +461,7 @@ fn set_appearance(appearance: lingxia::dev::Appearance) -> Result<(), String> {
     // what was configured rather than the pre-failure value.
     APPEARANCE.store(
         match appearance {
-            lingxia::dev::Appearance::System => 0,
+            lingxia::dev::Appearance::Auto => 0,
             lingxia::dev::Appearance::Light => 1,
             lingxia::dev::Appearance::Dark => 2,
         },
@@ -470,7 +470,7 @@ fn set_appearance(appearance: lingxia::dev::Appearance) -> Result<(), String> {
     // macOS pins `NSApp.appearance` so Auto restamps `data-theme`. WebView2
     // `prefers-color-scheme` alone cannot: showcase CSS keys off `data-theme`.
     lingxia_windows_sdk::set_windows_simulated_host_appearance(match appearance {
-        lingxia::dev::Appearance::System => None,
+        lingxia::dev::Appearance::Auto => None,
         lingxia::dev::Appearance::Light => Some(false),
         lingxia::dev::Appearance::Dark => Some(true),
     });

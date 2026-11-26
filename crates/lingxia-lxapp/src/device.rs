@@ -10,26 +10,26 @@ use std::sync::OnceLock;
 
 /// Simulated system appearance of the runner's device screen.
 ///
-/// `System` follows the host OS; `Light`/`Dark` pin the scheme for the
+/// `Auto` follows the host OS; `Light`/`Dark` pin the scheme for the
 /// simulated device only. The runner applies this at the WebView host level so
 /// pages observe it through `prefers-color-scheme` — never through a DOM
 /// override, which belongs to apps.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Appearance {
-    System,
+    Auto,
     Light,
     Dark,
 }
 
 impl Appearance {
-    fn default_system() -> Self {
-        Appearance::System
+    fn default_auto() -> Self {
+        Appearance::Auto
     }
 
     pub fn as_str(self) -> &'static str {
         match self {
-            Appearance::System => "system",
+            Appearance::Auto => "auto",
             Appearance::Light => "light",
             Appearance::Dark => "dark",
         }
@@ -41,11 +41,11 @@ impl std::str::FromStr for Appearance {
 
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value {
-            "system" => Ok(Appearance::System),
+            "auto" => Ok(Appearance::Auto),
             "light" => Ok(Appearance::Light),
             "dark" => Ok(Appearance::Dark),
             other => Err(format!(
-                "unknown appearance: {other} (expected system|light|dark)"
+                "unknown appearance: {other} (expected auto|light|dark)"
             )),
         }
     }
@@ -254,7 +254,7 @@ pub struct DeviceState {
     /// True when the device is rotated to landscape.
     pub landscape: bool,
     /// Simulated system appearance of the device screen.
-    #[serde(default = "Appearance::default_system")]
+    #[serde(default = "Appearance::default_auto")]
     pub appearance: Appearance,
     /// Simulated system text size, a factor of the default.
     #[serde(rename = "textScale", default = "default_text_scale")]

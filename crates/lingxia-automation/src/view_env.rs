@@ -1,4 +1,4 @@
-//! `page.environment()` — a spec pins a GPU page's theme and stills its motion;
+//! `page.environment()` — a spec pins a GPU page's appearance and stills its motion;
 //! `page.pinState()` holds one of its elements hovered.
 //!
 //! The override lives in the page, never in device or product settings, and
@@ -47,10 +47,10 @@ fn with_leases<T>(f: impl FnOnce(&mut Leases) -> T) -> T {
     f(&mut leases)
 }
 
-/// Parse `{ theme?: 'light' | 'dark' | null, still?: boolean, textScale?: number | null,
+/// Parse `{ appearance?: 'light' | 'dark' | null, still?: boolean, textScale?: number | null,
 /// contrast?: 'standard' | 'high' | null, now?: number }`. The page checks the scale's range.
 pub(crate) fn parse_pin(
-    theme: Option<&str>,
+    appearance: Option<&str>,
     still: Option<bool>,
     text_scale: Option<f64>,
     contrast: Option<&str>,
@@ -71,13 +71,13 @@ pub(crate) fn parse_pin(
             ));
         }
     };
-    let dark = match theme {
+    let dark = match appearance {
         None => None,
         Some("light") => Some(false),
         Some("dark") => Some(true),
         Some(other) => {
             return Err(format!(
-                "E_INVALID_ARG: theme must be 'light', 'dark' or null, not '{other}'"
+                "E_INVALID_ARG: appearance must be 'light', 'dark' or null, not '{other}'"
             ));
         }
     };
@@ -293,7 +293,7 @@ pub(crate) mod tests {
             Box::pin(async move {
                 let pin = sent.lock().unwrap().last().copied().flatten();
                 Ok(
-                    json!({ "theme": pin.and_then(|p| p.dark).map(|d| if d { "dark" } else { "light" }) }),
+                    json!({ "appearance": pin.and_then(|p| p.dark).map(|d| if d { "dark" } else { "light" }) }),
                 )
             })
         }
@@ -423,7 +423,7 @@ pub(crate) mod tests {
         assert!(other.unwrap_err().starts_with("E_BUSY"));
         // Reading is not taking: another run's read answers the owner's pin.
         let read = futures::executor::block_on(read(page.clone())).unwrap();
-        assert_eq!(read["theme"], "dark");
+        assert_eq!(read["appearance"], "dark");
         assert_eq!(sent(&page), vec![Some(DARK)]);
         // Clearing its own pin by hand releases the page.
         futures::executor::block_on(set("env-owner", Some(1), "env-owned", page.clone(), None))

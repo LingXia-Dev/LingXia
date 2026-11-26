@@ -268,7 +268,7 @@ public class SimulatorToolbar: NSView {
         switch RunnerApp.shared.simulatedAppearance {
         case .light: return false
         case .dark: return true
-        case .system:
+        case .auto:
             return NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         }
     }
@@ -276,7 +276,7 @@ public class SimulatorToolbar: NSView {
     private func refreshAppearanceButton() {
         // Two icons only: the button shows what the screen currently renders
         // and one click flips it. "Follow system" stays in the selector menu
-        // (and `lxdev runner set --appearance system`).
+        // (and `lxdev runner set --appearance auto`).
         let dark = effectiveDark()
         // Shared design icons (single source for macOS + Windows), like rotate —
         // never macOS-only SF Symbols.
@@ -284,7 +284,7 @@ public class SimulatorToolbar: NSView {
         let image = RunnerSupport.Assets.image(named: assetName, size: CGSize(width: 15, height: 15))
         image?.isTemplate = true
         appearanceButton.image = image
-        let mode = RunnerApp.shared.simulatedAppearance == .system ? "system" : "pinned"
+        let mode = RunnerApp.shared.simulatedAppearance == .auto ? "auto" : "pinned"
         let current = dark ? "Dark" : "Light"
         let next = dark ? "Light" : "Dark"
         appearanceButton.toolTip = "Appearance: \(current) (\(mode)) — click for \(next)"

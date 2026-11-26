@@ -74,7 +74,7 @@ fn failure_answer(failure: &Failure) -> String {
     }
 }
 
-/// The surface size and look a page stalled under: theme dark, high contrast.
+/// The surface size and look a page stalled under: appearance dark, high contrast.
 type Stall = (u16, u16, bool, bool);
 
 fn stall_key(environment: &FrameEnvironment) -> Stall {
@@ -1741,7 +1741,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
         Ok(())
     }
 
-    /// `{op: "environment", theme?: "light"|"dark", still?: bool, textScale?: number,
+    /// `{op: "environment", appearance?: "light"|"dark", still?: bool, textScale?: number,
     /// contrast?: "standard"|"high"}` pins the page for a test run;
     /// `{op: "environment", clear: true}` restores it. Answers the override in force.
     fn set_test_environment(
@@ -1754,11 +1754,15 @@ impl<A: PlatformAdapter> ViewHost<A> {
         let test = if request["clear"] == true {
             None
         } else {
-            let dark = match &request["theme"] {
+            let dark = match &request["appearance"] {
                 serde_json::Value::Null => None,
-                theme if theme == "dark" => Some(true),
-                theme if theme == "light" => Some(false),
-                _ => return Err("E_INVALID_ARG: environment theme is \"light\" or \"dark\"".into()),
+                look if look == "dark" => Some(true),
+                look if look == "light" => Some(false),
+                _ => {
+                    return Err(
+                        "E_INVALID_ARG: environment appearance is \"light\" or \"dark\"".into(),
+                    );
+                }
             };
             let still = match &request["still"] {
                 serde_json::Value::Null => false,
@@ -1859,9 +1863,9 @@ impl<A: PlatformAdapter> ViewHost<A> {
         let main = self.inner.main();
         let test = main.host_environment.test();
         let presented = main.presented_environment.as_ref().map(|env| &env.value);
-        let theme = |dark: bool| if dark { "dark" } else { "light" };
+        let appearance = |dark: bool| if dark { "dark" } else { "light" };
         serde_json::json!({
-            "theme": test.and_then(|test| test.dark).map(theme),
+            "appearance": test.and_then(|test| test.dark).map(appearance),
             "still": test.is_some_and(|test| test.still),
             "now": test.and_then(|test| test.now),
             "contrast": test

@@ -352,9 +352,9 @@ export function createWorld(options = {}) {
     },
     async environment(options) {
       pageEntry("environment", options.page);
-      if (options.read) return { theme: null, still: false, textScale: [[0, 0], [17, 20]], language: "en-US" };
+      if (options.read) return { appearance: null, still: false, textScale: [[0, 0], [17, 20]], language: "en-US" };
       environments.push(options);
-      return options.clear ? { theme: null, still: false } : { theme: options.theme ?? null, still: options.still };
+      return options.clear ? { appearance: null, still: false } : { appearance: options.appearance ?? null, still: options.still };
     },
     async screenshot(...args) {
       // The host binding's options are optional but not nullable.

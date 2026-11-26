@@ -17,13 +17,13 @@ struct RunnerWebTarget {
 /// lxapp's scheme — never injected into page DOM, which stays the app's own
 /// override channel.
 public enum RunnerAppearance: String, CaseIterable, Sendable {
-    case system
+    case auto
     case light
     case dark
 
     var nsAppearance: NSAppearance? {
         switch self {
-        case .system: return nil
+        case .auto: return nil
         case .light: return NSAppearance(named: .aqua)
         case .dark: return NSAppearance(named: .darkAqua)
         }
@@ -31,7 +31,7 @@ public enum RunnerAppearance: String, CaseIterable, Sendable {
 
     var displayName: String {
         switch self {
-        case .system: return "System"
+        case .auto: return "Auto"
         case .light: return "Light"
         case .dark: return "Dark"
         }
@@ -68,7 +68,7 @@ public class RunnerApp {
     private(set) var activePosture: RunnerDevicePosture? = MobileDeviceSize.defaultDevice.defaultPosture
     private(set) var deviceOrientation: RunnerDeviceOrientation = .portrait
     private(set) var deviceSize: MobileDeviceSize = .defaultDevice
-    private(set) var simulatedAppearance: RunnerAppearance = .system
+    private(set) var simulatedAppearance: RunnerAppearance = .auto
     /// The simulated system text size, a factor of the default.
     private(set) var simulatedTextScale: CGFloat = 1
     /// The simulated increased-contrast setting.

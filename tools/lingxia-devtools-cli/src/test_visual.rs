@@ -321,7 +321,7 @@ pub struct ShotResult {
 #[derive(Debug, Default)]
 pub struct Summary {
     pub shots: Vec<ShotResult>,
-    /// Shots taken without a pinned theme.
+    /// Shots taken without a pinned appearance.
     pub unpinned: usize,
 }
 
@@ -546,7 +546,7 @@ pub fn process(run: &Run, sidecars: &[PathBuf]) -> Result<Summary> {
                 Status::Accepted { replaced }
             } else {
                 Status::Refused(
-                    "the shot's theme was not pinned; call t.app.view.environment({ theme }) before t.visual.shot".into(),
+                    "the shot's appearance was not pinned; call t.app.view.environment({ appearance }) before t.visual.shot".into(),
                 )
             };
         }
@@ -729,7 +729,7 @@ pub fn section(summary: &Summary, mode: VisualMode) -> String {
     if summary.unpinned > 0 {
         let _ = write!(
             html,
-            "<p class=\"lx-visual-warn\">{} without a pinned theme and cannot become {}.</p>",
+            "<p class=\"lx-visual-warn\">{} without a pinned appearance and cannot become {}.</p>",
             shots_were(summary.unpinned),
             if summary.unpinned == 1 {
                 "a baseline"
@@ -782,7 +782,7 @@ pub fn section(summary: &Summary, mode: VisualMode) -> String {
         let mut notes = vec![noise, format!("device {}", escape(&shot.device_label))];
         notes.extend(shot.context.iter().map(|note| escape(note)));
         if !shot.pinned {
-            notes.push("theme not pinned".into());
+            notes.push("appearance not pinned".into());
         }
         if shot.settled == false {
             notes.push("not settled".into());
@@ -890,7 +890,7 @@ pub fn print(summary: &Summary, mode: VisualMode, output_dir: &Path) {
     use owo_colors::OwoColorize;
     if summary.unpinned > 0 && mode == VisualMode::Compare {
         eprintln!(
-            "{} {} without a pinned theme; `--visual accept` will refuse {} (pin with t.app.view.environment)",
+            "{} {} without a pinned appearance; `--visual accept` will refuse {} (pin with t.app.view.environment)",
             "visual".yellow(),
             shots_were(summary.unpinned),
             if summary.unpinned == 1 { "it" } else { "them" }
@@ -1029,7 +1029,7 @@ mod tests {
                 "device": { "brand": "Xiaomi", "model": "Redmi 9", "osName": "Android", "osVersion": "11" },
                 "png": png, "noise": noise, "width": shot.width, "height": shot.height,
                 "settled": true,
-                "environment": { "pinned": pinned, "theme": if pinned { json!("dark") } else { Value::Null }, "still": pinned },
+                "environment": { "pinned": pinned, "appearance": if pinned { json!("dark") } else { Value::Null }, "still": pinned },
                 "masks": masks,
                 "textScale": null,
                 "language": "en-US",
@@ -1257,7 +1257,7 @@ mod tests {
         assert_eq!(read_image(&dir.join("home.prev.png")).unwrap(), card(20));
         let record: Value =
             serde_json::from_slice(&std::fs::read(dir.join("home.json")).unwrap()).unwrap();
-        assert_eq!(record["environment"]["theme"], "dark");
+        assert_eq!(record["environment"]["appearance"], "dark");
         assert_eq!(
             (&record["osVersion"], &record["language"]),
             (&json!("11"), &json!("en-US"))

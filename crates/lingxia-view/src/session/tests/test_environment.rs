@@ -1,8 +1,8 @@
-//! `view.environment`: a test run pins a page's theme and stills it, then restores it.
+//! `view.environment`: a test run pins a page's appearance and stills it, then restores it.
 use super::*;
 
 #[test]
-fn a_test_override_pins_the_theme_stills_the_caret_and_clears() {
+fn a_test_override_pins_the_appearance_stills_the_caret_and_clears() {
     let worker = ViewWorker::spawn("test-view").unwrap();
     let platform = Platform::new(&[&worker]);
     let host = platform.host(
@@ -23,7 +23,7 @@ fn a_test_override_pins_the_theme_stills_the_caret_and_clears() {
         host.automation_request(&value)
     };
     assert!(
-        request(serde_json::json!({"theme": "sepia"}))
+        request(serde_json::json!({"appearance": "sepia"}))
             .unwrap_err()
             .starts_with("E_INVALID_ARG")
     );
@@ -33,9 +33,9 @@ fn a_test_override_pins_the_theme_stills_the_caret_and_clears() {
             .starts_with("E_INVALID_ARG")
     );
 
-    let pinned = request(serde_json::json!({"theme": "dark", "still": true})).unwrap();
+    let pinned = request(serde_json::json!({"appearance": "dark", "still": true})).unwrap();
     assert_eq!(
-        (&pinned["theme"], &pinned["still"]),
+        (&pinned["appearance"], &pinned["still"]),
         (&"dark".into(), &true.into())
     );
     platform.settle(&[&host]);
@@ -43,7 +43,7 @@ fn a_test_override_pins_the_theme_stills_the_caret_and_clears() {
     let read = request(serde_json::json!({"read": true})).unwrap();
     assert_eq!(
         read,
-        serde_json::json!({"theme": "dark", "still": true, "now": null, "contrast": null, "textScale": null, "language": "en"})
+        serde_json::json!({"appearance": "dark", "still": true, "now": null, "contrast": null, "textScale": null, "language": "en"})
     );
     assert!(
         last(&host).contains(&"dark true".to_owned()),
@@ -65,7 +65,7 @@ fn a_test_override_pins_the_theme_stills_the_caret_and_clears() {
 
     let cleared = request(serde_json::json!({"clear": true})).unwrap();
     assert_eq!(
-        (&cleared["theme"], &cleared["still"]),
+        (&cleared["appearance"], &cleared["still"]),
         (&serde_json::Value::Null, &false.into())
     );
     platform.settle(&[&host]);

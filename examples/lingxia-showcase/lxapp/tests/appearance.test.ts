@@ -11,15 +11,15 @@ test('a page that starts reading the theme runs again on the next theme change',
   const runs = async () => Number(/runs=(\d+)/.exec((await state.getAttribute('data-state')) ?? '')?.[1]);
   await expect(state).toHaveAttribute('data-state', /theme=unread$/);
   try {
-    await view.environment({ theme: 'light' });
+    await view.environment({ appearance: 'light' });
     await pause(400);
     await view.testId('lab-appearance-toggle').click();
     await expect(state).toHaveAttribute('data-state', /theme=light$/);
     const reading = await runs();
-    await view.environment({ theme: 'dark' });
+    await view.environment({ appearance: 'dark' });
     await expect(state).toHaveAttribute('data-state', /theme=dark$/);
     expect(await runs()).toBeGreaterThan(reading);
-    await view.environment({ theme: 'light' });
+    await view.environment({ appearance: 'light' });
     await expect(state).toHaveAttribute('data-state', /theme=light$/);
   } finally {
     await view.environment(null);

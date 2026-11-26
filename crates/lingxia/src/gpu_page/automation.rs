@@ -157,7 +157,7 @@ impl<T: ?Sized + Automated> GpuPageAutomation for GpuAutomation<T> {
         self.request(match pin {
             Some(pin) => json!({
                 "op": "environment",
-                "theme": pin.dark.map(|dark| if dark { "dark" } else { "light" }),
+                "appearance": pin.dark.map(|dark| if dark { "dark" } else { "light" }),
                 "still": pin.still,
                 "textScale": pin.text_scale,
                 "contrast": pin

@@ -1001,17 +1001,18 @@ test("t.app.metrics reads frame pacing with the presentation counters and t.app.
   assert.equal(protocol.failed, 0, protocol.failed ? failedMessage(attachments) : "");
 });
 
-test("view.environment pins a GPU page's theme and stillness or clears it", async () => {
+test("view.environment pins a GPU page's appearance and stillness or clears it", async () => {
   const world = createWorld();
   const { attachments } = installFakeHost(world);
 
   lxTest("environment", async (t) => {
-    await t.app.view.environment({ theme: "dark", still: true });
+    await t.app.view.environment({ appearance: "dark", still: true });
     await t.app.view.environment({ still: true });
     await t.app.view.environment(null);
     await t.app.view.environment({ textScale: 1.3, contrast: "high" });
     await t.app.view.environment({ textScale: null, contrast: null });
-    await assert.rejects(t.app.view.environment({ theme: "sepia" }), TypeError);
+    await assert.rejects(t.app.view.environment({ appearance: "sepia" }), TypeError);
+    await assert.rejects(t.app.view.environment({ theme: "dark" }), /takes \{ appearance/);
     await assert.rejects(t.app.view.environment({ textScale: 9 }), TypeError);
     await assert.rejects(t.app.view.environment({ contrast: "more" }), TypeError);
     await assert.rejects(t.app.view.environment(), TypeError);
@@ -1020,11 +1021,11 @@ test("view.environment pins a GPU page's theme and stillness or clears it", asyn
   const protocol = await globalThis.__LINGXIA_TEST__.run();
   assert.equal(protocol.failed, 0, protocol.failed ? failedMessage(attachments) : "");
   const sent = world.environments.map(({ page, ...rest }) => rest);
-  assert.deepEqual(sent, [{ theme: "dark", still: true }, { still: true }, { clear: true },
+  assert.deepEqual(sent, [{ appearance: "dark", still: true }, { still: true }, { clear: true },
     { still: false, textScale: 1.3, contrast: "high" }, { still: false }]);
 });
 
-test("t.visual.shot attaches the png with a sidecar naming masks, theme and settling", async () => {
+test("t.visual.shot attaches the png with a sidecar naming masks, appearance and settling", async () => {
   const world = createWorld();
   world.add({ testId: "clock", visible: true, rect: { left: 10, top: 20, width: 30, height: 5, viewportWidth: 400, viewportHeight: 800 } });
   world.app.page.screenshot = async () => ({ format: "png", base64: world.TINY_PNG, width: 800, height: 1600 });
@@ -1034,7 +1035,7 @@ test("t.visual.shot attaches the png with a sidecar naming masks, theme and sett
   lxTest("look", async (t) => {
     const unpinned = await t.visual.shot("before", { settle: false });
     assert.equal(unpinned.width, 800);
-    await t.app.view.environment({ theme: "dark", still: true });
+    await t.app.view.environment({ appearance: "dark", still: true });
     const shot = await t.visual.shot("home", { mask: [t.app.view.testId("clock"), { x: 0, y: 0, width: 800, height: 48 }], settle: { quietMs: 50 } });
     assert.match(shot.key, /look\/home$/);
     assert.equal(shot.attachment, attachments.has(shot.attachment) ? shot.attachment : "missing");
@@ -1052,7 +1053,7 @@ test("t.visual.shot attaches the png with a sidecar naming masks, theme and sett
     return JSON.parse(Buffer.from(attachments.get(path).base64, "base64").toString("utf8"));
   };
   const home = sidecar("home");
-  assert.deepEqual(home.environment, { pinned: true, theme: "dark", still: true });
+  assert.deepEqual(home.environment, { pinned: true, appearance: "dark", still: true });
   // The fake host's curve is not the identity: sampled, never stored whole.
   assert.deepEqual(home.textScale.find(([size]) => size === 17), [17, 20]);
   assert.equal(home.textScale.length, 8);
@@ -1063,7 +1064,7 @@ test("t.visual.shot attaches the png with a sidecar naming masks, theme and sett
     { x: 0, y: 0, width: 800, height: 48, from: "rect" },
   ]);
   const before = sidecar("before");
-  assert.deepEqual(before.environment, { pinned: false, theme: null, still: false });
+  assert.deepEqual(before.environment, { pinned: false, appearance: null, still: false });
   assert.equal(before.settled, false);
 });
 

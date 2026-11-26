@@ -109,7 +109,7 @@ impl PostureArg {
 #[derive(ValueEnum, Clone, Copy)]
 pub enum AppearanceArg {
     /// Follow the host OS appearance
-    System,
+    Auto,
     /// Pin the simulated screen to light
     Light,
     /// Pin the simulated screen to dark
@@ -119,7 +119,7 @@ pub enum AppearanceArg {
 impl AppearanceArg {
     fn as_str(self) -> &'static str {
         match self {
-            AppearanceArg::System => "system",
+            AppearanceArg::Auto => "auto",
             AppearanceArg::Light => "light",
             AppearanceArg::Dark => "dark",
         }
@@ -344,11 +344,11 @@ mod tests {
         );
         let state = json!({
             "name": "iPad", "id": "ipad", "width": 820, "height": 1180,
-            "landscape": true, "appearance": "system", "language": "zh-CN",
+            "landscape": true, "appearance": "auto", "language": "zh-CN",
         });
         assert_eq!(
             describe_state(&state).unwrap(),
-            "iPad (ipad)  820x1180 @1x  landscape  appearance: system  language: zh-CN"
+            "iPad (ipad)  820x1180 @1x  landscape  appearance: auto  language: zh-CN"
         );
     }
 }

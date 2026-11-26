@@ -684,7 +684,7 @@ export interface Screenshot {
 
 /** `page.environment()`: the pin in force and what a visual baseline records. */
 export interface PageTestEnvironment {
-  theme: "light" | "dark" | null;
+  appearance: "light" | "dark" | null;
   still: boolean;
   contrast: "standard" | "high" | null;
   /** The pinned clock, epoch ms; `null`: the wall clock (or, with `still`, stopped where it was). */
@@ -744,11 +744,11 @@ export interface PageDriver {
   /** Draw the renderer's frame-statistics HUD over a GPU page, or stop. */
   hud(options: PageTarget & { on: boolean }): Promise<{ hud: boolean }>;
   /**
-   * Pin a GPU page's theme and still its motion (reduced motion on, caret steady)
+   * Pin a GPU page's appearance and still its motion (reduced motion on, caret steady)
    * for this test run, or `clear`; device settings are untouched. The attempt's
    * end and the run's end clear it. Only inside a host automation run, except `{ read: true }`.
    */
-  environment(options: PageTarget & ({ theme?: "light" | "dark"; still?: boolean; textScale?: number; contrast?: "standard" | "high"; now?: number } | { clear: true } | { read: true })): Promise<PageTestEnvironment>;
+  environment(options: PageTarget & ({ appearance?: "light" | "dark"; still?: boolean; textScale?: number; contrast?: "standard" | "high"; now?: number } | { clear: true } | { read: true })): Promise<PageTestEnvironment>;
   /**
    * Hold the `index`th match of `css` on a GPU page hovered, as a resting pointer would (its
    * `hover:` look, an `interestFor` hint after the usual rest), or lift it with `hover: false`.
@@ -1872,7 +1872,7 @@ export interface DeviceState {
   /** Device pixels per point. */
   pixelRatio: number;
   /** Simulated system appearance of the device screen. */
-  appearance: "system" | "light" | "dark";
+  appearance: "auto" | "light" | "dark";
   /** Simulated system text size, a factor of the default. */
   textScale: number;
   /** Simulated system contrast. */
@@ -1894,7 +1894,7 @@ export interface DeviceSetOptions {
    * runner's normal device-selection behavior. */
   landscape?: boolean;
   /** Simulated appearance; omit to keep. */
-  appearance?: "system" | "light" | "dark";
+  appearance?: "auto" | "light" | "dark";
   /** Simulated system text size as a factor of the default, 0.5 to 3; omit to keep. */
   textScale?: number;
   /** Simulated system contrast; omit to keep. */

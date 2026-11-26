@@ -131,7 +131,7 @@ test('lays out for compact and regular', async (t) => {
 });
 ```
 
-- `device.set` is partial; `appearance: "light" | "dark" | "system"` pins the
+- `device.set` is partial; `appearance: "light" | "dark" | "auto"` pins the
   simulated scheme, `textScale` (0.5 to 3) and `contrast: "standard" | "high"` the
   system text size and contrast.
 - `t.device.set({ preset, posture, orientation })` picks a device by form factor

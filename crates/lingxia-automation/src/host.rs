@@ -250,7 +250,7 @@ struct DeviceSetOpt {
     /// Force landscape (`true`) or portrait (`false`); omit to use the
     /// runner's normal device-selection behavior.
     landscape: Option<bool>,
-    /// Simulated appearance: "system" | "light" | "dark"; omit to keep.
+    /// Simulated appearance: "auto" | "light" | "dark"; omit to keep.
     appearance: Option<String>,
     /// Simulated system text size as a factor of the default (1.3, 2); omit to keep.
     #[js_name = "textScale"]

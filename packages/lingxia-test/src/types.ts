@@ -506,7 +506,7 @@ export interface VisualShotOptions {
 export interface VisualShot {
   /** `<spec id>/<name>`: the baseline key, stable across runs. */
   key: string;
-  /** The PNG attachment's path; a JSON sidecar beside it names the masks, theme and settling. */
+  /** The PNG attachment's path; a JSON sidecar beside it names the masks, appearance and settling. */
   attachment: string;
   width: number;
   height: number;
@@ -524,7 +524,8 @@ export interface TestVisual {
 
 /** `view.environment()`: a spec's override of a GPU page's look. */
 export interface ViewEnvironment {
-  theme?: "light" | "dark" | null;
+  /** Light or dark; `null`: the device's. */
+  appearance?: "light" | "dark" | null;
   still?: boolean;
   /** The system text size as a factor of the default, 0.5 to 3 (`1.3`, `2`); `null`: the device's. */
   textScale?: number | null;
@@ -562,7 +563,7 @@ export interface TestView {
    */
   settled(options?: ViewSettledOptions): Promise<void>;
   /**
-   * Show the GPU page in `theme` (`null`: the device's), at `textScale` times the
+   * Show the GPU page in `appearance` (`null`: the device's), at `textScale` times the
    * system text size, under `contrast`, at the clock `now` and, with `still`, with reduced
    * motion, a steady caret and a stopped clock, for this spec only; `null` clears it.
    * Device and app settings are untouched; the spec's end clears it.

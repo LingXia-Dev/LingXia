@@ -783,7 +783,7 @@ export class LiveFixture implements Fixture {
       at: here,
       // A reviewer must see an unsettled shot.
       settled: settle,
-      environment: { pinned: this.viewPin !== null && this.viewPin.theme != null, theme: this.viewPin?.theme ?? null, still: this.viewPin?.still ?? false,
+      environment: { pinned: this.viewPin !== null && this.viewPin.appearance != null, appearance: this.viewPin?.appearance ?? null, still: this.viewPin?.still ?? false,
         ...(this.viewPin?.contrast ? { contrast: this.viewPin.contrast } : {}) },
       masks: regions,
     }));
@@ -1602,17 +1602,20 @@ export class LiveFixture implements Fixture {
       },
       settled: (options?: ViewSettledOptions) => this.viewSettled(page, target, options),
       environment: (pin: ViewEnvironment | null) => this.act("page.environment", summarise(pin), async () => {
+        if (pin !== null && typeof pin === "object" && "theme" in pin) {
+          throw new TypeError("view.environment() takes { appearance: 'light' | 'dark' }, not { theme }");
+        }
         if (pin !== null && (typeof pin !== "object"
-          || (pin.theme !== undefined && pin.theme !== null && pin.theme !== "light" && pin.theme !== "dark")
+          || (pin.appearance !== undefined && pin.appearance !== null && pin.appearance !== "light" && pin.appearance !== "dark")
           || (pin.still !== undefined && typeof pin.still !== "boolean")
           || (pin.textScale !== undefined && pin.textScale !== null && !(typeof pin.textScale === "number" && pin.textScale >= 0.5 && pin.textScale <= 3))
           || (pin.contrast !== undefined && pin.contrast !== null && pin.contrast !== "standard" && pin.contrast !== "high")
           || (pin.now !== undefined && pin.now !== null && !(typeof pin.now === "number" && Number.isFinite(pin.now) && pin.now >= 0)))) {
-          throw new TypeError("view.environment() takes { theme?: 'light' | 'dark' | null, still?: boolean, textScale?: number (0.5 to 3) | null, contrast?: 'standard' | 'high' | null, now?: epoch ms | null } or null");
+          throw new TypeError("view.environment() takes { appearance?: 'light' | 'dark' | null, still?: boolean, textScale?: number (0.5 to 3) | null, contrast?: 'standard' | 'high' | null, now?: epoch ms | null } or null");
         }
         // The host binding's fields are optional but not nullable: a device fact is an absent one.
         const options = pin === null ? { clear: true as const }
-          : { ...(pin.theme ? { theme: pin.theme } : {}), still: pin.still ?? false,
+          : { ...(pin.appearance ? { appearance: pin.appearance } : {}), still: pin.still ?? false,
             ...(pin.textScale != null ? { textScale: pin.textScale } : {}), ...(pin.contrast ? { contrast: pin.contrast } : {}),
             ...(pin.now != null ? { now: pin.now } : {}) };
         await page().environment({ ...options, ...target });

@@ -286,6 +286,9 @@ struct JSEnvironmentOptions {
     page: Option<String>,
     // Every host parses the pin; only a host built for automation runs applies it.
     #[cfg_attr(not(feature = "runtime"), allow(dead_code))]
+    appearance: Option<String>,
+    /// Refused: the pin is named `appearance`.
+    #[cfg_attr(not(feature = "runtime"), allow(dead_code))]
     theme: Option<String>,
     #[cfg_attr(not(feature = "runtime"), allow(dead_code))]
     still: Option<bool>,
@@ -350,11 +353,14 @@ async fn set_environment(
     app: &Arc<LxApp>,
     options: &JSEnvironmentOptions,
 ) -> Result<serde_json::Value, String> {
+    if options.theme.is_some() {
+        return Err("E_INVALID_ARG: environment takes `appearance` ('light' | 'dark'), not `theme`".into());
+    }
     let pin = if options.clear == Some(true) {
         None
     } else {
         Some(crate::view_env::parse_pin(
-            options.theme.as_deref(),
+            options.appearance.as_deref(),
             options.still,
             options.text_scale,
             options.contrast.as_deref(),
@@ -881,7 +887,7 @@ impl JSPageDriver {
         json_to_js(&ctx, &value)
     }
 
-    /// Pin a GPU page's theme and still its motion for this test run, or
+    /// Pin a GPU page's appearance and still its motion for this test run, or
     /// clear it (`{ clear: true }`); the attempt's end clears it too.
     /// `{ read: true }` answers the pin with the page's text scale and language.
     #[js_method]

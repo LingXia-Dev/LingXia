@@ -9,7 +9,7 @@ test('a dotted, a dashed and a struck line draw in their own colours', { covers:
   await view.testId('lab-underlines-link').click();
   await expect(text).toContainText('API key');
   for (const theme of ['light', 'dark'] as const) {
-    await view.environment({ theme, still: true });
+    await view.environment({ appearance: theme, still: true });
     await view.settled();
     await t.attach(`underlines-${theme}.png`, await view.screenshot());
   }

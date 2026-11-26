@@ -101,7 +101,7 @@ fn three_panics_in_a_row_stall_the_page_and_automation_hears_it_at_once() {
         6,
         "an unchanged environment is no change"
     );
-    host.automation_request(&serde_json::json!({"op": "environment", "theme": "dark"}))
+    host.automation_request(&serde_json::json!({"op": "environment", "appearance": "dark"}))
         .unwrap();
     platform.settle(&[&host]);
     assert_eq!(host.panics_left(), 5, "an appearance change tries once");

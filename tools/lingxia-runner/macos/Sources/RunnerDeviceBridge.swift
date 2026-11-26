@@ -205,7 +205,7 @@ func lingxiaRunnerDeviceSetJSON(
     default: nil
     }
     let requestedAppearance: RunnerAppearance? = switch appearance {
-    case 0: .system
+    case 0: .auto
     case 1: .light
     case 2: .dark
     default: nil

@@ -232,12 +232,12 @@ test('an embedded web page follows the View page\'s appearance live, without the
   const state = t.app.view.testId('lab-web-scheme-state');
   const read = async () => (await state.getAttribute('data-state')) ?? '';
   for (const theme of ['light', 'dark', 'light'] as const) {
-    await t.app.view.environment({ theme });
+    await t.app.view.environment({ appearance: theme });
     await expect(state).toHaveAttribute('data-state', new RegExp(`^loads=1 scheme=${theme} `), { timeout: 8_000 });
   }
   // Each switch reached the running page as a change, and its own colours moved with it.
   expect(Number(/changes=(\d+)/.exec(await read())?.[1]), 'two live changes after the first read').toBeGreaterThanOrEqual(2);
-  await t.app.view.environment({ theme: 'dark' });
+  await t.app.view.environment({ appearance: 'dark' });
   await expect(state).toHaveAttribute('data-state', /scheme=dark .*background=rgb\(30, 27, 75\)/, { timeout: 8_000 });
 });
 
