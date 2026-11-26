@@ -58,13 +58,12 @@ export const tabsRecipe = {
     equal: 'grow basis-0',
     content: 'shrink-0',
     underline: 'h-control-md rounded-control hover:bg-text/4 focus-visible:inset-ring-2 focus-visible:inset-ring-focus',
-    pad: { equal: 'px-2', content: 'px-3' },
-    /** Fills its tab, so the indicator can follow tabs of unequal width. */
-    extent: 'absolute inset-0',
   },
   /** The icon, the label and the count, in one line that is never cut. */
   content: {
     base: 'flex-row items-center gap-1.5 shrink-0',
+    /** On the content, not the tab, so the tab's measured box is all of it. */
+    pad: { equal: 'px-2', content: 'px-3' },
   },
   /** Leading, 20 pt; the indicator, not the colour, shows the chosen tab. */
   icon: {

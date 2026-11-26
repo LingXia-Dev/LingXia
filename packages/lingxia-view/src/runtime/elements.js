@@ -79,7 +79,7 @@ export const handlesIssued = () => nextHandle;
 /** Marks callbacks as issued without issuing one: a recalled subtree carries its own. */
 export const skipHandle = () => { nextHandle++; };
 const pointerCrossing = ['onPointerEnter', 'onPointerLeave'];
-const boxTags = new Set(['view', 'text', 'vector', 'plot', 'scroll']);
+const boxTags = new Set(['view', 'text', 'button', 'vector', 'plot', 'scroll']);
 const editorKeys = new Set(['ArrowUp', 'ArrowDown', 'Enter', 'Escape', 'Home', 'End', 'PageUp', 'PageDown']);
 const pointerTags = new Set(['view', 'button', 'vector']), pointerAxes = new Set(['x', 'y', 'both']);
 const callbackOf = (callback, kind = 'void', isolated = false, press = undefined, site = undefined) => ({ callback, kind, isolated, press, site });
@@ -585,7 +585,7 @@ function resolveElement(tag, original, children, identity, depth, parent) {
   }
   // The element's content box once laid out, and after each change.
   if (props.onLayout !== undefined || props.box !== undefined) {
-    if (!boxTags.has(tag)) throw Error('UI_PROP: onLayout and box belong to a <view>, <text>, <vector>, <plot> or <scroll>');
+    if (!boxTags.has(tag)) throw Error('UI_PROP: onLayout and box belong to a <view>, <text>, <button>, <vector>, <plot> or <scroll>');
     const { onLayout } = props;
     if (onLayout !== undefined && typeof onLayout !== 'function') throw Error('UI_PROP: onLayout takes a function');
     const binding = props.box === undefined ? undefined : boxBinding(props.box);

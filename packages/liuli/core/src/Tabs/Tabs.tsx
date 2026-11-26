@@ -119,9 +119,11 @@ export function Tabs({ label, items, bind, value: own, onChange: ownChange, vari
                   data-testid={testId && `${testId}-${item.value}`}
                   // A tab chosen at the row's edge is brought fully into view.
                   onClick={() => { if (!isSelected) { onChange(item.value); reveal(tabId); } }}
-                  className={cx(r.tab.base, segmented ? cx(s.segment.base, s.segment.size.md, s.segment.row) : cx(r.tab[width], r.tab.underline, r.tab.pad[width]))}
+                  // Its content box is the whole tab: the padding sits on the content inside.
+                  box={boxes[at]}
+                  className={cx(r.tab.base, segmented ? cx(s.segment.base, s.segment.size.md, s.segment.row) : cx(r.tab[width], r.tab.underline))}
                 >
-                  <view aria-hidden className={r.content.base}>
+                  <view aria-hidden className={cx(r.content.base, segmented ? s.content.pad.md : r.content.pad[width])}>
                     {item.icon !== undefined && <Glyph name={item.icon} side={20} className={cx(r.icon.base, isSelected ? r.icon.selected : r.icon.unselected)} />}
                     {!item.isLabelHidden && <text className={cx(r.label.base, segmented ? s.label.size.md : r.label.underline, isSelected ? r.label.selected : r.label.unselected)}>{item.label}</text>}
                     {item.badge !== undefined && (
@@ -130,7 +132,6 @@ export function Tabs({ label, items, bind, value: own, onChange: ownChange, vari
                       </view>
                     )}
                   </view>
-                  <view aria-hidden box={boxes[at]} className={r.tab.extent} />
                 </button>
               );
             })}

@@ -110,13 +110,14 @@ export function SegmentedControl(props: SegmentedControlProps) {
             disabled={option.isDisabled}
             data-testid={testId && `${testId}-${option.value}`}
             onClick={() => choose(option.value)}
+            // Its content box is the whole segment: the padding sits on the content inside.
+            box={segmentBoxes[at]}
             className={cx(r.segment.base, r.segment.size[size], r.segment[layout])}
           >
-            <view box={labelBoxes[at]} aria-hidden className={cx(r.content.base, r.content[layout])}>
+            <view box={labelBoxes[at]} aria-hidden className={cx(r.content.base, r.content.pad[size], r.content[layout])}>
               {option.icon !== undefined && <Glyph name={option.icon} side={iconSide[size]} className={cx(r.icon.size[size], isChecked ? r.icon.chosen : r.icon.other)} />}
               {!option.isLabelHidden && <text className={cx(r.label.base, r.label[layout], r.label.size[size], isChecked ? r.label.chosen : r.label.other)}>{option.label}</text>}
             </view>
-            <view aria-hidden box={segmentBoxes[at]} className={r.segment.extent} />
           </button>
         );
       })}

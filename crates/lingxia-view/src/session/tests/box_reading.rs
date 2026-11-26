@@ -79,20 +79,20 @@ fn a_box_costs_one_more_frame_and_then_settles() {
 }
 
 #[test]
-fn text_scroll_vector_and_plot_report_a_box_and_a_remounted_element_reports_again() {
+fn text_button_scroll_vector_and_plot_report_a_box_and_a_remounted_element_reports_again() {
     let worker = ViewWorker::spawn("test-box-tags").unwrap();
     let platform = Platform::new(&[&worker]);
     let host = page(
         &platform,
         &worker,
-        "function render(){const seen=useLocal('seen',''),shown=useLocal('shown',true);const on=t=>s=>{if(s.width>0&&s.height>0)seen.set(seen.value+t)};return h('page',{},h('button',{'data-testid':'flip',onClick(){shown.set(!shown.value)}},'F'),shown.value&&h('text',{key:'t',onLayout:on('T')},'Text'),h('scroll',{onLayout:on('S'),style:{height:40}},h('view',{style:{height:200}})),h('vector',{onLayout:on('V'),paths:[{d:'M0 0L10 10',stroke:'#000000'}],style:{width:20,height:20}}),h('plot',{onLayout:on('P'),kind:'bar',values:[1,2],'aria-label':'P',style:{height:60}}),h('text',{'data-testid':'seen-'+seen.value.split('').sort().join('')},'s'))}",
+        "function render(){const seen=useLocal('seen',''),shown=useLocal('shown',true);const on=t=>s=>{if(s.width>0&&s.height>0)seen.set(seen.value+t)};return h('page',{},h('button',{'data-testid':'flip',onClick(){shown.set(!shown.value)}},'F'),shown.value&&h('text',{key:'t',onLayout:on('T')},'Text'),h('scroll',{onLayout:on('S'),style:{height:40}},h('view',{style:{height:200}})),h('vector',{onLayout:on('V'),paths:[{d:'M0 0L10 10',stroke:'#000000'}],style:{width:20,height:20}}),h('plot',{onLayout:on('P'),kind:'bar',values:[1,2],'aria-label':'P',style:{height:60}}),h('button',{onLayout:on('B'),onClick(){}},'Go'),h('text',{'data-testid':'seen-'+seen.value.split('').sort().join('')},'s'))}",
     );
-    assert_eq!(count(&host, "seen-PSTV"), 1, "each element reported once");
+    assert_eq!(count(&host, "seen-BPSTV"), 1, "each element reported once");
     click(&platform, &host, "flip");
-    assert_eq!(count(&host, "seen-PSTV"), 1, "unmounting reports nothing");
+    assert_eq!(count(&host, "seen-BPSTV"), 1, "unmounting reports nothing");
     click(&platform, &host, "flip");
     assert_eq!(
-        count(&host, "seen-PSTTV"),
+        count(&host, "seen-BPSTTV"),
         1,
         "mounted again, the text reports again"
     );

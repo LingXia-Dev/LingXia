@@ -38,16 +38,16 @@ export const segmentedControlRecipe = {
   segment: {
     base: 'flex-row items-center-safe justify-center rounded-segment transition-colors duration-fast ease-standard focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 disabled:opacity-40',
     /** With the root's padding, the row is control-sm or control-md tall, level with a Button or field of that size. */
-    size: { sm: 'min-h-7 px-2', md: 'min-h-9 px-3' } satisfies Record<SegmentedControlSize, string>,
+    size: { sm: 'min-h-7', md: 'min-h-9' } satisfies Record<SegmentedControlSize, string>,
     /** Equal shares, but never narrower than the label. */
     row: 'grow basis-0',
     stacked: '',
-    /** Fills its segment, so the thumb can follow segments of unequal width. */
-    extent: 'absolute inset-0',
   },
   /** The icon and the label, measured together: a segment never gets narrower than both. */
   content: {
     base: 'flex-row items-center gap-1.5',
+    /** On the content, not the segment, so the segment's measured box is all of it and the label's box is the label alone. */
+    pad: { sm: 'px-2', md: 'px-3' } satisfies Record<SegmentedControlSize, string>,
     row: 'shrink-0',
     stacked: 'min-w-0',
   },

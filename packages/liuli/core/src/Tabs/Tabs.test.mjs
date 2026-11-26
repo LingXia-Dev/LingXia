@@ -45,7 +45,7 @@ test('Fitted: tabs keep their labels whole in a row that scrolls; the indicator 
   const bar = () => screen.queryAll(node => node.props.background === 'accent' && node.props.height === 2)[0];
   assert.equal(bar(), undefined, 'before any tab is measured there is no indicator');
   const tabs = { general: 74, notifications: 108, privacy: 150, billing: 64, integrations: 102, advanced: 86 };
-  for (const [value, width] of Object.entries(tabs)) screen.layout(tab(value).children[1], { width, height: 40 });
+  for (const [value, width] of Object.entries(tabs)) screen.layout(tab(value), { width, height: 40 });
   assert.deepEqual([bar().props.width, JSON.parse(bar().props.transform).translate], [74, [0, 0]]);
   screen.press(tab('privacy'));
   assert.equal(tab('privacy').props.stateSelected, 1);
@@ -61,12 +61,12 @@ test('Large text: an equal tab is never narrower than its label; the indicator f
   assert.deepEqual([tab('overview').props.grow, tab('overview').props.minWidth, tab('overview').children[0].children[0].props.whiteSpace], [1, undefined, 'nowrap'], 'no floor of zero, no cut');
   const frame = scroll().parent;
   screen.layout(frame, { width: 300, height: 44 });
-  for (const value of ['overview', 'activity', 'members']) screen.layout(tab(value).children[1], { width: 100, height: 40 });
+  for (const value of ['overview', 'activity', 'members']) screen.layout(tab(value), { width: 100, height: 40 });
   assert.equal(Math.round(bar().props.widthPercent), 33, 'even tabs keep the share');
   assert.equal(scroll().props.maskImage, undefined, 'a row that fits does not fade');
-  screen.layout(tab('overview').children[1], { width: 130, height: 40 });
-  screen.layout(tab('activity').children[1], { width: 120, height: 40 });
-  screen.layout(tab('members').children[1], { width: 110, height: 40 });
+  screen.layout(tab('overview'), { width: 130, height: 40 });
+  screen.layout(tab('activity'), { width: 120, height: 40 });
+  screen.layout(tab('members'), { width: 110, height: 40 });
   assert.deepEqual([bar().props.width, JSON.parse(bar().props.transform).translate], [130, [0, 0]]);
   assert.equal(JSON.parse(scroll().props.maskImage)[0].to, 'left', '360 in 300: the end edge fades');
   const fades = () => JSON.parse(scroll().props.maskImage).map(layer => layer.to);
@@ -88,8 +88,8 @@ export function render() {
 `);
   const tab = value => screen.getByTestId(`pages-${value}`);
   assert.equal(tab(long).props.stateSelected, 1);
-  screen.layout(tab(long).children[1], { width: 90, height: 40 });
-  screen.layout(tab('notes').children[1], { width: 60, height: 40 });
+  screen.layout(tab(long), { width: 90, height: 40 });
+  screen.layout(tab('notes'), { width: 60, height: 40 });
   const bar = screen.queryAll(node => node.props.background === 'accent' && node.props.height === 2)[0];
   assert.deepEqual([bar.props.width, JSON.parse(bar.props.transform).translate], [90, [0, 0]]);
 });

@@ -1222,6 +1222,8 @@ export type ButtonProps = Omit<Props, "style" | "children" | "role"> & { role?: 
   /** With `role="combobox"`: what is chosen, spoken after the name. */ "aria-valuetext"?: string;
   /** Checked state of a `radio`, `menuitemcheckbox` or `menuitemradio` item; `"mixed"` on a `menuitemcheckbox` that is partly checked. */ "aria-checked"?: boolean | "mixed";
   /** Called for a long press or a secondary click, with where it happened. */ onContextMenu?: (event: ContextMenuEvent) => void;
+  /** Called with its laid-out size after each change, one render behind. */ onLayout?: (box: BoxSize) => void;
+  /** A `useBox` handle this element fills with its laid-out size. */ box?: Box;
   /** Reports a single pointer over the element: down, move, up, enter, leave and cancel. */ onPointer?: (event: PointerEvent) => void;
   /** The axis `onPointer` keeps; the other is left to the page's scroll. */ pointerAxis?: "x" | "y" | "both";
   /** Called when it is pressed: a tap, a click, Enter or Space, or a screen reader's activation. `event.timeStamp` is when the press arrived, in epoch ms. */ onClick?: (event: PressEvent) => void;

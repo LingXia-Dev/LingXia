@@ -74,7 +74,7 @@ test('onLayout is the primitive: each of its elements takes it, with or without 
 
 test('onLayout and box refuse other elements and values', () => {
   reset();
-  assert.throws(() => prepare(() => h('page', {}, h('button', { onLayout() {} }, 'B')), { env: {} }), /UI_PROP/);
+  assert.throws(() => prepare(() => h('page', {}, h('image', { src: 'a.png', onLayout() {} })), { env: {} }), /UI_PROP/);
   assert.throws(() => prepare(() => h('page', {}, h('view', { onLayout: 1 })), { env: {} }), /UI_PROP: onLayout takes a function/);
   assert.throws(() => prepare(() => h('page', {}, h('view', { box: { value: null } })), { env: {} }), /UI_PROP: box takes the handle useBox/);
   assert.throws(() => prepare(() => { useBox(''); return h('page', {}); }, { env: {} }), /UI_PROP: useBox takes a name/);

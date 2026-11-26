@@ -96,6 +96,8 @@ Children: text, or noninteractive content elements (a composed control). `dragSn
 | `aria-valuetext` | `string` |  | With `role="combobox"`: what is chosen, spoken after the name. |
 | `aria-checked` | `boolean \| "mixed"` |  | Checked state of a `radio`, `menuitemcheckbox` or `menuitemradio` item; `"mixed"` on a `menuitemcheckbox` that is partly checked. |
 | `onContextMenu` | `(event: ContextMenuEvent) => void` |  | Called for a long press or a secondary click, with where it happened. |
+| `onLayout` | `(box: BoxSize) => void` |  | Called with its laid-out size after each change, one render behind. |
+| `box` | `Box` |  | A `useBox` handle this element fills with its laid-out size. |
 | `onPointer` | `(event: PointerEvent) => void` |  | Reports a single pointer over the element: down, move, up, enter, leave and cancel. |
 | `pointerAxis` | `"x" \| "y" \| "both"` |  | The axis `onPointer` keeps; the other is left to the page's scroll. |
 | `onClick` | `(event: PressEvent) => void` |  | Called when it is pressed: a tap, a click, Enter or Space, or a screen reader's activation. `event.timeStamp` is when the press arrived, in epoch ms. |
