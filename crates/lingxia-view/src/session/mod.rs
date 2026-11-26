@@ -233,6 +233,18 @@ pub(crate) fn eval_budget() -> Duration {
     Duration::from_millis((EVAL_BUDGET_MS * scale) as u64)
 }
 
+/// The CPU-time limit for evaluating a page's module, scaled like `eval_budget` so an
+/// unoptimized build does not discard a large page on a slow machine.
+fn module_limit() -> Duration {
+    use crate::protocol::limits::EVAL_BUDGET_DEBUG_MULTIPLIER;
+    let scale = if cfg!(debug_assertions) {
+        EVAL_BUDGET_DEBUG_MULTIPLIER
+    } else {
+        1
+    };
+    Duration::from_secs(scale as u64)
+}
+
 /// Seed the runtime with lowerings an earlier isolate of this module persisted. Only a cache:
 /// a seed the runtime refuses or fails on is dropped, never failing the page.
 fn seed_lowered(context: &crate::engine::JSContext, module: &crate::engine::bytecode::Key) {
@@ -359,7 +371,7 @@ impl ViewSession {
         let renderer = Renderer::default();
         let video_scope = renderer.videos.scope();
         let video_orientation = renderer.videos.orientation_writer();
-        let (initialized, _) = budget.run(Duration::from_secs(1), Duration::from_secs(1), || {
+        let (initialized, _) = budget.run(module_limit(), module_limit(), || {
             crate::engine::compatibility::install(&context)?;
             crate::engine::install_dev_globals(&context, &dev_warnings)?;
             crate::engine::console::install(&context, console.clone())?;
