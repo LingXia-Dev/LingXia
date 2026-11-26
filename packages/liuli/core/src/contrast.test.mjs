@@ -25,6 +25,7 @@ test('contrast pairs name View roles, with a backdrop under an opacity step, and
 });
 
 test('the default theme reaches every computable pair, except the listed theme gaps', () => {
+  assert.equal(theme.source, '@lingxia/view/theme', 'run npm install in packages/: the resolved palette is missing');
   const failing = [];
   for (const pair of pairs)
     for (const appearance of appearances) {
