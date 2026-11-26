@@ -14,7 +14,9 @@ use std::time::Duration;
 pub(crate) mod calendar;
 mod chrome;
 mod environment;
+mod overlay;
 pub use chrome::HostChrome;
+pub use overlay::{OverlayInput, OverlayLogic, OverlaySurface, WindowId, WindowOverlays};
 pub use environment::{DeviceFacts, obscured, touch_target};
 
 pub type Task = Box<dyn FnOnce() + Send>;

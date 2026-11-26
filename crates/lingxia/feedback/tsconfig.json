@@ -1,0 +1,9 @@
+{
+  "compilerOptions": {
+    "paths": {
+      "@liulidesign/core/Button": ["../../../packages/liuli/core/src/Button/Button.tsx"],
+      "@liulidesign/core/Dialog": ["../../../packages/liuli/core/src/Dialog/Dialog.tsx"],
+      "@liulidesign/core/Toast": ["../../../packages/liuli/core/src/Toast/Toast.tsx"]
+    }
+  }
+}

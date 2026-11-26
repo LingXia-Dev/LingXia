@@ -14,6 +14,7 @@ common:
   about: "关于"
   exit: "退出"
   version: "版本"
+  actions: "操作"
 
 # WebView load errors shared by browser tabs and URL/auth surfaces
 webview:

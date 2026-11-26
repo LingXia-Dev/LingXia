@@ -14,6 +14,7 @@ common:
   about: "About"
   exit: "Exit"
   version: "Version"
+  actions: "Actions"
 
 # WebView load errors shared by browser tabs and URL/auth surfaces
 webview:

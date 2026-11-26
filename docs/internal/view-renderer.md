@@ -222,6 +222,13 @@ images, the Logic bridge, the bootstrap deadline, recovery and caret blink.
 Adapters convert OS events into host calls and execute typed effects; the host
 never calls the adapter while holding its locks. Its tests use a fake adapter.
 
+A platform also supplies window overlay surfaces (`WindowOverlays`): a
+transparent View page over one window, above every LingXia surface in it and
+below the system viewers, with an input pass-through/block toggle and a focus
+toggle. The overlay knows nothing of its page; Rust is that page's Logic. The
+window feedback layer (`lx.ui.toast` and its dialogs, `lingxia::feedback`) is
+its user; its page is built by `node crates/lingxia/feedback/build.mjs`.
+
 Pages of one `appId:session` share a worker by key, so nothing slow runs on it:
 decode and CPU raster use process pools (a newer CPU frame replaces one not
 started), GPU attach its own thread, and a page whose attach is pending

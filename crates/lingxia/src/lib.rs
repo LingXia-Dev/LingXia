@@ -190,6 +190,17 @@ pub mod file;
     test
 ))]
 mod gpu_page;
+#[cfg(all(
+    feature = "standard",
+    any(
+        target_os = "android",
+        target_os = "ios",
+        target_os = "macos",
+        target_env = "ohos",
+        target_os = "windows"
+    )
+))]
+mod feedback;
 mod host_addon;
 /// JS AppService extension registration helpers.
 #[cfg(feature = "standard")]

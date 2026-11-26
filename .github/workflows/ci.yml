@@ -1716,6 +1716,9 @@ jobs:
       - name: Check generated View contract artifacts
         run: node contracts/view/generate.mjs --check
 
+      - name: Check the built window feedback page
+        run: node crates/lingxia/feedback/build.mjs --check
+
       - name: Check that examples do not import from each other
         run: node scripts/ci/check-example-imports.mjs
 
