@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { textOf } from '@lingxia/view/testing';
-import { renderExample } from '../testing/harness.mjs';
+import { renderExample, renderPage } from '../testing/harness.mjs';
 
 const days = screen => screen.queryAll(node => node.props.role === 'gridcell');
 const selected = screen => days(screen).filter(day => day.props.stateSelected === 1).map(textOf);
@@ -96,4 +96,21 @@ test('MondayFirst: the app\'s own week wins over the user\'s first weekday', asy
   assert.equal(await initials({}), 'MTWTFSS');
   assert.equal(await initials({ firstWeekday: 7 }), 'MTWTFSS', 'a Sunday-first user');
   assert.equal(await initials({ firstWeekday: 6 }), 'MTWTFSS', 'a Saturday-first user');
+});
+
+test('a swipe or key on the grid does not page past min or max, as the buttons do not', async () => {
+  const screen = await renderPage(`
+    import { useLocal } from '@lingxia/view';
+    import { Calendar } from '@liulidesign/core/Calendar';
+    export function render() {
+      const day = useLocal('day', '2026-11-20');
+      return <page><Calendar label="Day" bind={day} min="2026-11-01" max="2026-12-31" today="2026-11-20" data-testid="day" /></page>;
+    }
+  `);
+  const grid = () => screen.queryAll(node => node.props.role === 'grid')[0];
+  screen.fire(grid(), 'onPage', 'previous');
+  assert.equal(grid().props.accessibilityLabel, 'November 2026', 'nothing before min to page to');
+  screen.fire(grid(), 'onPage', 'next');
+  screen.fire(grid(), 'onPage', 'next');
+  assert.equal(grid().props.accessibilityLabel, 'December 2026', 'nothing after max');
 });

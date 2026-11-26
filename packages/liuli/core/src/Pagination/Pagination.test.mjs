@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { textOf } from '@lingxia/view/testing';
-import { renderExample } from '../testing/harness.mjs';
+import { renderExample, renderPage } from '../testing/harness.mjs';
 
 const fine = { env: { pointer: 'fine' } };
 const shown = (screen, id) => screen.getByTestId(id).children[1].children.map(node => (node.tag === 'button' ? textOf(node) : '…'));
@@ -76,4 +76,19 @@ test('PageSize: a size choice before the pages; a new size keeps the first row o
   assert.equal(textOf(screen.getByTestId('sized-range')), 'Showing 1–50 of 240', 'row 41 is on the first page of fifty');
   assert.equal(textOf(screen.getByTestId('sized-5')), '5', 'five pages of fifty');
   assert.equal(screen.queryAll(node => node.testId === 'sized-6').length, 0);
+});
+
+test('a count of no pages still shows one page, never page 0', async () => {
+  const page = variant => `
+    import { useLocal } from '@lingxia/view';
+    import { Pagination } from '@liulidesign/core/Pagination';
+    export function render() {
+      const at = useLocal('at', 1);
+      return <page><Pagination label="Pages" variant="${variant}" bind={at} pageCount={0} data-testid="p" /></page>;
+    }
+  `;
+  const compact = await renderPage(page('compact'), fine);
+  assert.equal(compact.getByTestId('p').children[1].text, '1 / 1');
+  const pages = await renderPage(page('pages'), fine);
+  assert.deepEqual(shown(pages, 'p'), ['1']);
 });

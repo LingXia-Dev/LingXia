@@ -120,3 +120,17 @@ test('Weight: a spin button whose value is read with its unit; leaving the field
   screen.type(field(), '');
   assert.deepEqual(described(screen, field()), ['kg'], 'empty, the unit is read as the description');
 });
+
+test('a step written in scientific notation moves by that step, not by a rounded whole', async () => {
+  const screen = await renderPage(`
+    import { useLocal } from '@lingxia/view';
+    import { NumberInput } from '@liulidesign/core/NumberInput';
+    export function render() {
+      const n = useLocal('n', 0);
+      return <page><NumberInput label="Gain" bind={n} step={1e-7} decrementLabel="Less" incrementLabel="More" data-testid="n" /><text data-testid="out">{JSON.stringify(n.value)}</text></page>;
+    }
+  `);
+  screen.press(screen.getByTestId('n-increment'));
+  screen.press(screen.getByTestId('n-increment'));
+  assert.equal(textOf(screen.getByTestId('out')), '2e-7');
+});

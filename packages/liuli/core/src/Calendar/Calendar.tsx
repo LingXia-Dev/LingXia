@@ -114,6 +114,8 @@ export function Calendar(props: CalendarProps) {
   const title = liuliText('@liuli.calendar.title', { monthName: monthName(month), year: String(year) });
   const isOff = (date: CalendarDate) => (min !== undefined && date < min) || (max !== undefined && date > max) || isDateDisabled?.(date) === true;
   const [previous, following] = [shiftMonth(year, month, -1), shiftMonth(year, month, 1)];
+  // A month wholly outside the range is not paged to, by the buttons or by a swipe or key on the grid.
+  const [hasPrevious, hasNext] = [min === undefined || toDate(previous[0], previous[1], 31) >= min, max === undefined || toDate(following[0], following[1], 1) <= max];
   return (
     <view role="group" aria-label={label} data-testid={testId} {...dataOf(props)} className={cx(r.root.base, className)}>
       <view className={r.header.base}>
@@ -122,7 +124,7 @@ export function Calendar(props: CalendarProps) {
           label={liuliText('@liuli.calendar.previousMonth')}
           icon="chevron-start"
           size="sm"
-          isDisabled={min !== undefined && toDate(previous[0], previous[1], 31) < min}
+          isDisabled={!hasPrevious}
           onClick={() => go(-1)}
           data-testid={testId && `${testId}-previous`}
         />
@@ -130,12 +132,12 @@ export function Calendar(props: CalendarProps) {
           label={liuliText('@liuli.calendar.nextMonth')}
           icon="chevron-end"
           size="sm"
-          isDisabled={max !== undefined && toDate(following[0], following[1], 1) > max}
+          isDisabled={!hasNext}
           onClick={() => go(1)}
           data-testid={testId && `${testId}-next`}
         />
       </view>
-      <view role="grid" aria-label={title} onPage={direction => go(direction === 'next' ? 1 : -1)} className={r.grid.base}>
+      <view role="grid" aria-label={title} onPage={direction => { if (direction === 'next' ? hasNext : hasPrevious) go(direction === 'next' ? 1 : -1); }} className={r.grid.base}>
         <view aria-hidden className={r.week.base}>
           {ordered.map((name, index) => <text key={String(index)} className={r.weekday.base}>{name}</text>)}
         </view>

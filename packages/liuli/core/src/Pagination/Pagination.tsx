@@ -73,7 +73,8 @@ export function Pagination({
 }: PaginationProps) {
   const page = bind ? bind.value : own;
   const onChange = (next: number) => bind ? bind.set(next) : ownChange?.(next);
-  const pageCount = counted ?? (totalItems === undefined ? undefined : Math.max(1, Math.ceil(totalItems / Math.max(1, pageSize))));
+  // There is always a first page, even of nothing.
+  const pageCount = counted !== undefined ? Math.max(1, Math.floor(counted) || 1) : totalItems === undefined ? undefined : Math.max(1, Math.ceil(totalItems / Math.max(1, pageSize)));
   const { env } = useView();
   // A row of page numbers needs a pointer's precision and room; a finger gets the arrows and the position.
   // With no count there are no page numbers to show, only where the reader is.

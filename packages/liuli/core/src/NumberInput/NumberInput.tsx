@@ -57,7 +57,11 @@ function parse(text: string): number | null | undefined {
 // How many steps Page Up and Page Down take.
 const pageSteps = 10;
 
-const decimalsOf = (value: number) => (String(value).split('.')[1] ?? '').length;
+// Places after the point, read through scientific notation (`1e-7` has seven); toFixed takes at most 100.
+const decimalsOf = (value: number) => {
+  const [mantissa, exponent = '0'] = String(value).split('e');
+  return Math.min(100, Math.max(0, (mantissa.split('.')[1] ?? '').length - Number(exponent)));
+};
 
 /** A number typed or nudged by steps, kept between a minimum and a maximum. */
 export function NumberInput(props: NumberInputProps) {
