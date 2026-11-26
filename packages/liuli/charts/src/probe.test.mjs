@@ -19,8 +19,12 @@ const dataGeometry = new Set([
     // The drawing reaches the rounded end back below the marks' box, as it paints only inside its own.
     `BarChart/${example}: insetBottom=-3`,
   ]),
-  // A lying bar's line is as tall as its bars, which the drawing sets in points.
-  ...['Horizontal', 'HorizontalStacked'].map(example => `BarChart/${example}: height=12`),
+  // A lying bar's line is as tall as its bars, which the drawing sets in points: a group's bars and the gap between.
+  ...['Horizontal', 'HorizontalStacked', 'HorizontalLimit'].map(example => `BarChart/${example}: height=12`),
+  'BarChart/HorizontalGrouped: height=26',
+  // Standing bars: the marks' box starts below the figure lane and the rounded end, and the drawing reaches back over that end.
+  ...['Highlight', 'Orders', 'Signed', 'Sizes', 'StateSelected', 'Target', 'Tones', 'Zone'].flatMap(example => [`BarChart/${example}: insetTop=23`, `BarChart/${example}: insetTop=-3`]),
+  ...['Grouped', 'Stacked'].flatMap(example => [`BarChart/${example}: insetTop=3`, `BarChart/${example}: insetTop=-3`]),
 ]);
 
 test('every length drawn is a theme step, so a pack reaches it, except the data geometry', () => {

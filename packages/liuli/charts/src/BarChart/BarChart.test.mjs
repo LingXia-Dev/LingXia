@@ -669,3 +669,20 @@ test('Tones: each bar takes its row\'s tone, one outline per tone; Highlight pic
   const picked = await fills('Highlight');
   assert.deepEqual(picked.map(([key, fill, count]) => [key, fill, count]), [['orders', 'chart-1', 1], ['orders-line', 'line', 6]]);
 });
+
+test('HorizontalLimit: a reference marks every lying bar at its value and is named once under the lines', async () => {
+  const screen = laidOut(await renderExample('BarChart/BarChart', 'HorizontalLimit'));
+  const marks = screen.queryAll(node => node.props.background === 'text-muted' && node.props.insetTop === -4);
+  assert.equal(marks.length, 5, 'one mark per line');
+  assert.ok(marks.every(mark => mark.props.insetInlineStart === marks[0].props.insetInlineStart), 'at one place on every line');
+  assert.ok(screen.getByText('Daily limit 1 h 0 min'), 'named under the lines');
+  assert.match(textOf(screen.getByTestId('apps-limit')), /Daily limit, 1 h 0 min/, 'and read');
+});
+
+test('HorizontalGrouped: without figures the lines read against a round scale, a hairline at each tick', async () => {
+  const screen = laidOut(await renderExample('BarChart/BarChart', 'HorizontalGrouped'));
+  const ticks = screen.queryAll(node => node.tag === 'text' && /^\$\d+k$/.test(textOf(node)) && node.props.insetInlineStart !== undefined).map(textOf);
+  assert.ok(ticks.length >= 3 && ticks[0] === '$0k', `a scale from zero: ${ticks}`);
+  const grid = screen.queryAll(node => node.props.background === 'line' && node.props.insetInlineStart !== undefined);
+  assert.equal(grid.length, ticks.length * 4, 'a hairline at each tick, zero too as nothing goes below it, through every line');
+});

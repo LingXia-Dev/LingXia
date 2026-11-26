@@ -181,6 +181,41 @@ export function HorizontalStacked() {
   );
 }
 
+/** A limit across lying bars: a mark through each bar it crosses, named once under the lines. */
+export function HorizontalLimit() {
+  return (
+    <BarChart
+      rows={apps}
+      x="app"
+      y="minutes"
+      orientation="horizontal"
+      references={[{ value: 60, label: 'Daily limit' }]}
+      label="Screen time by app, against a daily limit"
+      title="Screen time"
+      description="Today"
+      formatValue={minutes}
+      summarize={summarize}
+      data-testid="apps-limit"
+    />
+  );
+}
+
+/** Grouped and lying down: with no figure on each line, the bars read against a scale under them. */
+export function HorizontalGrouped() {
+  return (
+    <BarChart
+      rows={channels}
+      x="quarter"
+      y={[{ field: 'online', label: 'Online' }, { field: 'store', label: 'In store' }]}
+      orientation="horizontal"
+      label="Sales by quarter, online and in store"
+      title="Sales"
+      formatValue={thousands}
+      data-testid="lying-grouped"
+    />
+  );
+}
+
 const days = Array.from({ length: 30 }, (_, index) => ({ day: `${index + 1} Jun`, steps: 4200 + ((index * 37) % 11) * 610 + (index % 7 === 5 ? 3800 : 0) }));
 
 /** Thirty bars at phone width: the bars narrow, and only the first and last are labelled. */

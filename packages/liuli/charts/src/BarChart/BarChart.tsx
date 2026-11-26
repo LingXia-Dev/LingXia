@@ -2,7 +2,7 @@ import { cx, useBox, useLocal, useView, type PointerEvent, type VectorPath, type
 import { Chart, ChartLegend, ChartReadout, type ChartLegendPosition, type ChartField, type ChartRecord, type ChartReference, type ChartRow, type ChartSeries, type ChartSize, type ChartSummarize } from '../Chart/Chart';
 import { colorOf, keysOf, numberOf, numberIn, referenceEnds, referenceTop, roleOf, seriesFacts, seriesOf, textOf, type ChartColor } from '../internal/data';
 import { leftPressed, pressed, pressedIndex, pressedKey, scrubbing } from '../internal/gesture';
-import { box, indexAt, knockOuts, roundUp } from '../internal/geometry';
+import { box, indexAt, knockOuts, niceTicks, roundUp } from '../internal/geometry';
 import { ReferenceLabels, ReferenceReading, referencePath, useReferences, zonePath } from '../internal/References';
 import { Ticks } from '../internal/Ticks';
 import { laidOutOnce, remember } from '../internal/memo';
@@ -492,7 +492,13 @@ export function BarChart<Row extends ChartRecord<Row>>({
   if (orientation === 'horizontal') {
     const barTall = thickness[size];
     const rowTall = isStacked ? barTall : shown.length * barTall + Math.max(0, shown.length - 1) * groupGap;
-    const [rawHigh, rawDepth] = reach[0] + reach[1] > 0 ? reach : [1, 0];
+    const [dataHigh, dataDepth] = reach[0] + reach[1] > 0 ? reach : [1, 0];
+    // Lines without a figure each, a group's, read against a scale: the bars run to round numbers under it.
+    const scaled = !isNone && shown.length > 1 && !isStacked ? niceTicks([-dataDepth, dataHigh], 4) : undefined;
+    const [rawHigh, rawDepth] = scaled ? [scaled.range[1], -scaled.range[0]] : [dataHigh, dataDepth];
+    const across = (value: number) => `${((rawDepth + value) / (rawHigh + rawDepth)) * 100}%` as const;
+    const grid = scaled?.ticks.filter(value => value !== 0 || rawDepth === 0) ?? [];
+    const marks = references.flatMap(referenceEnds);
     // The bars are drawn in points across the measured line; before that they wait at zero width.
     const wide = plot.value?.width ?? 0;
     const figureOf = (row: ChartRow) => {
@@ -512,6 +518,7 @@ export function BarChart<Row extends ChartRecord<Row>>({
           {figure !== undefined && <text className={r.lying.figure}>{figure}</text>}
         </view>,
         <view key="track" aria-hidden className={r.lying.track} style={{ height: rowTall }}>
+          {grid.map(value => <view key={`grid-${value}`} className={r.lying.grid} style={{ insetInlineStart: across(value) }} />)}
           {wide > 0 && (
             <vector
               paths={lyingPaths(row, shown, rawHigh, rawDepth, corner, grown, isStacked, barTall, wide, isDimmed, tones?.[index])}
@@ -519,7 +526,8 @@ export function BarChart<Row extends ChartRecord<Row>>({
               className={cx(r.lying.drawing, r.motion.base)}
             />
           )}
-          {rawDepth > 0 && <view className={r.lying.zero} style={{ insetInlineStart: `${(rawDepth / (rawHigh + rawDepth)) * 100}%` }} />}
+          {rawDepth > 0 && <view className={r.lying.zero} style={{ insetInlineStart: across(0) }} />}
+          {marks.map((value, at) => <view key={`reference-${at}`} className={r.lying.reference} style={{ insetInlineStart: across(value) }} />)}
         </view>,
       ];
       const name = `${textOf(row, x)}: ${reading(row)}`;
@@ -541,6 +549,24 @@ export function BarChart<Row extends ChartRecord<Row>>({
       <Chart {...frame} size={isLoading || error !== undefined || !values.length ? size : 'fit'} legend={legend}>
         {/* The frame keeps drawn data left to right; lying bars are lines of text, so they follow the page. */}
         <view box={plot} dir={env.direction} role={isPressable ? undefined : 'list'} aria-label={isPressable ? undefined : label} className={r.lying.lines}>{lines}</view>
+        {scaled && (
+          <view aria-hidden dir={env.direction} className={r.lying.scale}>
+            {/* Each label centred on its line; one at an edge of the plot starts or ends there. */}
+            {scaled.ticks.map(value => {
+              const share = parseFloat(across(value));
+              const lean = share <= 0 ? '0%' : share >= 100 ? '-100%' : '-50%';
+              return <text key={`tick-${value}`} className={r.lying.tick} style={{ insetInlineStart: across(value), translate: [lean as `${number}%`, 0] }}>{formatValue(value)}</text>;
+            })}
+          </view>
+        )}
+        {refs.texts.length > 0 && (
+          <view aria-hidden dir={env.direction} className={r.lying.key}>
+            {refs.texts.map((text, index) => (
+              <view key={`reference-${index}`} className={r.lying.keyItem}><view className={r.lying.keyMark} /><text className={r.lying.keyText}>{text.full}</text></view>
+            ))}
+          </view>
+        )}
+        <ReferenceReading texts={refs.texts} />
       </Chart>
     );
   }

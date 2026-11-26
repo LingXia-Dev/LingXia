@@ -93,6 +93,16 @@ export const barChartRecipe = {
     // Drawn from the left; in a right-to-left page the bars run from the right.
     drawing: 'absolute inset-0 motion-safe:transition-[d] rtl:-scale-x-100',
     zero: 'absolute top-0 bottom-0 w-px -ms-px bg-line-strong',
+    /** A scale's hairline through the track, under the bars. */
+    grid: 'absolute top-0 bottom-0 w-px -ms-px bg-line',
+    /** A reference across the bar, a little past it each side. */
+    reference: 'absolute -top-1 -bottom-1 w-0.5 -ms-px rounded-full bg-muted',
+    scale: 'relative h-4 mx-1.5 -mt-0.5',
+    tick: 'absolute top-0 text-caption text-muted tabular-nums',
+    key: 'flex-row flex-wrap gap-x-4 gap-y-1 pt-1',
+    keyItem: 'flex-row items-center gap-1.5',
+    keyMark: 'w-0.5 h-3 rounded-full bg-muted',
+    keyText: 'text-caption text-muted tabular-nums',
   },
   label: {
     base: 'text-caption text-muted tabular-nums',

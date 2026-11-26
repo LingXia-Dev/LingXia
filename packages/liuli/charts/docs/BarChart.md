@@ -157,6 +157,66 @@ export function HorizontalStacked() {
 }
 ```
 
+### Grouped lying bars against a scale
+
+```tsx
+import { BarChart } from '@liulidesign/charts/BarChart';
+
+const channels = [
+  { quarter: 'Q1', online: 42, store: 31 }, { quarter: 'Q2', online: 48, store: 29 },
+  { quarter: 'Q3', online: 55, store: 33 }, { quarter: 'Q4', online: 67, store: 38 },
+];
+const thousands = (value: number) => `${value < 0 ? '-' : ''}$${Math.abs(value)}k`;
+
+/** Grouped and lying down: with no figure on each line, the bars read against a scale under them. */
+export function HorizontalGrouped() {
+  return (
+    <BarChart
+      rows={channels}
+      x="quarter"
+      y={[{ field: 'online', label: 'Online' }, { field: 'store', label: 'In store' }]}
+      orientation="horizontal"
+      label="Sales by quarter, online and in store"
+      title="Sales"
+      formatValue={thousands}
+      data-testid="lying-grouped"
+    />
+  );
+}
+```
+
+### A limit marked through lying bars
+
+```tsx
+import { summarize } from '@liulidesign/charts/summary';
+import { BarChart } from '@liulidesign/charts/BarChart';
+
+const apps = [
+  { app: 'Messages', minutes: 94 }, { app: 'Maps and navigation', minutes: 61 }, { app: 'Photos', minutes: 38 },
+  { app: 'Music', minutes: 27 }, { app: 'Calendar', minutes: 12 },
+];
+const minutes = (value: number) => `${Math.floor(value / 60) ? `${Math.floor(value / 60)} h ` : ''}${value % 60} min`;
+
+/** A limit across lying bars: a mark through each bar it crosses, named once under the lines. */
+export function HorizontalLimit() {
+  return (
+    <BarChart
+      rows={apps}
+      x="app"
+      y="minutes"
+      orientation="horizontal"
+      references={[{ value: 60, label: 'Daily limit' }]}
+      label="Screen time by app, against a daily limit"
+      title="Screen time"
+      description="Today"
+      formatValue={minutes}
+      summarize={summarize}
+      data-testid="apps-limit"
+    />
+  );
+}
+```
+
 ### Values above and below zero
 
 ```tsx
@@ -428,7 +488,6 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 | Ticks between zero and the top of the scale. | nothing from the View | Each value over its bar up to eight bars, the top of the scale beyond; category labels are fitted. |
 | A tooltip by the bar. | nothing from the View | The value is over the bar, or in the readout above the plot, where a finger does not cover it. |
 | Fitted labels and scrubbing on a host built before `useBox` and `onPointer`. | a newer host | All category labels up to seven bars, the first and last beyond; a press on a bar. |
-| A scale and references on horizontal bars. | nothing from the View | Each line writes its value at its end; the longest bar is the largest value. |
 | Series told apart without colour. | pattern fills | Position within the group, the legend's order, and each bar's spoken name. |
 
 Related: Chart, LineChart, PieChart, Sparkline.
