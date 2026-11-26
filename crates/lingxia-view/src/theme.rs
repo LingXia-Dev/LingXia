@@ -54,26 +54,29 @@ impl Palette {
         .clone()
     }
 
-    /// The environment's `palette` push: `{ revision, colors, app? }`, one hex per slot and one
-    /// per app colour. A host built against fewer roles leaves the newer slots to the built-in
-    /// palette.
-    pub fn decode(value: &serde_json::Value, dark: bool) -> Result<Palette, String> {
+    /// The environment's `palette` push: `{ revision, colors, app? }`, one hex for each of the
+    /// `ROLE_COUNT` slots and one per app colour.
+    pub fn decode(value: &serde_json::Value) -> Result<Palette, String> {
         let invalid = || "UI_ENVIRONMENT: invalid palette".to_string();
-        let colors = value["colors"]
-            .as_array()
-            .filter(|c| !c.is_empty() && c.len() <= 256)
-            .ok_or_else(invalid)?;
+        let colors = value["colors"].as_array().ok_or_else(invalid)?;
+        if colors.len() != ROLE_COUNT {
+            return Err(format!(
+                "UI_ENVIRONMENT: a palette has {ROLE_COUNT} colours, not {}",
+                colors.len()
+            ));
+        }
         if !value["revision"].is_u64() {
             return Err(invalid());
         }
-        let mut palette = Palette::builtin(dark);
-        for (slot, color) in colors.iter().enumerate().take(ROLE_COUNT) {
-            palette.0[slot] = color
+        let mut roles = [[0; 4]; ROLE_COUNT];
+        for (slot, color) in roles.iter_mut().zip(colors) {
+            *slot = color
                 .as_str()
                 .and_then(lingxia_theme::Rgba::parse)
                 .ok_or_else(invalid)?
                 .0;
         }
+        let mut palette = Palette::from_roles(roles);
         let mut app = BTreeMap::new();
         if let Some(pushed) = value.get("app") {
             let pushed = pushed
@@ -230,10 +233,10 @@ mod tests {
     fn app_colours_resolve_by_name_with_alpha_from_the_push() {
         let pushed = serde_json::json!({
             "revision": 1,
-            "colors": ["#000000"],
+            "colors": vec!["#000000"; ROLE_COUNT],
             "app": {"trend-up": "#0f7b3f", "on-brand-band": "#ffffff"},
         });
-        let palette = Palette::decode(&pushed, false).unwrap();
+        let palette = Palette::decode(&pushed).unwrap();
         assert_eq!(
             palette.resolve("app.trend-up").unwrap(),
             [0x0f, 0x7b, 0x3f, 255]
@@ -253,26 +256,31 @@ mod tests {
                 palette.role(Role::TextMuted)
             );
         }
-        let bad = serde_json::json!({"revision": 1, "colors": ["#000000"], "app": {"x": "red"}});
-        assert!(Palette::decode(&bad, false).is_err());
+        let bad = serde_json::json!({
+            "revision": 1,
+            "colors": vec!["#000000"; ROLE_COUNT],
+            "app": {"x": "red"},
+        });
+        assert!(Palette::decode(&bad).is_err());
     }
 
     #[test]
-    fn a_pushed_palette_fills_slots_it_does_not_know() {
-        let pushed = serde_json::json!({"revision": 3, "colors": ["#000000", "#ff000080"]});
-        let palette = Palette::decode(&pushed, false).unwrap();
+    fn a_pushed_palette_has_every_slot() {
+        let mut colors = vec!["#000000"; ROLE_COUNT];
+        colors[Role::Surface as usize] = "#ff000080";
+        let pushed = serde_json::json!({"revision": 3, "colors": colors});
+        let palette = Palette::decode(&pushed).unwrap();
         assert_eq!(palette.role(Role::Canvas), [0, 0, 0, 255]);
         assert_eq!(palette.role(Role::Surface), [255, 0, 0, 128]);
-        assert_eq!(
-            palette.role(Role::Text),
-            Palette::builtin(false).role(Role::Text)
-        );
+        let mut red = vec!["#000000"; ROLE_COUNT];
+        red[0] = "red";
         for bad in [
-            serde_json::json!({"colors": ["#000000"]}),
-            serde_json::json!({"revision": 1, "colors": []}),
-            serde_json::json!({"revision": 1, "colors": ["red"]}),
+            serde_json::json!({"colors": vec!["#000000"; ROLE_COUNT]}),
+            serde_json::json!({"revision": 1, "colors": ["#000000", "#ff000080"]}),
+            serde_json::json!({"revision": 1, "colors": vec!["#000000"; ROLE_COUNT + 1]}),
+            serde_json::json!({"revision": 1, "colors": red}),
         ] {
-            assert!(Palette::decode(&bad, false).is_err());
+            assert!(Palette::decode(&bad).is_err(), "{bad}");
         }
     }
 }

@@ -630,7 +630,7 @@ mod tests {
         for theme in ["light", "dark"] {
             let mut env = json!({"theme": theme});
             host.apply(&mut env);
-            let palette = crate::theme::Palette::decode(&env["palette"], theme == "dark").unwrap();
+            let palette = crate::theme::Palette::decode(&env["palette"]).unwrap();
             assert_ne!(
                 palette.0[slot],
                 crate::theme::Palette::builtin(theme == "dark").0[slot]
@@ -663,7 +663,7 @@ mod tests {
         ] {
             let mut env = json!({"theme": theme});
             host.apply(&mut env);
-            let palette = crate::theme::Palette::decode(&env["palette"], theme == "dark").unwrap();
+            let palette = crate::theme::Palette::decode(&env["palette"]).unwrap();
             assert_eq!(
                 palette.resolve("app.trend-up").unwrap(),
                 expected,

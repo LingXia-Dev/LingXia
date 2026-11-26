@@ -43,7 +43,7 @@ impl HostChrome {
         let high_contrast = env["highContrast"] == true;
         let palette = env
             .get("palette")
-            .and_then(|pushed| Palette::decode(pushed, dark).ok())
+            .and_then(|pushed| Palette::decode(pushed).ok())
             .unwrap_or_else(|| Palette::builtin_for(dark, high_contrast));
         HostChrome::from_palette(&palette)
     }

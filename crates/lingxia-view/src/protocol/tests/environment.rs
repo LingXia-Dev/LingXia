@@ -58,7 +58,8 @@ fn the_session_fills_the_session_keys() {
     let mut page = crate::ViewSession::new(&source).unwrap();
     let mut env = facts().environment().unwrap().value;
     env["canDock"] = false.into();
-    env["palette"] = serde_json::json!({"revision": 1, "colors": ["#000000"]});
+    env["palette"] =
+        serde_json::json!({"revision": 1, "colors": vec!["#000000"; lingxia_theme::ROLE_COUNT]});
     page.set_environment(env).unwrap();
     let shown = page.layout(400, 400, 1.0).unwrap().nodes[0].text.clone();
     let keys: Vec<&str> = shown.split(',').collect();

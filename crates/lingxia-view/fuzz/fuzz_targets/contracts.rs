@@ -6,9 +6,7 @@ libfuzzer_sys::fuzz_target!(|data: &[u8]| {
         return;
     };
     let _ = lingxia_view::protocol::check_environment(&value);
-    for dark in [false, true] {
-        let _ = lingxia_view::theme::Palette::decode(&value, dark);
-    }
+    let _ = lingxia_view::theme::Palette::decode(&value);
     if let Ok(pack) = serde_json::from_value::<lingxia_theme::Pack>(value) {
         let pack = lingxia_theme::complete(pack);
         let _ = lingxia_theme::check(&pack);

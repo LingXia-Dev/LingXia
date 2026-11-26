@@ -83,7 +83,7 @@ impl ViewSession {
             .as_object_mut()
             .and_then(|object| object.remove("palette"))
         {
-            Some(pushed) => crate::theme::Palette::decode(&pushed, dark)?,
+            Some(pushed) => crate::theme::Palette::decode(&pushed)?,
             None => crate::theme::Palette::builtin_for(dark, high_contrast),
         };
         if self.renderer.dark != dark || self.renderer.palette != palette {
