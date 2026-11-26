@@ -488,7 +488,7 @@ mod tests {
             names,
             [
                 "session", "logs", "test", "mock", "network", "lxapp", "host", "browser", "runner",
-                "desktop"
+                "device", "desktop"
             ]
         );
     }
