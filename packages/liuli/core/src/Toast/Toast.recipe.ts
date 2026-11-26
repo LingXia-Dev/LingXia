@@ -34,12 +34,12 @@ export const toastRecipe = {
      * A definite width, so the card's message wraps inside it: on a touch screen the whole row, the card
      * taking it up to its 400 pt; with a pointer the 400 pt card and its gap.
      */
-    width: { touch: 'inset-x-0 w-full', pointer: 'w-[432px]' },
+    width: { touch: 'inset-x-0 w-full', pointer: 'w-108' },
   },
   toast: {
     base: 'flex-row items-center gap-3 min-h-12 ps-4 pe-1.5 py-1.5 rounded-container border border-line bg-surface-overlay shadow-raised transition-transform duration-slow ease-standard',
     /** As wide as the region up to 400 pt, as the reference's: the screen's width on a phone, a corner card on a wide one. */
-    width: 'w-full max-w-[400px]',
+    width: 'w-full max-w-100',
     /** Without a dismiss button the end padding matches the start. */
     plain: 'pe-4',
   },

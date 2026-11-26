@@ -225,6 +225,7 @@
     "./internal/text": "./src/i18n/text.ts",
     "./internal/contrast": "./scripts/contrast.mjs",
     "./internal/testing": "./src/testing/harness.mjs",
+    "./internal/probe": "./src/testing/probe.mjs",
     "./QRCode": "./src/QRCode/QRCode.tsx",
     "./QRCode/recipe": "./src/QRCode/QRCode.recipe.ts",
     "./package.json": "./package.json",

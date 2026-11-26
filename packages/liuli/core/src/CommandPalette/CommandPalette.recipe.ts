@@ -23,7 +23,7 @@ export const commandPaletteParts = {
 export const commandPaletteRecipe = {
   panel: {
     base: 'mb-auto p-0 gap-0 overflow-hidden border-line bg-surface-overlay shadow-modal transition duration-fast ease-standard starting:opacity-0 exit:opacity-0',
-    regular: 'w-[90%] max-w-[560px] max-h-[70vh] rounded-dialog border',
+    regular: 'w-[90%] max-w-140 max-h-[70vh] rounded-dialog border',
     compact: 'mt-0 w-full max-h-[92vh] rounded-none rounded-b-dialog border-b',
   },
   search: {

@@ -18,6 +18,6 @@ export const dateRangeInputRecipe = {
     base: 'size-4 shrink-0 text-muted',
   },
   popover: {
-    base: 'mt-1 w-[312px] max-w-[90vw] p-3 rounded-container border border-line bg-surface-overlay shadow-raised transition duration-fast ease-standard starting:opacity-0 exit:opacity-0 motion-safe:starting:-translate-y-1',
+    base: 'mt-1 w-78 max-w-[90vw] p-3 rounded-container border border-line bg-surface-overlay shadow-raised transition duration-fast ease-standard starting:opacity-0 exit:opacity-0 motion-safe:starting:-translate-y-1',
   },
 } as const;

@@ -62,6 +62,8 @@ export const comboboxRecipe = {
     wrap: 'relative',
     lane: 'me-8',
     dock: 'absolute inset-y-0 flex-row items-center',
+    /** Past the box's end padding, the gap and its trailing mark: a chevron, or a calendar. */
+    dockEnd: { chevron: 'end-10', calendar: 'end-9' },
   },
   popover: {
     // As wide as the field once that is measured. It holds the suggestions' scroll, which the View never
@@ -69,7 +71,7 @@ export const comboboxRecipe = {
     typeahead: 'w-72 max-w-[90vw] p-1 rounded-container border border-line bg-surface-overlay shadow-raised transition duration-fast ease-standard starting:opacity-0 exit:opacity-0 motion-safe:starting:-translate-y-1',
   },
   sheet: {
-    base: 'mt-auto mb-0 w-full max-w-[640px] max-h-[90vh] px-4 pt-2 pb-4 gap-3 rounded-t-dialog border border-b-0 border-line bg-surface-overlay shadow-modal transition duration-slow ease-spring motion-safe:starting:translate-y-full motion-safe:exit:translate-y-full motion-reduce:starting:opacity-0 motion-reduce:exit:opacity-0',
+    base: 'mt-auto mb-0 w-full max-w-160 max-h-[90vh] px-4 pt-2 pb-4 gap-3 rounded-t-dialog border border-b-0 border-line bg-surface-overlay shadow-modal transition duration-slow ease-spring motion-safe:starting:translate-y-full motion-safe:exit:translate-y-full motion-reduce:starting:opacity-0 motion-reduce:exit:opacity-0',
   },
   grabber: {
     base: 'self-center w-9 h-1 rounded-full bg-text/20',

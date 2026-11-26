@@ -334,7 +334,7 @@ export function Combobox(props: ComboboxProps) {
     <view className={r.clear.wrap}>
       {trigger}
       {current !== '' && !isDisabled && (
-        <view className={r.clear.dock} style={dock}>
+        <view className={cx(r.clear.dock, !dock && r.clear.dockEnd.chevron)} style={dock}>
           <ClearButton label={label} clearLabel={clearLabel} onClear={() => choose('')} testId={testId} className={r.clear.base} iconClassName={r.clear.icon} />
         </view>
       )}

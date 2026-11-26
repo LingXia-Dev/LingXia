@@ -32,7 +32,7 @@ export const toggleButtonRecipe = {
     } satisfies Record<ToggleButtonSize, string>,
   },
   glyph: {
-    size: { sm: 'size-4 shrink-0', md: 'size-[1.125rem] shrink-0', lg: 'size-5 shrink-0' } satisfies Record<ToggleButtonSize, string>,
+    size: { sm: 'size-4 shrink-0', md: 'size-4.5 shrink-0', lg: 'size-5 shrink-0' } satisfies Record<ToggleButtonSize, string>,
   },
   label: {
     base: 'font-medium text-start',

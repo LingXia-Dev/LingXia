@@ -27,7 +27,7 @@ export const dialogRecipe = {
     /** A floating panel sits on the overlay surface and rises 8 px into place; it holds a scroll, which the View never scales. */
     floating: 'w-[90%] max-h-[85vh] rounded-dialog border border-line bg-surface-overlay shadow-modal motion-safe:starting:translate-y-2 motion-safe:exit:translate-y-2',
     /** `full` has nothing behind it to float over: it is a page, on the page's canvas, and only fades. */
-    size: { sm: 'max-w-[360px]', md: 'max-w-[480px]', lg: 'max-w-[640px]', full: 'w-full h-full rounded-none bg-canvas' } satisfies Record<DialogSize, string>,
+    size: { sm: 'max-w-90', md: 'max-w-120', lg: 'max-w-160', full: 'w-full h-full rounded-none bg-canvas' } satisfies Record<DialogSize, string>,
   },
   /** The picture above the title: it undoes the panel's padding to reach three edges, and takes the top corners. */
   media: {

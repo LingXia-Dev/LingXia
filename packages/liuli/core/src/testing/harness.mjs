@@ -24,7 +24,7 @@ export function harnessFor(packageDir) {
    * Builds and renders a one-page lxapp. `page` is its source, or a function from the linked
    * package's directory to the source; it may import any linked package.
    */
-  async function renderPage(page, view = {}) {
+  async function renderPage(page, view = {}, { points = true } = {}) {
     const app = await mkdtemp(join(tmpdir(), 'liuli-unit-'));
     try {
       await writeFile(join(app, 'lxapp.json'), '{}');
@@ -35,20 +35,21 @@ export function harnessFor(packageDir) {
       }
       const linked = join(app, 'node_modules', links[0].name);
       await writeFile(join(app, 'page.tsx'), typeof page === 'function' ? page(linked) : page);
-      // Theme steps read as the built-in pack's points, the numbers these tests state.
-      return await render(join(app, 'page.tsx'), view, { root: app, points: true });
+      // Theme steps read as the built-in pack's points, the numbers these tests state, unless a test reads the steps themselves.
+      return await render(join(app, 'page.tsx'), view, { root: app, points });
     } finally {
       await rm(app, { recursive: true, force: true });
     }
   }
 
   /** Renders `<Example />` from `src/<module>.examples.tsx` inside a page. */
-  function renderExample(module, example, view = {}) {
+  function renderExample(module, example, view = {}, options = {}) {
     // Examples are not exported, so the page imports the file by its path through the link.
     return renderPage(
       linked => `import { ${example} as Example } from ${JSON.stringify(join(linked, 'src', `${module}.examples`))};\n` +
         'export function render() { return <page><Example /></page>; }\n',
       view,
+      options,
     );
   }
 

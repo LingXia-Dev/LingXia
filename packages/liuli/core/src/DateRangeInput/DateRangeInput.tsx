@@ -126,7 +126,7 @@ export function DateRangeInput(props: DateRangeInputProps) {
             <view className={c.clear.wrap}>
               {trigger(control, true)}
               {!isEmpty && !isDisabled && (
-                <view className={c.clear.dock} style={dock}>
+                <view className={cx(c.clear.dock, !dock && c.clear.dockEnd.calendar)} style={dock}>
                   <ClearButton label={label} clearLabel={clearLabel} onClear={() => onRangeChange({ start: null, end: null })} testId={testId} className={c.clear.base} iconClassName={c.clear.icon} />
                 </view>
               )}

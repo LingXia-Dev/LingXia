@@ -64,7 +64,7 @@ export const jinshuEditorRecipe = {
   toolbarInner: {
     base: 'w-full max-w-[74ch] flex-row items-center justify-between gap-2',
     // Past the block gutter (its width and the row gap), where the text starts.
-    gutter: 'ps-[4.375rem]',
+    gutter: 'ps-17.5',
   },
   toolbarStart: {
     base: 'flex-row items-center gap-0.5',
@@ -185,7 +185,7 @@ export const jinshuEditorRecipe = {
     base: 'gap-1.5',
     findMatch: 'bg-warning-soft/50 rounded-control',
     // A change bar at the block's start edge: it reads on any block, a tinted callout included.
-    agentChanged: 'absolute -start-3 top-0.5 bottom-0.5 w-[3px] rounded-full bg-accent',
+    agentChanged: 'absolute -start-3 top-0.5 bottom-0.5 w-0.75 rounded-full bg-accent',
     body: 'relative grow min-w-0 gap-1.5',
   },
   gutter: {

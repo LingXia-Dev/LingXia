@@ -47,8 +47,8 @@ export const videoControlsRecipe = {
   disc: {
     // The hairline keeps media glass visible on a black letterbox as on a bright picture.
     base: 'items-center justify-center rounded-full border border-on-media/20 bg-media text-on-media',
-    inline: 'size-[60px]',
-    full: 'size-[72px]',
+    inline: 'size-15',
+    full: 'size-18',
   },
   spinner: {
     inline: 'size-7 animate-spin',
@@ -58,9 +58,9 @@ export const videoControlsRecipe = {
     base: 'ps-0.5',
   },
   error: {
-    base: 'max-w-[280px] items-center gap-2.5 rounded-dialog bg-media px-[18px] py-3.5',
+    base: 'max-w-70 items-center gap-2.5 rounded-dialog bg-media px-4.5 py-3.5',
     text: 'text-center text-body font-medium text-on-media',
-    retry: 'h-11 min-w-24 items-center justify-center rounded-full bg-on-media/25 px-[18px]',
+    retry: 'h-11 min-w-24 items-center justify-center rounded-full bg-on-media/25 px-4.5',
     retryText: 'text-body font-semibold text-on-media',
   },
   chrome: {
@@ -69,12 +69,12 @@ export const videoControlsRecipe = {
     hidden: 'opacity-0',
   },
   bar: {
-    inline: 'absolute start-2 end-2 bottom-2 rounded-container border border-on-media/20 bg-media px-0.5 pt-[14px]',
+    inline: 'absolute start-2 end-2 bottom-2 rounded-container border border-on-media/20 bg-media px-0.5 pt-3.5',
     full: 'absolute start-4 end-4 bottom-3 rounded-dialog border border-on-media/20 bg-media px-0.5 pt-4 pb-1',
   },
   scrubber: {
-    base: 'absolute start-3 end-3 px-0 pb-0 track:rounded-full track:bg-on-media/25 secondary:rounded-full secondary:bg-on-media/45 range:rounded-full range:bg-on-media thumb:size-3 thumb:rounded-full thumb:bg-transparent track:h-[3px] secondary:h-[3px] range:h-[3px] active:track:h-[5px] active:secondary:h-[5px] active:range:h-[5px] active:thumb:bg-knob focus-visible:thumb:bg-on-media focus-visible:thumb:ring-2 focus-visible:thumb:ring-focus',
-    inline: '-top-[30px] h-11 pt-10',
+    base: 'absolute start-3 end-3 px-0 pb-0 track:rounded-full track:bg-on-media/25 secondary:rounded-full secondary:bg-on-media/45 range:rounded-full range:bg-on-media thumb:size-3 thumb:rounded-full thumb:bg-transparent track:h-0.75 secondary:h-0.75 range:h-0.75 active:track:h-1.25 active:secondary:h-1.25 active:range:h-1.25 active:thumb:bg-knob focus-visible:thumb:bg-on-media focus-visible:thumb:ring-2 focus-visible:thumb:ring-focus',
+    inline: '-top-7.5 h-11 pt-10',
     full: '-top-8 h-12 pt-11',
   },
   row: {
@@ -90,14 +90,14 @@ export const videoControlsRecipe = {
   },
   glyph: {
     inline: 'size-5',
-    full: 'size-[22px]',
-    disc: 'size-[30px]',
+    full: 'size-5.5',
+    disc: 'size-7.5',
     discFull: 'size-9',
   },
   time: {
     base: 'ps-0.5 tabular-nums text-on-media',
     inline: 'text-caption',
-    full: 'text-[13px]',
+    full: 'text-footnote',
     total: 'text-on-media/70',
     bar: 'shrink-0 ps-3.5 pe-3 text-caption tabular-nums text-muted',
     /** Beside the controls at large text: it gives way rather than push them off the bar. */

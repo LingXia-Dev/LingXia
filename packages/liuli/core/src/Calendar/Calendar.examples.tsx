@@ -39,8 +39,8 @@ export function MondayFirst() {
 export function Specimen() {
   // A month at half size does not fit a tile: its head and first weeks, fading out where the tile cuts them.
   return (
-    <view className="w-[130px] h-[88px] overflow-hidden mask-b-from-50%">
-      <Calendar label="Calendar" value="2026-11-05" onChange={unused} today={today} className="w-[260px] scale-50 ltr:origin-top-left rtl:origin-top-right" />
+    <view className="w-32.5 h-22 overflow-hidden mask-b-from-50%">
+      <Calendar label="Calendar" value="2026-11-05" onChange={unused} today={today} className="w-65 scale-50 ltr:origin-top-left rtl:origin-top-right" />
     </view>
   );
 }

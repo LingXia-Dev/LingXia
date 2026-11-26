@@ -142,7 +142,7 @@ export function Parts() {
     <Said>
       {say => (
         <view className="items-center rounded-container bg-scrim px-4 py-8">
-          <view className="w-full max-w-[360px] p-5 gap-4 rounded-dialog border border-line bg-surface-overlay shadow-modal">
+          <view className="w-full max-w-90 p-5 gap-4 rounded-dialog border border-line bg-surface-overlay shadow-modal">
             <view className={dialogRecipe.header.base}>
               <text className={dialogRecipe.title.base}>Delete this note?</text>
             </view>

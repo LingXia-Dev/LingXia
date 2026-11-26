@@ -32,8 +32,8 @@ export function Narrow() {
   const page = useLocal('page', 6);
   return (
     <view className="gap-3">
-      <view className="w-[280px]"><Pagination label="Pages" variant="pages" bind={page} pageCount={12} {...words} data-testid="narrow" /></view>
-      <view className="w-[232px]"><Pagination label="Pages" variant="pages" bind={page} pageCount={12} {...words} data-testid="narrower" /></view>
+      <view className="w-70"><Pagination label="Pages" variant="pages" bind={page} pageCount={12} {...words} data-testid="narrow" /></view>
+      <view className="w-58"><Pagination label="Pages" variant="pages" bind={page} pageCount={12} {...words} data-testid="narrower" /></view>
     </view>
   );
 }

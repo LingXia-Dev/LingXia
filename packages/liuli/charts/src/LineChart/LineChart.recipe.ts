@@ -24,8 +24,8 @@ export const lineChartRecipe = {
     base: 'grow flex-row items-stretch',
   },
   inset: {
-    base: 'pt-[4px]',
-    open: 'pb-[4px]',
+    base: 'pt-1',
+    open: 'pb-1',
   },
   scale: {
     base: 'shrink-0 items-end pe-2',
@@ -39,7 +39,7 @@ export const lineChartRecipe = {
     base: 'relative grow basis-0 min-w-0',
   },
   scrubber: {
-    base: 'absolute inset-0 rounded-[4px]',
+    base: 'absolute inset-0 rounded-[calc(var(--radius-sm)*0.66667)]',
   },
   // The hairlines of the scale, laid over the plot in the same inset as the drawing.
   grid: {
@@ -63,7 +63,7 @@ export const lineChartRecipe = {
     line: 'self-stretch h-px bg-line',
     foot: 'self-stretch h-px bg-line-strong',
     bottom: 'absolute start-0 end-0 bottom-0 h-px bg-line-strong',
-    open: 'bottom-[4px]',
+    open: 'bottom-1',
   },
   drawing: {
     base: 'w-full grow object-fill',

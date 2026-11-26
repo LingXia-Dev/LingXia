@@ -33,7 +33,7 @@ export const switchRecipe = {
     loading: 'disabled:track:bg-line-strong/45 disabled:checked:track:bg-accent-solid',
     size: {
       sm: 'track:w-9 track:h-5 thumb:size-4',
-      md: 'track:w-11 track:h-[26px] thumb:size-[22px]',
+      md: 'track:w-11 track:h-6.5 thumb:size-5.5',
     } satisfies Record<SwitchSize, string>,
     /** Alone, keyboard focus rings the thumb; as a row it rings the row inside its edges, which run to the list's. */
     variant: {

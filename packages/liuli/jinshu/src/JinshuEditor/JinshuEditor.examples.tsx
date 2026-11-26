@@ -57,7 +57,7 @@ export function Specimen() {
     <view className="w-40 gap-1.5 rounded-control border border-line bg-surface p-2.5">
       <text className="text-footnote font-semibold text-text">Limits</text>
       <view className="flex-row items-center gap-1.5">
-        <view className="w-[3px] h-4 rounded-full bg-accent" />
+        <view className="w-0.75 h-4 rounded-full bg-accent" />
         <text className="text-caption text-text">Where a function heads.</text>
       </view>
       <view className="h-1.5 w-24 rounded-full bg-text/8" />

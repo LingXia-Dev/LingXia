@@ -53,7 +53,7 @@ export const barChartRecipe = {
     base: 'absolute inset-0 flex-row items-stretch',
   },
   slot: {
-    base: 'grow basis-0 min-w-0 items-center rounded-[4px]',
+    base: 'grow basis-0 min-w-0 items-center rounded-[calc(var(--radius-sm)*0.66667)]',
     pressable: 'hover:bg-text/4 focus-visible:bg-text/7',
   },
   /** A box as tall as the plot less the figure's line, moved down to the bar's free end on the bars' timing. */

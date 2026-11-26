@@ -39,7 +39,7 @@ export function LiveStreamSplit() {
   const muted = useLocal('muted', false);
   const large = useLocal('large', false);
   return (
-    <view className={cx('overflow-hidden rounded-container border border-line', env.sizeClass === 'regular' ? 'h-[400px]' : 'h-[600px]')}>
+    <view className={cx('overflow-hidden rounded-container border border-line', env.sizeClass === 'regular' ? 'h-100' : 'h-150')}>
       <Split
         asideWidth={300}
         asideLabel="Live chat"
@@ -108,7 +108,7 @@ export function DocumentSheetSplit() {
   const reply = useLocal('reply', '');
   const isCompact = env.sizeClass !== 'regular';
   return (
-    <view className="h-[440px] overflow-hidden rounded-container border border-line">
+    <view className="h-110 overflow-hidden rounded-container border border-line">
       <Split
         compact="sheet"
         bind={commentsOpen}

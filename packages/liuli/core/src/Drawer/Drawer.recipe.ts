@@ -23,7 +23,7 @@ export const drawerRecipe = {
       end: 'ms-auto me-0 rounded-s-dialog border-s motion-safe:starting:translate-x-full motion-safe:exit:translate-x-full rtl:motion-safe:starting:-translate-x-full rtl:motion-safe:exit:-translate-x-full',
       start: 'me-auto ms-0 rounded-e-dialog border-e motion-safe:starting:-translate-x-full motion-safe:exit:-translate-x-full rtl:motion-safe:starting:translate-x-full rtl:motion-safe:exit:translate-x-full',
     } satisfies Record<DrawerSide, string>,
-    size: { sm: 'max-w-[320px]', md: 'max-w-[420px]', lg: 'max-w-[560px]' } satisfies Record<DrawerSize, string>,
+    size: { sm: 'max-w-80', md: 'max-w-105', lg: 'max-w-140' } satisfies Record<DrawerSize, string>,
   },
   header: {
     base: 'flex-row items-start gap-3',

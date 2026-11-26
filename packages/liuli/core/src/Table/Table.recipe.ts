@@ -100,7 +100,7 @@ export const tableRecipe = {
   },
   row: {
     base: 'grid items-center gap-x-3 self-stretch text-start',
-    density: { comfortable: 'min-h-[44px] py-2', compact: 'min-h-[36px] py-1.5' } satisfies Record<TableDensity, string>,
+    density: { comfortable: 'min-h-11 py-2', compact: 'min-h-9 py-1.5' } satisfies Record<TableDensity, string>,
     pressable: 'transition-colors duration-fast ease-standard',
     idle: 'hover:bg-text/4 active:bg-text/7 focus-visible:inset-ring-2 focus-visible:inset-ring-focus',
     selected: 'bg-accent-soft hover:bg-accent/16 active:bg-accent/20 focus-visible:inset-ring-2 focus-visible:inset-ring-focus',
@@ -123,7 +123,7 @@ export const tableRecipe = {
   // number, so numbers still line up down the table; the other fields wrap under it by whole pairs.
   block: {
     base: 'gap-1 self-stretch text-start',
-    density: { comfortable: 'min-h-[44px] py-2.5 justify-center', compact: 'min-h-[36px] py-1.5 justify-center' } satisfies Record<TableDensity, string>,
+    density: { comfortable: 'min-h-11 py-2.5 justify-center', compact: 'min-h-9 py-1.5 justify-center' } satisfies Record<TableDensity, string>,
   },
   lead: {
     base: 'flex-row items-baseline gap-x-3 self-stretch',

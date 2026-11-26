@@ -22,9 +22,9 @@ export const actionSheetRecipe = {
   panel: {
     base: 'gap-2 border border-line bg-surface-overlay shadow-modal',
     /** On the bottom edge, rounded at the top, past the safe area at the bottom. */
-    sheet: 'mt-auto mb-0 w-full max-w-[640px] max-h-[90vh] px-3 pt-2 pb-3 rounded-t-dialog border-b-0 transition duration-slow ease-spring motion-safe:starting:translate-y-full motion-safe:exit:translate-y-full motion-reduce:starting:opacity-0 motion-reduce:exit:opacity-0',
+    sheet: 'mt-auto mb-0 w-full max-w-160 max-h-[90vh] px-3 pt-2 pb-3 rounded-t-dialog border-b-0 transition duration-slow ease-spring motion-safe:starting:translate-y-full motion-safe:exit:translate-y-full motion-reduce:starting:opacity-0 motion-reduce:exit:opacity-0',
     /** In the middle, as narrow as a menu. */
-    floating: 'w-[90%] max-w-[320px] max-h-[85vh] p-2 rounded-dialog transition duration-base ease-standard starting:opacity-0 exit:opacity-0 motion-safe:starting:translate-y-2 motion-safe:exit:translate-y-2',
+    floating: 'w-[90%] max-w-80 max-h-[85vh] p-2 rounded-dialog transition duration-base ease-standard starting:opacity-0 exit:opacity-0 motion-safe:starting:translate-y-2 motion-safe:exit:translate-y-2',
   },
   grabber: {
     base: 'self-center w-9 h-1 rounded-full bg-text/20',

@@ -67,7 +67,7 @@ export const dropdownMenuRecipe = {
   },
   /** Partly on: a dash where the check goes, in the check's colour and width. */
   itemDash: {
-    base: 'w-2.5 h-0.5 mx-[3px] shrink-0 rounded-full bg-accent',
+    base: 'w-2.5 h-0.5 mx-0.75 shrink-0 rounded-full bg-accent',
   },
   /** Spaced as the menu spaces its items. */
   radioGroup: {

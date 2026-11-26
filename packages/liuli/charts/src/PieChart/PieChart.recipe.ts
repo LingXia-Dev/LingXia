@@ -27,7 +27,7 @@ export const pieChartRecipe = {
     base: 'col-start-1 row-start-1 items-center',
     variant: { donut: '', pie: 'hidden' } satisfies Record<PieChartVariant, string>,
     // The hole's width at each plot height, less a margin; the smallest ring has no room for text.
-    size: { xs: 'hidden', sm: 'max-w-14', md: 'max-w-[5.5rem]', lg: 'max-w-[7.5rem]' } satisfies Record<ChartSize, string>,
+    size: { xs: 'hidden', sm: 'max-w-14', md: 'max-w-22', lg: 'max-w-30' } satisfies Record<ChartSize, string>,
     // Words too large for the hole, under the ring.
     under: 'self-center max-w-full pt-2',
   },

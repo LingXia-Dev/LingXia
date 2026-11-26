@@ -18,10 +18,11 @@ export function ClearButton({ label, clearLabel, onClear, testId, className, ico
 }
 
 /**
- * Where a clear button lying over a button box sits: before the box's trailing mark of `markSide`
- * points, which grows with the text, past the box's end padding and the gap before the mark.
+ * Where a clear button lying over a button box sits once the box's trailing mark of `markSide` points has
+ * grown with the text: past the box's end padding, the mark and the gap before it. Until then the dock's
+ * recipe places it in theme steps.
  */
-export function useClearDock(markSide: number): { insetInlineEnd: number } {
-  const mark = useTextGrowth(markSide, glyphGrowth)?.width ?? markSide;
-  return { insetInlineEnd: 12 + mark + 8 };
+export function useClearDock(markSide: number): { insetInlineEnd: number } | undefined {
+  const mark = useTextGrowth(markSide, glyphGrowth)?.width;
+  return mark === undefined ? undefined : { insetInlineEnd: 12 + mark + 8 };
 }

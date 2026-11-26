@@ -57,14 +57,14 @@ export const buttonRecipe = {
     // inset around the glyph: (square − glyph) / 2 plus that drawing inset.
     edge: {
       start: {
-        label: { sm: '-ms-[13px]', md: '-ms-[17px]', lg: '-ms-[21px]' },
-        icon: { sm: '-ms-[16.33px]', md: '-ms-[20.75px]', lg: '-ms-[25.17px]' },
-        square: { sm: '-ms-[11.33px]', md: '-ms-[14.75px]', lg: '-ms-[18.17px]' },
+        label: { sm: '-ms-[calc(var(--spacing)*3+1px)]', md: '-ms-[calc(var(--spacing)*4+1px)]', lg: '-ms-[calc(var(--spacing)*5+1px)]' },
+        icon: { sm: '-ms-[calc(var(--spacing)*3.8325+1px)]', md: '-ms-[calc(var(--spacing)*4.9375+1px)]', lg: '-ms-[calc(var(--spacing)*6.0425+1px)]' },
+        square: { sm: '-ms-[calc(var(--spacing)*2.8325)]', md: '-ms-[calc(var(--spacing)*3.6875)]', lg: '-ms-[calc(var(--spacing)*4.5425)]' },
       },
       end: {
-        label: { sm: '-me-[13px]', md: '-me-[17px]', lg: '-me-[21px]' },
-        icon: { sm: '-me-[16.33px]', md: '-me-[20.75px]', lg: '-me-[25.17px]' },
-        square: { sm: '-me-[11.33px]', md: '-me-[14.75px]', lg: '-me-[18.17px]' },
+        label: { sm: '-me-[calc(var(--spacing)*3+1px)]', md: '-me-[calc(var(--spacing)*4+1px)]', lg: '-me-[calc(var(--spacing)*5+1px)]' },
+        icon: { sm: '-me-[calc(var(--spacing)*3.8325+1px)]', md: '-me-[calc(var(--spacing)*4.9375+1px)]', lg: '-me-[calc(var(--spacing)*6.0425+1px)]' },
+        square: { sm: '-me-[calc(var(--spacing)*2.8325)]', md: '-me-[calc(var(--spacing)*3.6875)]', lg: '-me-[calc(var(--spacing)*4.5425)]' },
       },
     } satisfies Record<ButtonEdge, Record<'label' | 'icon' | 'square', Record<ButtonSize, string>>>,
     /** A link where a part sets an edge: no padding on that side, so its text meets the content edge. */
@@ -76,7 +76,7 @@ export const buttonRecipe = {
     attached: 'rounded-none first:rounded-s-control last:rounded-e-control -ms-px first:ms-0 focus-visible:ring-0 focus-visible:inset-ring-2 focus-visible:inset-ring-focus',
   },
   glyph: {
-    size: { sm: 'size-4 shrink-0', md: 'size-[1.125rem] shrink-0', lg: 'size-5 shrink-0' } satisfies Record<ButtonSize, string>,
+    size: { sm: 'size-4 shrink-0', md: 'size-4.5 shrink-0', lg: 'size-5 shrink-0' } satisfies Record<ButtonSize, string>,
   },
   icon: {
     base: 'items-center justify-center',

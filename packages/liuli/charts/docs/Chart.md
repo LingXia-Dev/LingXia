@@ -40,7 +40,7 @@ export function Budget() {
       data-testid="budget"
     >
       <view aria-hidden className="flex-row gap-0.5">
-        {budget.map(part => <view key={part.key} className={cx('h-6 basis-0 rounded-[3px]', fills[part.color])} style={{ flexGrow: percent(part.amount, budget) }} />)}
+        {budget.map(part => <view key={part.key} className={cx('h-6 basis-0 rounded-[calc(var(--radius-sm)*0.5)]', fills[part.color])} style={{ flexGrow: percent(part.amount, budget) }} />)}
       </view>
     </Chart>
   );
@@ -82,7 +82,7 @@ export function Spending() {
       data-testid="spending"
     >
       <view aria-hidden className="flex-row gap-0.5">
-        {spending.map(part => <view key={part.key} className={cx('h-6 basis-0 rounded-[3px]', eight[part.color])} style={{ flexGrow: percent(part.amount, spending) }} data-testid={`part-${part.key}`} />)}
+        {spending.map(part => <view key={part.key} className={cx('h-6 basis-0 rounded-[calc(var(--radius-sm)*0.5)]', eight[part.color])} style={{ flexGrow: percent(part.amount, spending) }} data-testid={`part-${part.key}`} />)}
       </view>
     </Chart>
   );

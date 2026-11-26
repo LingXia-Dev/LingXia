@@ -35,7 +35,7 @@ export function Orders() {
   const isShipped = current !== null && shipped.value.includes(current.id);
   return (
     // A window's worth of page: in an app it fills the page itself.
-    <view className="h-[360px] overflow-hidden rounded-container border border-line">
+    <view className="h-90 overflow-hidden rounded-container border border-line">
       <ListDetail bind={selected} listLabel="Orders" data-testid="orders">
         <ListDetail.List>
           <ItemList>
@@ -99,7 +99,7 @@ export function Workspace() {
   const isArchived = current.value !== null && archived.value.includes(current.value);
   return (
     // A window's worth of page: in an app it fills the page itself.
-    <view className="h-[360px] overflow-hidden rounded-container border border-line">
+    <view className="h-90 overflow-hidden rounded-container border border-line">
       <ListDetail value={current.value} onChange={next => current.set(next)} listLabel="Mail" listWidth={200} contentWidth="prose" data-testid="workspace">
         <ListDetail.List>
           <NavList label="Mailboxes" sections={sections} value={current.value ?? ''} onChange={next => current.set(next)} data-testid="workspace-nav" />

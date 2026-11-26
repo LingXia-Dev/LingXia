@@ -22,7 +22,7 @@ export const searchFieldRecipe = {
    * so the field's natural width is a native search input's (about 20 characters) and grows with the text.
    */
   natural: {
-    base: 'h-0 overflow-hidden opacity-0 whitespace-nowrap ps-[37px] pe-[13px]',
+    base: 'h-0 overflow-hidden opacity-0 whitespace-nowrap ps-[calc(var(--spacing)*9+1px)] pe-[calc(var(--spacing)*3+1px)]',
     size: { sm: 'text-footnote', md: 'text-body', lg: 'text-callout' } satisfies Record<FieldSize, string>,
   },
   spinner: {

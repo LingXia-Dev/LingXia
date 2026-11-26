@@ -40,7 +40,7 @@ export const sliderRecipe = {
   control: {
     base: 'p-0 text-accent track:rounded-full track:bg-line range:rounded-full range:bg-accent/80 secondary:rounded-full secondary:bg-line-strong/50 thumb:rounded-full thumb:bg-knob thumb:border-2 thumb:border-accent thumb:shadow-contact hover:thumb:scale-105 active:thumb:scale-110 focus-visible:thumb:ring-2 focus-visible:thumb:ring-focus focus-visible:thumb:ring-offset-2 disabled:range:bg-accent/40 disabled:thumb:bg-surface disabled:thumb:border-accent/40 disabled:thumb:shadow-none',
     size: {
-      sm: '-mx-2 h-control-sm track:h-[3px] range:h-[3px] secondary:h-[3px] thumb:size-4',
+      sm: '-mx-2 h-control-sm track:h-0.75 range:h-0.75 secondary:h-0.75 thumb:size-4',
       md: '-mx-2.5 h-control-md track:h-1 range:h-1 secondary:h-1 thumb:size-5',
     } satisfies Record<SliderSize, string>,
   },

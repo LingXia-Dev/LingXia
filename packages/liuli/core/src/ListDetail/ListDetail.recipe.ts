@@ -46,7 +46,7 @@ export const listDetailRecipe = {
     // The pressed pill keeps 8 pt clear of the pane's edges; the chevron's stroke still starts on the
     // content's 16 pt edge: 8 + border 1 + padding 1.67 + the chevron's own inset in its box (5.33).
     base: 'shrink-0 flex-row items-center gap-2 ps-2 pe-4 pt-2',
-    button: 'ps-[1.67px]',
+    button: 'ps-[calc(var(--spacing)*0.4175)]',
   },
   /** Each pane scrolls on its own. */
   scroll: {
@@ -61,7 +61,7 @@ export const listDetailRecipe = {
     base: 'w-full self-start',
     regular: 'ps-10 pe-8 pt-6 pb-12 gap-8',
     compact: 'px-4 pt-2 pb-8 gap-6',
-    width: { prose: 'max-w-[784px]', wide: 'max-w-[1024px]', full: '' } satisfies Record<ListDetailContentWidth, string>,
+    width: { prose: 'max-w-196', wide: 'max-w-256', full: '' } satisfies Record<ListDetailContentWidth, string>,
   },
   /** Wide screen, nothing chosen: the placeholder, centred in the pane. */
   placeholder: {

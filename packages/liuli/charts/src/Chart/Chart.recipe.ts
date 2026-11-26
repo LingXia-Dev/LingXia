@@ -59,7 +59,7 @@ export const chartRecipe = {
     base: 'sr-only',
   },
   readout: {
-    base: 'min-h-[1.125rem] flex-row flex-wrap items-center gap-x-3',
+    base: 'min-h-4.5 flex-row flex-wrap items-center gap-x-3',
   },
   ticks: {
     base: 'relative grow basis-0 min-w-0',
@@ -167,7 +167,7 @@ export const chartRecipe = {
     selected: 'bg-text/6',
   },
   legendSwatch: {
-    base: 'size-2.5 shrink-0 rounded-[3px]',
+    base: 'text-footnote size-[0.76923em] shrink-0 rounded-[calc(var(--radius-sm)*0.5)]',
     color: { 1: 'bg-chart-1', 2: 'bg-chart-2', 3: 'bg-chart-3', 4: 'bg-chart-4', 5: 'bg-chart-5', 6: 'bg-chart-6', 7: 'bg-chart-7', 8: 'bg-chart-8' } satisfies Record<ChartColor, string>,
     other: 'bg-line-strong',
     off: 'bg-text/12',

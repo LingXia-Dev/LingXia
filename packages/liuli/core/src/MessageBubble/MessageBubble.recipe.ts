@@ -47,7 +47,7 @@ export const messageBubbleRecipe = {
     base: 'ps-3 text-caption font-medium text-muted',
   },
   bubble: {
-    base: 'max-w-[520px] px-3 py-2 gap-2 rounded-container',
+    base: 'max-w-130 px-3 py-2 gap-2 rounded-container',
     side: { start: 'bg-text/6 text-text', end: 'bg-accent-soft text-on-accent-soft' } satisfies Record<MessageSide, string>,
     /** Tight on the side of its own edge, toward the bubble before and after it in a run. */
     joinBefore: { start: 'rounded-ss-checkbox', end: 'rounded-se-checkbox' } satisfies Record<MessageSide, string>,
@@ -71,7 +71,7 @@ export const messageBubbleRecipe = {
   },
   /** MessageReasoning: one quiet line that opens the text under it, behind a rule at the start. */
   reasoning: {
-    base: 'self-start max-w-[520px]',
+    base: 'self-start max-w-130',
     /** The avatar's width (32) and the gap after it (8). */
     afterAvatar: 'ms-10',
   },

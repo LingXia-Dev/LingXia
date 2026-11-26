@@ -59,7 +59,7 @@ export const itemRecipe = {
   /** One tint for every row, so a list of them reads as a set and the icons carry the difference. */
   iconTile: {
     base: 'size-8 shrink-0 items-center justify-center rounded-control bg-accent-soft text-on-accent-soft',
-    icon: 'size-[18px]',
+    icon: 'size-4.5',
   },
   start: {
     base: 'shrink-0 items-center justify-center text-muted',
@@ -115,7 +115,7 @@ export const itemRecipe = {
     base: 'absolute inset-y-0 end-0 flex-row items-stretch',
   },
   action: {
-    base: 'w-[72px] items-center justify-center gap-0.5 px-1 transition-colors duration-fast ease-standard focus-visible:inset-ring-2 focus-visible:inset-ring-focus',
+    base: 'w-18 items-center justify-center gap-0.5 px-1 transition-colors duration-fast ease-standard focus-visible:inset-ring-2 focus-visible:inset-ring-focus',
     variant: {
       default: 'bg-text/8 text-text hover:bg-text/12 active:bg-text/16',
       accent: 'bg-accent-solid text-on-accent-solid hover:bg-accent-solid-hover active:bg-accent-solid-pressed',

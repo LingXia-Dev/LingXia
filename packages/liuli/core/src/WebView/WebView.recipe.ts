@@ -32,7 +32,7 @@ export const webViewRecipe = {
   panel: {
     base: 'w-full overflow-hidden transition duration-slow ease-spring motion-reduce:starting:opacity-0 motion-reduce:exit:opacity-0',
     mode: {
-      sheet: 'mt-auto mb-0 max-w-[640px] h-[70vh] rounded-t-dialog border border-b-0 border-line bg-surface-overlay shadow-modal motion-safe:starting:translate-y-full motion-safe:exit:translate-y-full',
+      sheet: 'mt-auto mb-0 max-w-160 h-[70vh] rounded-t-dialog border border-b-0 border-line bg-surface-overlay shadow-modal motion-safe:starting:translate-y-full motion-safe:exit:translate-y-full',
       full: 'm-0 h-full max-w-full rounded-none bg-canvas starting:opacity-0 exit:opacity-0',
     },
   },

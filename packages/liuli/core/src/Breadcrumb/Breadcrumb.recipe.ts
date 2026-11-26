@@ -21,7 +21,7 @@ export const breadcrumbRecipe = {
     base: 'min-h-8 px-1.5 -mx-0.5 flex-row items-center rounded-control transition-colors duration-fast ease-standard hover:bg-text/5 active:bg-text/8 focus-visible:ring-2 focus-visible:ring-focus',
   },
   label: {
-    base: 'text-footnote max-w-[12rem] truncate',
+    base: 'text-footnote max-w-48 truncate',
     link: 'text-muted',
     plain: 'px-1 text-muted',
     current: 'px-1 font-medium text-text',

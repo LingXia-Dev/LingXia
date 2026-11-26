@@ -72,6 +72,6 @@ export const treeListRecipe = {
     base: 'absolute w-px bg-line',
     through: 'top-0 -bottom-0.5',
     last: 'top-0 bottom-0',
-    level: { 1: 'start-[15.5px]', 2: 'start-[35.5px]', 3: 'start-[55.5px]', 4: 'start-[75.5px]', 5: 'start-[95.5px]' } satisfies Record<1 | 2 | 3 | 4 | 5, string>,
+    level: { 1: 'start-[calc(var(--spacing)*4-0.5px)]', 2: 'start-[calc(var(--spacing)*9-0.5px)]', 3: 'start-[calc(var(--spacing)*14-0.5px)]', 4: 'start-[calc(var(--spacing)*19-0.5px)]', 5: 'start-[calc(var(--spacing)*24-0.5px)]' } satisfies Record<1 | 2 | 3 | 4 | 5, string>,
   },
 } as const;
