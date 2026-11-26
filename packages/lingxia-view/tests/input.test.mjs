@@ -35,6 +35,19 @@ test('local string bindings receive only typed committed text events', () => {
   assert.equal(dispatch(handle, 'stale'), false);
 });
 
+test('beside bind, onInput hears each change after the cell took it, and may rewrite the cell', () => {
+  reset(); const heard = [];
+  const render = () => {
+    const draft = useLocal('typed', '');
+    return h('textarea', { bind: draft, onInput: value => { heard.push([value, draft.value]); if (value.startsWith('# ')) draft.set(value.slice(2)); } });
+  };
+  assert.equal(dispatch(rendered(render).props.onInput, 'Hi'), true);
+  assert.deepEqual(heard, [['Hi', 'Hi']]);
+  assert.equal(dispatch(rendered(render).props.onInput, '# Title'), true);
+  assert.equal(rendered(render).props.inputValue, 'Title');
+  assert.throws(() => describe(() => h('input', { bind: useLocal('handler', ''), onInput: 'x' }), {}), /UI_INPUT/);
+});
+
 test('input callbacks survive discarded candidates and disabled inputs register none', () => {
   reset(); let received = '';
   const render = () => h('textarea', { value: 'a', onSubmit: value => received = value });

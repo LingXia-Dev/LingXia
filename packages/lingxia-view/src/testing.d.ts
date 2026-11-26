@@ -77,6 +77,8 @@ export interface Screen {
   snap(node: WireNode, index: number): void;
   /** A key the editor's `onKeyDown` map lists, as the host delivers it. */
   key(node: WireNode, key: string): void;
+  /** The person moves the caret to `start`, or selects `start..end`, in an editor: its `onSelectionChange`. */
+  selectText(node: WireNode, start: number, end?: number): void;
   /** A paste into an editor: `onPaste` hears it first, then, unless it called `preventDefault()`, the plain text goes in at `selection` (default: the end) as `onInput`. */
   paste(node: WireNode, clipboard: { text: string; html?: string; plain?: boolean; selection?: { start: number; end: number } }): { prevented: boolean };
   /** An editor's `onFocus`. */

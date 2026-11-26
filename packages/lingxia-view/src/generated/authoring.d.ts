@@ -1338,7 +1338,7 @@ export type InputProps = Omit<Props, "style" | "children" | "role"> & { role?: I
   /** The lowest value: a number for `type="number"`, a date or time string for a picker. */ min?: number | string;
   /** The highest value: a number for `type="number"`, a date or time string for a picker. */ max?: number | string;
   /** The interval a number snaps to. */ step?: number;
-} & ({ bind: Local<string>; value?: never; onInput?: never } | { bind?: never; value?: string; onInput?: (value: string) => void });
+} & ({ bind: Local<string>; value?: never; onInput?: (value: string) => void } | { bind?: never; value?: string; onInput?: (value: string) => void });
 export type TextareaStyle = StyleGroup.Box & StyleGroup.Padding & StyleGroup.Text & StyleGroup.Editor;
 /** The roles a `<textarea>` takes; reference/elements.md says where the others go. */
 export type TextareaRole = never;
@@ -1362,7 +1362,7 @@ export type TextareaProps = Omit<Props, "style" | "children" | "role"> & { role?
   /** The label of the keyboard's action key. */ enterKeyHint?: "enter" | "done" | "go" | "next" | "previous" | "search" | "send";
   /** Which letters the keyboard capitalises on its own. */ autoCapitalize?: "none" | "sentences" | "words" | "characters" | "off" | "on";
   /** Whether misspellings are marked and corrected. */ spellCheck?: boolean;
-} & ({ bind: Local<string>; value?: never; onInput?: never } | { bind?: never; value?: string; onInput?: (value: string) => void });
+} & ({ bind: Local<string>; value?: never; onInput?: (value: string) => void } | { bind?: never; value?: string; onInput?: (value: string) => void });
 export type CheckboxStyle = StyleGroup.Box & StyleGroup.Padding & StyleGroup.Flex & StyleGroup.Align & StyleGroup.Gap & StyleGroup.Text;
 /** The roles a `<checkbox>` takes; reference/elements.md says where the others go. */
 export type CheckboxRole = never;
@@ -1371,7 +1371,7 @@ export type CheckboxProps = Omit<Props, "style" | "children" | "role"> & { role?
   /** Where an unbound control starts; it applies once. */ defaultChecked?: boolean;
   /** The accessible name, spoken in place of its text. */ "aria-label"?: string;
   /** Refuses input and shows the disabled style; it stays in accessibility, marked unavailable. */ disabled?: boolean;
-} & ({ bind: Local<boolean>; value?: never; onChange?: never } | { bind?: never; value?: boolean; onChange?: (value: ReadonlyData<boolean>) => void });
+} & ({ bind: Local<boolean>; value?: never; onChange?: (value: ReadonlyData<boolean>) => void } | { bind?: never; value?: boolean; onChange?: (value: ReadonlyData<boolean>) => void });
 export type SwitchStyle = StyleGroup.Box & StyleGroup.Padding & StyleGroup.Text;
 /** The roles a `<switch>` takes; reference/elements.md says where the others go. */
 export type SwitchRole = never;
@@ -1379,7 +1379,7 @@ export type SwitchProps = Omit<Props, "style" | "children" | "role"> & { role?: 
   /** Where an unbound control starts; it applies once. */ defaultChecked?: boolean;
   /** The accessible name, spoken in place of its text. */ "aria-label"?: string;
   /** Refuses input and shows the disabled style; it stays in accessibility, marked unavailable. */ disabled?: boolean;
-} & ({ bind: Local<boolean>; value?: never; onChange?: never } | { bind?: never; value?: boolean; onChange?: (value: ReadonlyData<boolean>) => void });
+} & ({ bind: Local<boolean>; value?: never; onChange?: (value: ReadonlyData<boolean>) => void } | { bind?: never; value?: boolean; onChange?: (value: ReadonlyData<boolean>) => void });
 export type RadioStyle = StyleGroup.Box & StyleGroup.Padding & StyleGroup.Gap & StyleGroup.Text;
 /** The roles a `<radio>` takes; reference/elements.md says where the others go. */
 export type RadioRole = never;
@@ -1387,7 +1387,7 @@ export type RadioProps = Omit<Props, "style" | "children" | "role"> & { role?: R
   /** The choices, each a value and a label. */ options: readonly ChoiceOption[];
   /** The accessible name, spoken in place of its text. */ "aria-label"?: string;
   /** Refuses input and shows the disabled style; it stays in accessibility, marked unavailable. */ disabled?: boolean;
-} & ({ bind: Local<string>; value?: never; onChange?: never } | { bind?: never; value?: string; onChange?: (value: string) => void });
+} & ({ bind: Local<string>; value?: never; onChange?: (value: string) => void } | { bind?: never; value?: string; onChange?: (value: string) => void });
 export type SliderStyle = StyleGroup.Box & StyleGroup.Padding & StyleGroup.Accent;
 /** The roles a `<slider>` takes; reference/elements.md says where the others go. */
 export type SliderRole = never;
@@ -1401,7 +1401,7 @@ export type SliderProps = Omit<Props, "style" | "children" | "role"> & { role?: 
   /** Spoken in place of the number, such as "1:20 of 3:05". */ "aria-valuetext"?: string;
   /** Refuses input and shows the disabled style; it stays in accessibility, marked unavailable. */ disabled?: boolean;
   /** Called with `true` when a finger or pointer takes the thumb and `false` when it lets go. */ onPressChange?: (pressed: boolean) => void;
-} & ({ bind: Local<number>; value?: never; onChange?: never; onChangeEnd?: (value: ReadonlyData<number>) => void; values?: never; thumbLabels?: never } | { bind?: never; value?: number; onChange?: (value: ReadonlyData<number>) => void; onChangeEnd?: (value: ReadonlyData<number>) => void; values?: never; thumbLabels?: never } | { bind?: never; value?: never; values: readonly [number, number]; thumbLabels: readonly [string, string]; onChange?: (values: readonly [number, number]) => void; onChangeEnd?: (values: readonly [number, number]) => void });
+} & ({ bind: Local<number>; value?: never; onChange?: (value: ReadonlyData<number>) => void; onChangeEnd?: (value: ReadonlyData<number>) => void; values?: never; thumbLabels?: never } | { bind?: never; value?: number; onChange?: (value: ReadonlyData<number>) => void; onChangeEnd?: (value: ReadonlyData<number>) => void; values?: never; thumbLabels?: never } | { bind?: never; value?: never; values: readonly [number, number]; thumbLabels: readonly [string, string]; onChange?: (values: readonly [number, number]) => void; onChangeEnd?: (values: readonly [number, number]) => void });
 export type DialogStyle = StyleGroup.Box & StyleGroup.Padding & StyleGroup.Flex & StyleGroup.Align & StyleGroup.Direction & StyleGroup.Gap & StyleGroup.Text & StyleGroup.Grid;
 /** The roles a `<dialog>` takes; reference/elements.md says where the others go. */
 export type DialogRole = "alertdialog";
@@ -1492,7 +1492,7 @@ export type SelectProps = Omit<Props, "style" | "children" | "role"> & { role?: 
   /** Shown while the value is empty. */ placeholder?: string;
   /** The accessible name, spoken in place of its text. */ "aria-label"?: string;
   /** Refuses input and shows the disabled style; it stays in accessibility, marked unavailable. */ disabled?: boolean;
-} & ({ bind: Local<string>; value?: never; onChange?: never } | { bind?: never; value?: string; onChange?: (value: string) => void });
+} & ({ bind: Local<string>; value?: never; onChange?: (value: string) => void } | { bind?: never; value?: string; onChange?: (value: string) => void });
 export type VideoStyle = StyleGroup.Box & StyleGroup.Media & StyleGroup.ImagePlacement;
 /** The roles a `<video>` takes; reference/elements.md says where the others go. */
 export type VideoRole = never;

@@ -5543,11 +5543,15 @@
     const code = bindCodes[tag];
     if (props.bind !== void 0) {
       const cell2 = cellOf(props.bind);
-      if (!cell2 || render.candidate.locals.get(cell2.key) !== cell2.cell || typeof props.bind.value !== type || props.value !== void 0 || props[event] !== void 0)
-        throw Error(`${code}: bind requires a mounted ${type} useLocal cell without value/${event}`);
-      const binding = props.bind;
+      if (!cell2 || render.candidate.locals.get(cell2.key) !== cell2.cell || typeof props.bind.value !== type || props.value !== void 0)
+        throw Error(`${code}: bind requires a mounted ${type} useLocal cell without value`);
+      if (props[event] !== void 0 && typeof props[event] !== "function") throw Error(`${code}: ${event}`);
+      const binding = props.bind, heard = props[event];
       props.value = binding.value;
-      props[event] = (value) => binding.set(value);
+      props[event] = heard ? (value) => {
+        binding.set(value);
+        heard(value);
+      } : (value) => binding.set(value);
     }
     if (props[event] !== void 0 && typeof props[event] !== "function") throw Error(`${code}: ${event}`);
   }

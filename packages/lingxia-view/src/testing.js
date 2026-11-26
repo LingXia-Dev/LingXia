@@ -230,6 +230,7 @@ function screen(host, view, resolved) {
     image: (node, outcome) => fire(node, outcome === 'error' ? 'onImageError' : 'onImageLoad'),
     snap: (node, index) => fire(node, 'onSnapChange', String(index)),
     key: (node, key) => fire(node, 'onKeyDown', key),
+    selectText: (node, start, end = start) => json(node, 'onSelectionChange', { start, end, caret: null, rects: [] }),
     focus: node => fire(node, 'onFocus'),
     blur: node => fire(node, 'onBlur'),
     layout: (node, { width, height, minContentWidth, maxContentWidth }) => json(node, 'onLayout', { width, height, minContentWidth, maxContentWidth }),

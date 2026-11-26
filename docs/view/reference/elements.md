@@ -174,7 +174,7 @@ Children: none.
 
 Children: none.
 
-Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onInput(value: string)`; not both. `onInput` runs on every value change, a composition included.
+Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onInput(value: string)`, not `value` with `bind`. Beside `bind`, `onInput` hears each change after the cell took it and may rewrite the cell. `onInput` runs on every value change, a composition included.
 
 | Prop | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -211,7 +211,7 @@ Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onInput
 
 Children: none.
 
-Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onInput(value: string)`; not both. `onInput` runs on every value change, a composition included.
+Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onInput(value: string)`, not `value` with `bind`. Beside `bind`, `onInput` hears each change after the cell took it and may rewrite the cell. `onInput` runs on every value change, a composition included.
 
 | Prop | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -239,7 +239,7 @@ Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onInput
 
 Children: text, or noninteractive content elements (a composed control).
 
-Binding: `bind={local}` with a `useLocal<boolean>` cell, or `value` plus `onChange(value: boolean)`; not both.
+Binding: `bind={local}` with a `useLocal<boolean>` cell, or `value` plus `onChange(value: boolean)`, not `value` with `bind`. Beside `bind`, `onChange` hears each change after the cell took it and may rewrite the cell.
 
 | Prop | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -254,7 +254,7 @@ Binding: `bind={local}` with a `useLocal<boolean>` cell, or `value` plus `onChan
 
 Children: text, or noninteractive content elements (a composed control).
 
-Binding: `bind={local}` with a `useLocal<boolean>` cell, or `value` plus `onChange(value: boolean)`; not both.
+Binding: `bind={local}` with a `useLocal<boolean>` cell, or `value` plus `onChange(value: boolean)`, not `value` with `bind`. Beside `bind`, `onChange` hears each change after the cell took it and may rewrite the cell.
 
 | Prop | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -268,7 +268,7 @@ Binding: `bind={local}` with a `useLocal<boolean>` cell, or `value` plus `onChan
 
 Children: none.
 
-Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onChange(value: string)`; not both.
+Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onChange(value: string)`, not `value` with `bind`. Beside `bind`, `onChange` hears each change after the cell took it and may rewrite the cell.
 
 | Prop | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -280,7 +280,7 @@ Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onChang
 
 Children: none.
 
-Binding: `bind={local}` with a `useLocal<number>` cell, or `value` plus `onChange(value: number)`; not both.
+Binding: `bind={local}` with a `useLocal<number>` cell, or `value` plus `onChange(value: number)`, not `value` with `bind`. Beside `bind`, `onChange` hears each change after the cell took it and may rewrite the cell.
 
 `onChangeEnd(value)` runs once a change is finished: when the press that made it lifts, or at once for a key or assistive step.
 
@@ -380,7 +380,7 @@ Inside `<text>`, a run: children text and `<span>` runs; links do not nest. Else
 
 Children: none.
 
-Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onChange(value: string)`; not both.
+Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onChange(value: string)`, not `value` with `bind`. Beside `bind`, `onChange` hears each change after the cell took it and may rewrite the cell.
 
 | Prop | Type | Required | Notes |
 | --- | --- | --- | --- |

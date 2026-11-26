@@ -135,10 +135,13 @@ function bind(tag, element, props) {
   const code = bindCodes[tag];
   if (props.bind !== undefined) {
     const cell = cellOf(props.bind);
-    if (!cell || render.candidate.locals.get(cell.key) !== cell.cell || typeof props.bind.value !== type || props.value !== undefined || props[event] !== undefined)
-      throw Error(`${code}: bind requires a mounted ${type} useLocal cell without value/${event}`);
-    const binding = props.bind;
-    props.value = binding.value; props[event] = value => binding.set(value);
+    if (!cell || render.candidate.locals.get(cell.key) !== cell.cell || typeof props.bind.value !== type || props.value !== undefined)
+      throw Error(`${code}: bind requires a mounted ${type} useLocal cell without value`);
+    if (props[event] !== undefined && typeof props[event] !== 'function') throw Error(`${code}: ${event}`);
+    // The cell takes each change first; a handler beside it hears the change after and may rewrite the cell.
+    const binding = props.bind, heard = props[event];
+    props.value = binding.value;
+    props[event] = heard ? value => { binding.set(value); heard(value); } : value => binding.set(value);
   }
   if (props[event] !== undefined && typeof props[event] !== 'function') throw Error(`${code}: ${event}`);
 }

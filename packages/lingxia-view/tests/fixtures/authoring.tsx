@@ -44,7 +44,9 @@ export function render(view: View<{ save(value: string): Promise<void> }, { titl
   // @ts-expect-error bound editors cannot also be controlled
   const input = <input bind={draft} value="conflict"/>;
   // @ts-expect-error textarea preserves the binding union
-  const textarea = <textarea bind={draft} onInput={() => {}}/>;
+  const textarea = <textarea bind={draft} value="conflict"/>;
+  // Beside bind, onInput hears each change, typed as the cell's value.
+  const heard = <textarea bind={draft} onInput={value => void value.length}/>;
   // @ts-expect-error Omit must not erase the search binding union
   const search = <input type="search" bind={draft} value="conflict"/>;
   // @ts-expect-error style properties are checked per element
@@ -58,7 +60,8 @@ export function render(view: View<{ save(value: string): Promise<void> }, { titl
   const composed = <button onClick={() => {}}><vector paths={[{d: 'M0 0'}]}/><text>Inbox</text></button>;
   const named = <switch bind={checked} aria-label="Sync"/>;
   // @ts-expect-error boolean binding has one owner
-  const toggle = <switch bind={checked} onChange={() => {}}/>;
+  const toggle = <switch bind={checked} value={false}/>;
+  const toggleHeard = <switch bind={checked} onChange={on => void (on === true)}/>;
   // @ts-expect-error checkbox preserves the binding union
   const checkbox = <checkbox bind={checked} value={false}/>;
   // @ts-expect-error numeric binding has one owner

@@ -38,7 +38,10 @@ The compiler injects only the JSX factory into a page.
 
 Each entry in the schema's `elements` table lists its children kind (`any`,
 `content`, `runs`, `none`), its props, an optional binding (`bind`, or `value`
-plus `onInput`/`onChange`) and the style groups it renders. `view` is a
+plus `onInput`/`onChange`) and the style groups it renders. Beside `bind`, the
+event handler hears each change after the cell has taken it, and may rewrite the
+cell; an editor needs `bind` for its cell's `focus`, `setSelection` and
+`replaceRange` to reach it. `view` is a
 column. Controls take `disabled`; there is no `enabled`. Grid tracks, line
 clamps and image fit are style (`gridTemplateColumns`, `lineClamp`,
 `objectFit`), not props.

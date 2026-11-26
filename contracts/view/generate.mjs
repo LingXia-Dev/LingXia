@@ -617,7 +617,7 @@ function authoring(source, api) {
       const single = pair ? `; ${pair.values}?: never; ${pair.labels}?: never` : '';
       const both = `readonly [${binding.type}, ${binding.type}]`;
       lines.push(`export type ${type}Props = ${base} & (`
-        + `{ bind: Local<${binding.type}>; value?: never; ${binding.event}?: never${ended}${single} } | `
+        + `{ bind: Local<${binding.type}>; value?: never; ${binding.event}?: (value: ${payload}) => void${ended}${single} } | `
         + `{ bind?: never; value?: ${binding.type}; ${binding.event}?: (value: ${payload}) => void${ended}${single} }`
         + (pair ? ` | { bind?: never; value?: never; ${pair.values}: ${both}; ${pair.labels}: readonly [string, string]; `
           + `${binding.event}?: (values: ${both}) => void${end ? `; ${end}?: (values: ${both}) => void` : ''} }` : '') + ');');

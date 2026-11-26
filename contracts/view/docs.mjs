@@ -85,7 +85,7 @@ async function elements(schema) {
     out.push(facts.join(' '), '');
     if (element.binding) {
       const { type, event } = element.binding;
-      out.push(`Binding: \`bind={local}\` with a \`useLocal<${type}>\` cell, or \`value\` plus \`${event}(value: ${type})\`; not both.${event === 'onInput' ? ' `onInput` runs on every value change, a composition included.' : ''}`, '');
+      out.push(`Binding: \`bind={local}\` with a \`useLocal<${type}>\` cell, or \`value\` plus \`${event}(value: ${type})\`, not \`value\` with \`bind\`. Beside \`bind\`, \`${event}\` hears each change after the cell took it and may rewrite the cell.${event === 'onInput' ? ' `onInput` runs on every value change, a composition included.' : ''}`, '');
       const { end, pair } = element.binding;
       if (end) out.push(`\`${end}(value)\` runs once a change is finished: when the press that made it lifts, or at once for a key or assistive step.`, '');
       if (pair) out.push(`Two values: \`${pair.values}={[lower, upper]}\` with \`${pair.labels}={[name, name]}\` makes a control with two thumbs that cannot cross; \`${event}\`${end ? ` and \`${end}\`` : ''} then take \`[lower, upper]\`.`, '');
