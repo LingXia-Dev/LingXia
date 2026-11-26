@@ -37,7 +37,7 @@ export interface BarChartProps<Row extends ChartRecord<Row> = ChartRow> {
   /**
    * How the chart shows its scale. `auto` writes each value over its bar up to eight bars of one
    * series, and otherwise the top of the scale, a round number, above the plot; `always` writes
-   * every value; `none` shows neither. @default 'auto'
+   * every value of one series; `none` shows neither. @default 'auto'
    */
   valueLabels?: BarChartValueLabels;
   /** Shown when there is more than one series. @default 'bottom' */
@@ -155,8 +155,9 @@ export function BarChart<Row extends ChartRecord<Row>>({
   const figureBoxes = data.map((_, index) => useBox(`figure-${index}`));
   // The smallest plot holds nothing but the marks.
   const isNone = valueLabels === 'none' || (valueLabels === 'auto' && size === 'xs');
-  const isFigured = !isNone && (valueLabels === 'always' || (data.length <= maxValued && shown.length === 1));
-  const longest = isFigured ? data.map(row => formatValue(numberOf(row, shown[0]?.field ?? ''))).reduce((a, b) => (b.length > a.length ? b : a), '') : '';
+  // Figures stand over the bars of one series only; a group has its readout instead.
+  const isFigured = !isNone && shown.length === 1 && (valueLabels === 'always' || data.length <= maxValued);
+  const longest = isFigured ? data.map(row => numberOf(row, shown[0].field)).filter(Number.isFinite).map(formatValue).reduce((a, b) => (b.length > a.length ? b : a), '') : '';
   const [plotWidth, figureWidth] = [plot.value?.width ?? 0, widest.value?.width ?? 0];
   // Figures that would touch, as at large text, give way to the scale at the ends unless asked for.
   const isCrowded = valueLabels === 'auto' && plotWidth > 0 && figureWidth + figureGap > plotWidth / Math.max(1, data.length);
@@ -164,9 +165,11 @@ export function BarChart<Row extends ChartRecord<Row>>({
   // The figures' line is as tall as a figure, so a large one still sits on its bar.
   const lane = Math.max(figureLine, Math.ceil(widest.value?.height ?? 0));
   const levels = references.map(each => each.value);
-  const reach = [Math.max(0, domainMax ?? 0, ...values, ...levels), Math.max(0, -(domainMin ?? 0), ...[...values, ...levels].map(value => -value))];
-  // With the ends of the scale written out, the plot's edges are round numbers.
-  const [high, depth] = scale === 'ends' ? reach.map(roundUp) : reach;
+  const [upTo, downTo] = [domainMax, domainMin].map(each => (each !== undefined && Number.isFinite(each) ? each : 0));
+  const reach = [Math.max(0, upTo, ...values, ...levels), Math.max(0, -downTo, ...[...values, ...levels].map(value => -value))];
+  // With the ends of the scale written out, the plot's edges are round numbers. All zeros still
+  // stand on a scale of one, so zero is at the foot with everything that marks it.
+  const [high, depth] = reach[0] + reach[1] > 0 ? (scale === 'ends' ? reach.map(roundUp) : reach) : [1, 0];
   const isSigned = depth > 0;
   // How far down the plot zero lies, as a percentage of its height.
   const zero = high + depth > 0 ? (high / (high + depth)) * 100 : 100;
@@ -331,7 +334,7 @@ export function BarChart<Row extends ChartRecord<Row>>({
         <view className={r.labels.fit}>
           <Ticks texts={data.map(row => textOf(row, x))} layout="slots">{row(data.length <= maxLabelled ? 'all' : 'ends', r.labels.cover)}</Ticks>
         </view>
-      ) : row(labels, r.labels.row)}
+      ) : row(labels === 'ends' && data.length < 2 ? 'all' : labels, r.labels.row)}
     >
       {scale === 'ends' && <text aria-hidden className={r.scale.base}>{formatValue(high)}</text>}
       <view box={plot} className={cx(r.plot.base, scale === 'ends' && r.plot.ruled, scale === 'ends' && isSigned && r.plot.floored)}>

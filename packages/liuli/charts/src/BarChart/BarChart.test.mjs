@@ -558,3 +558,25 @@ test('eight series side by side still give every bar a width', async () => {
     assert.ok(shapes.every(([, , width]) => width > 0), `${path.key}: ${path.d}`);
   }
 });
+
+test('all zeros stand on a scale of one: the zero line, the figures and a reference at zero all sit at the foot', async () => {
+  const screen = await renderPage(page('references={[{ value: 0, label: "Goal" }]}', many(3, '0')));
+  assert.equal(down(zeroBox(screen.getByTestId('chart'))), 100);
+  assert.deepEqual(slots(screen.getByTestId('chart')).map(figure), [[100, '0'], [100, '0'], [100, '0']]);
+});
+
+test('valueLabels="always" on grouped bars keeps the readout and no lanes for figures it cannot draw', async () => {
+  const screen = await renderPage(page('y={[{ field: "v", label: "V" }, { field: "w", label: "W" }]} valueLabels="always" onChange={() => {}} value="1"', many(3, 'index - 1')));
+  assert.equal(screen.queryAll(node => node.props.role === 'status').length, 1);
+  for (const slot of slots(screen.getByTestId('chart'))) assert.deepEqual([slot.children.length, slot.props.paddingTop, slot.props.paddingBottom], [0, undefined, undefined]);
+});
+
+test('a domain that is not a number is ignored; a missing value is never formatted; one row under xLabels="ends" is named once', async () => {
+  const marked = 'formatValue={value => (Number.isFinite(value) ? String(value) : "unformattable")}';
+  const screen = await renderPage(page(`domainMax={NaN} domainMin={Infinity} xLabels="ends" valueLabels="always" ${marked}`, '[{ k: "only", v: 4 }]'));
+  const paths = drawings(screen.getByTestId('chart')).flatMap(drawing => drawing.paths);
+  assert.ok(paths.length > 0 && paths.every(path => !path.d.includes('NaN')), JSON.stringify(paths));
+  assert.equal(screen.queryAll(node => node.tag === 'text' && textOf(node) === 'only').length, 1);
+  const gap = await renderPage(page(`valueLabels="always" ${marked}`, '[{ k: "a", v: 4 }, { k: "b" }]'));
+  assert.equal(gap.queryAll(node => node.tag === 'text' && textOf(node) === 'unformattable').length, 0);
+});
