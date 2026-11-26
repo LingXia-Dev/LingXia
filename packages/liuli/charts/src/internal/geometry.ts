@@ -85,6 +85,23 @@ export function polyline(points: readonly Point[]): string {
 }
 
 /**
+ * Steps through the points: each value holds level across its own point, and the line rises or
+ * falls straight halfway to the next, so the first and the last value are as plain as the rest.
+ */
+export function stepped(points: readonly Point[]): string {
+  if (points.length < 2) return polyline(points);
+  const middles = points.slice(1).map((point, index) => round((points[index][0] + point[0]) / 2));
+  return `M${at(points[0])}${points.slice(1).map((point, index) => `H${middles[index]}V${round(point[1])}`).join('')}H${round(points[points.length - 1][0])}`;
+}
+
+/** How a line goes from one point to the next. */
+export type ChartCurve = 'straight' | 'smooth' | 'step';
+/** The path through the points along `curve`. */
+export function traced(points: readonly Point[], curve: ChartCurve): string {
+  return curve === 'smooth' ? monotone(points) : curve === 'step' ? stepped(points) : polyline(points);
+}
+
+/**
  * A monotone cubic through the points (Fritsch–Carlson): between two points the curve stays
  * within their heights, so it never rises above or dips below the data it joins.
  */

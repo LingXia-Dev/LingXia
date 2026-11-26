@@ -30,7 +30,7 @@ export function Revenue() {
       deltaDirection="up"
       deltaLabel="Up 12.4% from last month"
       description="vs last month"
-      chart={<Sparkline values={revenue} variant="area" isSmooth hasEndDot tone="positive" label="Revenue by week: up from 31k to 48k" />}
+      chart={<Sparkline values={revenue} variant="area" curve="smooth" hasEndDot tone="positive" label="Revenue by week: up from 31k to 48k" />}
       data-testid="revenue"
     />
   );

@@ -59,9 +59,19 @@ const day = [
 ];
 const degrees = (value: number) => `${value.toFixed(1)}°`;
 
+const seats = [
+  { month: 'Jan', seats: 12 }, { month: 'Feb', seats: 12 }, { month: 'Mar', seats: 18 }, { month: 'Apr', seats: 18 },
+  { month: 'May', seats: 25 }, { month: 'Jun', seats: 22 }, { month: 'Jul', seats: 30 },
+];
+
+/** Steps suit a count that changes at set moments and holds between them: seats on a plan, a price, a limit. */
+export function Steps() {
+  return <LineChart rows={seats} x="month" y="seats" label="Seats on the plan by month" title="Seats" description="This year" curve="step" hasArea summarize={summarize} data-testid="seats" />;
+}
+
 /** Smoothing suits a quantity that changes gradually; the curve passes through every reading and never beyond one. */
 export function Smooth() {
-  return <LineChart rows={day} x="hour" y="c" label="Temperature through the day" title="Temperature" description="Today" isSmooth formatValue={degrees} summarize={summarize} data-testid="day" />;
+  return <LineChart rows={day} x="hour" y="c" label="Temperature through the day" title="Temperature" description="Today" curve="smooth" formatValue={degrees} summarize={summarize} data-testid="day" />;
 }
 
 const plans = [
@@ -131,5 +141,5 @@ export function StateSingle() {
 
 /** The home tile. */
 export function Specimen() {
-  return <LineChart rows={weight} x="week" y="kg" label="Weight" size="xs" isSmooth xLabels="none" className="w-28 self-center" />;
+  return <LineChart rows={weight} x="week" y="kg" label="Weight" size="xs" curve="smooth" xLabels="none" className="w-28 self-center" />;
 }

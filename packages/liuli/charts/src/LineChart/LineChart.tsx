@@ -2,12 +2,13 @@ import { cx, useBox, useLocal, type Child, type PointerEvent, type VectorPath, t
 import { Chart, ChartLegend, ChartReadout, type ChartLegendPosition, type ChartField, type ChartRecord, type ChartReference, type ChartRow, type ChartSeries, type ChartSize, type ChartSummarize } from '../Chart/Chart';
 import { colorOf, keysOf, numberOf, plain, roleOf, seriesFacts, seriesOf, textOf } from '../internal/data';
 import { pressed, pressedKey, scrubbing } from '../internal/gesture';
-import { box, closed, domain, dot, indexAt, monotone, niceTicks, polyline, reach, runs, scaleY, thin, type Point } from '../internal/geometry';
+import { box, closed, domain, dot, indexAt, niceTicks, reach, runs, scaleY, thin, traced, type ChartCurve, type Point } from '../internal/geometry';
 import { ReferenceLabels, ReferenceReading, referencePath, useReferences } from '../internal/References';
 import { Ticks } from '../internal/Ticks';
 import { laidOutOnce, remember } from '../internal/memo';
 import { lineChartRecipe as r } from './LineChart.recipe';
 
+export type { ChartCurve } from '../internal/geometry';
 export type LineChartLabels = 'fit' | 'ends' | 'none';
 
 /** `Row` is the app's own record type, so `x`, `y` and `keyField` name its fields and a typo fails to compile. */
@@ -28,8 +29,8 @@ export interface LineChartProps<Row extends ChartRecord<Row> = ChartRow> {
   formatValue?: (value: number) => string;
   /** Writes the summary a screen reader hears from the chart's facts; see `@liulidesign/charts/summary/en`. */
   summarize?: ChartSummarize;
-  /** Rounds the line between points without passing above or below them. @default false */
-  isSmooth?: boolean;
+  /** How the line goes between points: `smooth` rounds it without passing above or below them; `step` holds each value level across its point and changes halfway to the next. @default 'straight' */
+  curve?: ChartCurve;
   /** Fills under the line and measures it from zero. One series only. @default false */
   hasArea?: boolean;
   /**
@@ -113,7 +114,7 @@ const maxRead = 60;
 
 /** A number over time, as a line that fits its data, or as an area measured from zero. */
 export function LineChart<Row extends ChartRecord<Row>>({
-  rows, x, y, keyField, label, title, description, formatValue: format, summarize, isSmooth = false, hasArea = false,
+  rows, x, y, keyField, label, title, description, formatValue: format, summarize, curve = 'straight', hasArea = false,
   hasScale, hasEndLabel = false, hasEndDot = hasEndLabel, xLabels, legendPosition = 'bottom', legendLabel, value, onChange, defaultValue, bind, hiddenSeries: givenHidden, onHiddenSeriesChange: onHiddenChange, defaultHiddenSeries,
   references: given = [], domainMin, domainMax, size = 'md', isLoading = false, error, emptyLabel, emptyHint, onRetry, retryLabel, className, 'data-testid': testId,
 }: LineChartProps<Row>) {
@@ -158,9 +159,9 @@ export function LineChart<Row extends ChartRecord<Row>>({
   const picked = chosen >= 0 ? data[chosen] : undefined;
 
   // The lines depend on the data and the encoding, never on the theme or the chosen row, so a scrub redraws only the marker.
-  const paths = remember(data, 'lines', JSON.stringify([shown.map(series => [series.field, series.color, series.dash]), range, isSmooth, isArea, hasEndDot]), () => {
+  const paths = remember(data, 'lines', JSON.stringify([shown.map(series => [series.field, series.color, series.dash]), range, curve, isArea, hasEndDot]), () => {
     const paths: VectorPath[] = [];
-    const trace = (points: readonly Point[]) => (isSmooth ? monotone(points) : polyline(points));
+    const trace = (points: readonly Point[]) => traced(points, curve);
     const round = { fill: 'none', strokeLinecap: 'round', strokeLinejoin: 'round', vectorEffect: 'non-scaling-stroke' } as const;
     shown.forEach((series, index) => {
       const stroke = roleOf(series.color);

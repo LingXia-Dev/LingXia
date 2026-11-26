@@ -106,7 +106,24 @@ const degrees = (value: number) => `${value.toFixed(1)}°`;
 
 /** Smoothing suits a quantity that changes gradually; the curve passes through every reading and never beyond one. */
 export function Smooth() {
-  return <LineChart rows={day} x="hour" y="c" label="Temperature through the day" title="Temperature" description="Today" isSmooth formatValue={degrees} summarize={summarize} data-testid="day" />;
+  return <LineChart rows={day} x="hour" y="c" label="Temperature through the day" title="Temperature" description="Today" curve="smooth" formatValue={degrees} summarize={summarize} data-testid="day" />;
+}
+```
+
+### A count that holds between changes
+
+```tsx
+import { summarize } from '@liulidesign/charts/summary';
+import { LineChart } from '@liulidesign/charts/LineChart';
+
+const seats = [
+  { month: 'Jan', seats: 12 }, { month: 'Feb', seats: 12 }, { month: 'Mar', seats: 18 }, { month: 'Apr', seats: 18 },
+  { month: 'May', seats: 25 }, { month: 'Jun', seats: 22 }, { month: 'Jul', seats: 30 },
+];
+
+/** Steps suit a count that changes at set moments and holds between them: seats on a plan, a price, a limit. */
+export function Steps() {
+  return <LineChart rows={seats} x="month" y="seats" label="Seats on the plan by month" title="Seats" description="This year" curve="step" hasArea summarize={summarize} data-testid="seats" />;
 }
 ```
 
@@ -194,7 +211,7 @@ export function Gaps() {
 | `description` | `string` |  |  |
 | `formatValue` | `((value: number) => string)` |  | Turns a number into the text shown and read. By default the bare number. |
 | `summarize` | `ChartSummarize` |  | Writes the summary a screen reader hears from the chart's facts; see `@liulidesign/charts/summary/en`. |
-| `isSmooth` | `boolean` | `false` | Rounds the line between points without passing above or below them. |
+| `curve` | `ChartCurve` | `'straight'` | How the line goes between points: `smooth` rounds it without passing above or below them; `step` holds each value level across its point and changes halfway to the next. |
 | `hasArea` | `boolean` | `false` | Fills under the line and measures it from zero. One series only. |
 | `hasEndDot` | `boolean` | `hasEndLabel` | Marks each line's latest value with a dot. By default only with the end label, which the dot ties to its line; a lone dot at rest reads as a chosen point. |
 | `hasScale` | `boolean` |  | Shows the scale: round numbers at the start edge, each with a hairline across the plot. The range reaches just past the data, so the plot is filled. By default on, except at the `xs` size. |

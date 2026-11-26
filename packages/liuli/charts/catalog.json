@@ -1208,11 +1208,16 @@
           "description": "Writes the summary a screen reader hears from the chart's facts; see `@liulidesign/charts/summary/en`."
         },
         {
-          "name": "isSmooth",
-          "type": "boolean",
+          "name": "curve",
+          "type": "ChartCurve",
           "required": false,
-          "description": "Rounds the line between points without passing above or below them.",
-          "default": "false"
+          "description": "How the line goes between points: `smooth` rounds it without passing above or below them; `step` holds each value level across its point and changes halfway to the next.",
+          "values": [
+            "straight",
+            "smooth",
+            "step"
+          ],
+          "default": "'straight'"
         },
         {
           "name": "hasArea",
@@ -1550,7 +1555,12 @@
         {
           "name": "Smooth",
           "title": "A smoothed line",
-          "source": "import { summarize } from '@liulidesign/charts/summary';\nimport { LineChart } from '@liulidesign/charts/LineChart';\n\nconst day = [\n  { hour: '00:00', c: 11.2 }, { hour: '02:00', c: 10.4 }, { hour: '04:00', c: 9.8 }, { hour: '06:00', c: 10.1 }, { hour: '08:00', c: 12.6 },\n  { hour: '10:00', c: 15.9 }, { hour: '12:00', c: 18.7 }, { hour: '14:00', c: 20.3 }, { hour: '16:00', c: 19.6 }, { hour: '18:00', c: 17.0 },\n  { hour: '20:00', c: 14.4 }, { hour: '22:00', c: 12.5 },\n];\nconst degrees = (value: number) => `${value.toFixed(1)}°`;\n\n/** Smoothing suits a quantity that changes gradually; the curve passes through every reading and never beyond one. */\nexport function Smooth() {\n  return <LineChart rows={day} x=\"hour\" y=\"c\" label=\"Temperature through the day\" title=\"Temperature\" description=\"Today\" isSmooth formatValue={degrees} summarize={summarize} data-testid=\"day\" />;\n}"
+          "source": "import { summarize } from '@liulidesign/charts/summary';\nimport { LineChart } from '@liulidesign/charts/LineChart';\n\nconst day = [\n  { hour: '00:00', c: 11.2 }, { hour: '02:00', c: 10.4 }, { hour: '04:00', c: 9.8 }, { hour: '06:00', c: 10.1 }, { hour: '08:00', c: 12.6 },\n  { hour: '10:00', c: 15.9 }, { hour: '12:00', c: 18.7 }, { hour: '14:00', c: 20.3 }, { hour: '16:00', c: 19.6 }, { hour: '18:00', c: 17.0 },\n  { hour: '20:00', c: 14.4 }, { hour: '22:00', c: 12.5 },\n];\nconst degrees = (value: number) => `${value.toFixed(1)}°`;\n\n/** Smoothing suits a quantity that changes gradually; the curve passes through every reading and never beyond one. */\nexport function Smooth() {\n  return <LineChart rows={day} x=\"hour\" y=\"c\" label=\"Temperature through the day\" title=\"Temperature\" description=\"Today\" curve=\"smooth\" formatValue={degrees} summarize={summarize} data-testid=\"day\" />;\n}"
+        },
+        {
+          "name": "Steps",
+          "title": "A count that holds between changes",
+          "source": "import { summarize } from '@liulidesign/charts/summary';\nimport { LineChart } from '@liulidesign/charts/LineChart';\n\nconst seats = [\n  { month: 'Jan', seats: 12 }, { month: 'Feb', seats: 12 }, { month: 'Mar', seats: 18 }, { month: 'Apr', seats: 18 },\n  { month: 'May', seats: 25 }, { month: 'Jun', seats: 22 }, { month: 'Jul', seats: 30 },\n];\n\n/** Steps suit a count that changes at set moments and holds between them: seats on a plan, a price, a limit. */\nexport function Steps() {\n  return <LineChart rows={seats} x=\"month\" y=\"seats\" label=\"Seats on the plan by month\" title=\"Seats\" description=\"This year\" curve=\"step\" hasArea summarize={summarize} data-testid=\"seats\" />;\n}"
         },
         {
           "name": "Series",
@@ -2187,11 +2197,16 @@
           "default": "'line'"
         },
         {
-          "name": "isSmooth",
-          "type": "boolean",
+          "name": "curve",
+          "type": "ChartCurve",
           "required": false,
-          "description": "Rounds the line between points without passing above or below them. Lines and areas only.",
-          "default": "false"
+          "description": "How the line goes between points: `smooth` rounds it without passing above or below them; `step` holds each value level across its point and changes halfway to the next. Lines and areas only.",
+          "values": [
+            "straight",
+            "smooth",
+            "step"
+          ],
+          "default": "'straight'"
         },
         {
           "name": "hasEndDot",
@@ -2326,7 +2341,7 @@
         {
           "name": "Smooth",
           "title": "A rounded line that stays within its data",
-          "source": "import { Sparkline } from '@liulidesign/charts/Sparkline';\n\nconst week = [12, 14, 13, 17, 16, 21, 24];\n\nexport function Smooth() {\n  return <Sparkline values={week} isSmooth variant=\"area\" label=\"Sessions, last 7 days: up from 12k to 24k\" data-testid=\"smooth\" />;\n}"
+          "source": "import { Sparkline } from '@liulidesign/charts/Sparkline';\n\nconst week = [12, 14, 13, 17, 16, 21, 24];\n\nexport function Smooth() {\n  return <Sparkline values={week} curve=\"smooth\" variant=\"area\" label=\"Sessions, last 7 days: up from 12k to 24k\" data-testid=\"smooth\" />;\n}"
         },
         {
           "name": "Tones",
@@ -2660,7 +2675,7 @@
         {
           "name": "Revenue",
           "title": "A figure, its change and its history",
-          "source": "import { Sparkline } from '@liulidesign/charts/Sparkline';\nimport { Stat } from '@liulidesign/charts/Stat';\n\nconst revenue = [31, 34, 33, 38, 36, 41, 40, 44, 47, 45, 48];\n\n/** The figure, how it changed in the app's words, and its last eleven weeks. */\nexport function Revenue() {\n  return (\n    <Stat\n      label=\"Revenue\"\n      value=\"$48,250\"\n      delta=\"12.4%\"\n      deltaDirection=\"up\"\n      deltaLabel=\"Up 12.4% from last month\"\n      description=\"vs last month\"\n      chart={<Sparkline values={revenue} variant=\"area\" isSmooth hasEndDot tone=\"positive\" label=\"Revenue by week: up from 31k to 48k\" />}\n      data-testid=\"revenue\"\n    />\n  );\n}"
+          "source": "import { Sparkline } from '@liulidesign/charts/Sparkline';\nimport { Stat } from '@liulidesign/charts/Stat';\n\nconst revenue = [31, 34, 33, 38, 36, 41, 40, 44, 47, 45, 48];\n\n/** The figure, how it changed in the app's words, and its last eleven weeks. */\nexport function Revenue() {\n  return (\n    <Stat\n      label=\"Revenue\"\n      value=\"$48,250\"\n      delta=\"12.4%\"\n      deltaDirection=\"up\"\n      deltaLabel=\"Up 12.4% from last month\"\n      description=\"vs last month\"\n      chart={<Sparkline values={revenue} variant=\"area\" curve=\"smooth\" hasEndDot tone=\"positive\" label=\"Revenue by week: up from 31k to 48k\" />}\n      data-testid=\"revenue\"\n    />\n  );\n}"
         },
         {
           "name": "Plain",

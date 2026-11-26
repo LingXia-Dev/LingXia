@@ -57,7 +57,7 @@ import { Sparkline } from '@liulidesign/charts/Sparkline';
 const week = [12, 14, 13, 17, 16, 21, 24];
 
 export function Smooth() {
-  return <Sparkline values={week} isSmooth variant="area" label="Sessions, last 7 days: up from 12k to 24k" data-testid="smooth" />;
+  return <Sparkline values={week} curve="smooth" variant="area" label="Sessions, last 7 days: up from 12k to 24k" data-testid="smooth" />;
 }
 ```
 
@@ -159,7 +159,7 @@ export function InRows() {
 | `values` (required) | `readonly number[]` |  | The numbers, oldest first; a new array when they change. A value that is not finite (`NaN`) is a gap. Past 240 values it keeps the 240 that hold the shape, peaks and dips included. |
 | `label` (required) | `string` |  | What the chart shows, in words; it is all a screen reader gets: "Revenue, last 7 days: up from 12k to 24k". |
 | `variant` | `SparklineVariant` | `'line'` | `area` fills under the line; `bar` draws one bar per value. |
-| `isSmooth` | `boolean` | `false` | Rounds the line between points without passing above or below them. Lines and areas only. |
+| `curve` | `ChartCurve` | `'straight'` | How the line goes between points: `smooth` rounds it without passing above or below them; `step` holds each value level across its point and changes halfway to the next. Lines and areas only. |
 | `hasEndDot` | `boolean` | `false` | Marks the latest value with a dot. Lines and areas only. |
 | `tone` | `SparklineTone` | `'series'` | `series` is the first chart colour; `positive` and `negative` say the trend is good or bad. |
 | `domainMin` | `number` |  | The lowest value drawn. A line fits its data; an area or bars start from zero. |

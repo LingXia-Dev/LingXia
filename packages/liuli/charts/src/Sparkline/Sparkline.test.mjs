@@ -113,7 +113,7 @@ test('domainMin and domainMax widen the range and never cut the data', async () 
 
 test('past 240 values, the series is reduced to 240 points that keep its peaks, dips and gaps', async () => {
   const series = 'Array.from({ length: 2400 }, (_, index) => (index === 1203 ? 90 : index === 1807 ? -40 : index >= 600 && index < 640 ? NaN : index % 10))';
-  const screen = await renderPage(page('isSmooth', series));
+  const screen = await renderPage(page('curve="smooth"', series));
   const [line] = drawing(screen.getByTestId('spark')).paths;
   assert.equal(line.d.split('M').filter(Boolean).length, 2, 'the forty missing readings are still one gap');
   assert.ok(line.d.match(/C/g).length <= 238);

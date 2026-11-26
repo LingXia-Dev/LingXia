@@ -78,6 +78,7 @@ export const doc: ComponentDoc = {
     { name: 'Goal', title: 'A goal drawn across the plot' },
     { name: 'Area', title: 'An area, from zero' },
     { name: 'Smooth', title: 'A smoothed line' },
+    { name: 'Steps', title: 'A count that holds between changes' },
     { name: 'Series', title: 'Three series, with a legend that hides them' },
     { name: 'Selected', title: 'Scrubbing chooses a row' },
     { name: 'Gaps', title: 'Missing readings' },

@@ -1,5 +1,5 @@
 import { cx, useBox, type VectorPath } from '@lingxia/view';
-import { bars, box, closed, domain, dot, monotone, polyline, reach, runs, scaleY, thin, type Point } from '../internal/geometry';
+import { bars, box, closed, domain, dot, reach, runs, scaleY, thin, traced, type ChartCurve, type Point } from '../internal/geometry';
 import { remember } from '../internal/memo';
 import { sparklineRecipe as r } from './Sparkline.recipe';
 
@@ -14,8 +14,8 @@ export interface SparklineProps {
   label: string;
   /** `area` fills under the line; `bar` draws one bar per value. @default 'line' */
   variant?: SparklineVariant;
-  /** Rounds the line between points without passing above or below them. Lines and areas only. @default false */
-  isSmooth?: boolean;
+  /** How the line goes between points: `smooth` rounds it without passing above or below them; `step` holds each value level across its point and changes halfway to the next. Lines and areas only. @default 'straight' */
+  curve?: ChartCurve;
   /** Marks the latest value with a dot. Lines and areas only. @default false */
   hasEndDot?: boolean;
   /** `series` is the first chart colour; `positive` and `negative` say the trend is good or bad. @default 'series' */
@@ -46,7 +46,7 @@ export function Sparkline({
   values,
   label,
   variant = 'line',
-  isSmooth = false,
+  curve = 'straight',
   hasEndDot = false,
   tone = 'series',
   domainMin,
@@ -56,7 +56,7 @@ export function Sparkline({
   'data-testid': testId,
 }: SparklineProps) {
   // The paths depend on the values and the encoding, never on the theme: colours are role names.
-  const paths = remember(values, 'sparkline', JSON.stringify([variant, isSmooth, hasEndDot, tone, domainMin, domainMax]), () => {
+  const paths = remember(values, 'sparkline', JSON.stringify([variant, curve, hasEndDot, tone, domainMin, domainMax]), () => {
     const role = toneRole[tone];
     const drawn = thin(values);
     const range = domain(drawn, variant !== 'line', domainMin, domainMax);
@@ -67,7 +67,7 @@ export function Sparkline({
     } else {
       const stroke = { fill: 'none', stroke: role, strokeLinecap: 'round', strokeLinejoin: 'round', vectorEffect: 'non-scaling-stroke' } as const;
       const lines = runs(drawn, range);
-      const trace = (points: readonly Point[]) => (isSmooth ? monotone(points) : polyline(points));
+      const trace = (points: readonly Point[]) => traced(points, curve);
       const joined = lines.filter(points => points.length > 1);
       if (variant === 'area' && joined.length)
         paths.push({ d: joined.map(points => closed(trace(points), points, scaleY(0, range))).join(''), fill: `${role}/16` });

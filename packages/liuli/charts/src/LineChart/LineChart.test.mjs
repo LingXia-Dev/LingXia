@@ -260,12 +260,12 @@ test('a long series is reduced to 240 points and read by its summary alone', asy
   screen.getByText('1000 values from 0 to 999. Lowest 0 at 0, highest 999 at 500. Rising: 0 first, 19 last.');
 });
 
-test('isSmooth: between two readings the curve never leaves their heights, however noisy the data', async () => {
+test('curve="smooth": between two readings the curve never leaves their heights, however noisy the data', async () => {
   const screen = await renderPage(`
     import { LineChart } from '@liulidesign/charts/LineChart';
     const rows = Array.from({ length: 30 }, (_, index) => ({ t: String(index), v: Math.round(1800 + index * 46 + ((index * 53) % 17) * 38 - (index % 7 > 4 ? 520 : 0)) }));
     rows[11].v = rows[10].v; rows[20].v = 0; rows[21].v = 6000;
-    export function render() { return <page><LineChart rows={rows} x="t" y="v" label="Visits" isSmooth hasScale={false} hasEndDot={false} /></page>; }
+    export function render() { return <page><LineChart rows={rows} x="t" y="v" label="Visits" curve="smooth" hasScale={false} hasEndDot={false} /></page>; }
   `);
   const [line] = drawing(screen).paths;
   const segments = [...line.d.matchAll(/C([^C]+)/g)].map(match => points(match[1]));
@@ -303,7 +303,7 @@ test('a scale in the hundred thousands lays out with small numbers: no size take
   const screen = await renderPage(`
     import { LineChart } from '@liulidesign/charts/LineChart';
     const rows = [98400, 91200, 104800, 109300, 118700, 112400, 121900, 117600, 126300, 134800, 141200].map((revenue, index) => ({ month: String(index + 1), revenue }));
-    export function render() { return <page><LineChart rows={rows} x="month" y="revenue" label="Revenue by month" hasArea isSmooth data-testid="year" /></page>; }
+    export function render() { return <page><LineChart rows={rows} x="month" y="revenue" label="Revenue by month" hasArea curve="smooth" data-testid="year" /></page>; }
   `);
   const placed = screen.queryAll(node => /transform/.test(node.props.transition ?? '')).map(down);
   assert.ok(placed.length > 4, 'the scale and the end figure are placed by a share of the plot');
@@ -508,4 +508,15 @@ test('with defaultHiddenSeries the legend toggles series the chart keeps itself'
   assert.equal(entry().props.statePressed, 0);
   screen.press(entry());
   assert.equal(entry().props.statePressed, 1);
+});
+
+test('Steps: each value holds level across its month and changes halfway to the next, the last as plain as the rest; the area follows the steps', async () => {
+  const screen = await renderExample('LineChart/LineChart', 'Steps');
+  const paths = screen.queryAll(node => node.tag === 'vector' && node.props.vectorSource).flatMap(node => JSON.parse(node.props.vectorSource).paths ?? []);
+  const line = paths.find(path => path.key === 'seats-line').d;
+  assert.match(line, /^M[\d.]+ [\d.]+(H[\d.]+V[\d.]+){6}H[\d.]+$/, 'a level run, then a rise or fall at the halfway mark, for each month');
+  const runs = [...line.matchAll(/H([\d.]+)/g)].map(match => Number(match[1]));
+  assert.ok(runs[runs.length - 1] - runs[runs.length - 2] > 0, 'the last month keeps a level run of its own');
+  const area = paths.find(path => path.key === 'seats-area').d;
+  assert.ok(area.startsWith(line), 'the fill is bounded by the same steps');
 });

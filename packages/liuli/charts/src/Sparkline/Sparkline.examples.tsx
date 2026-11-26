@@ -35,7 +35,7 @@ export function Variants() {
 }
 
 export function Smooth() {
-  return <Sparkline values={week} isSmooth variant="area" label="Sessions, last 7 days: up from 12k to 24k" data-testid="smooth" />;
+  return <Sparkline values={week} curve="smooth" variant="area" label="Sessions, last 7 days: up from 12k to 24k" data-testid="smooth" />;
 }
 
 /** The tone says whether the trend is good news; the label says it in words. */
@@ -118,5 +118,5 @@ export function InRows() {
 
 /** The home tile. */
 export function Specimen() {
-  return <Sparkline values={week} variant="area" isSmooth hasEndDot label="Trend" className="w-24 self-center" />;
+  return <Sparkline values={week} variant="area" curve="smooth" hasEndDot label="Trend" className="w-24 self-center" />;
 }
