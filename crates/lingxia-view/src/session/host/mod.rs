@@ -505,6 +505,9 @@ struct Main<F> {
     /// How many of the next frames panic while they are prepared.
     #[cfg(test)]
     prepare_panics: u32,
+    /// How many of the next queued inputs panic while they run.
+    #[cfg(test)]
+    input_panics: u32,
     /// A fake presenter's modelled build time, which the worker clock does not see.
     #[cfg(test)]
     modelled_build: Option<Duration>,
@@ -641,7 +644,8 @@ impl<F> Main<F> {
 
 impl<A: PlatformAdapter> Drop for Inner<A> {
     fn drop(&mut self) {
-        if let Some(id) = self.page.get_mut().ok().and_then(Option::take) {
+        let page = self.page.get_mut().unwrap_or_else(|p| p.into_inner());
+        if let Some(id) = page.take() {
             self.worker.run(move |app| {
                 app.discard(id);
             });
@@ -737,6 +741,8 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     no_frames_ahead: false,
                     #[cfg(test)]
                     prepare_panics: 0,
+                    #[cfg(test)]
+                    input_panics: 0,
                     #[cfg(test)]
                     modelled_build: None,
                     failure: None,
@@ -977,6 +983,19 @@ impl<A: PlatformAdapter> ViewHost<A> {
     #[cfg(test)]
     pub(crate) fn panics_left(&self) -> u32 {
         self.inner.main().prepare_panics
+    }
+
+    /// The next `inputs` queued inputs panic while they run.
+    #[cfg(test)]
+    pub(crate) fn panic_input(&self, inputs: u32) {
+        self.inner.main().input_panics = inputs;
+    }
+
+    /// Activations still waiting for their input, and whether pointer input is held.
+    #[cfg(test)]
+    pub(crate) fn input_held(&self) -> (u32, bool) {
+        let main = self.inner.main();
+        (main.activating, main.pointer_busy)
     }
 
     /// Ahead frames the session refused because two frames already waited.
@@ -2229,6 +2248,8 @@ impl<A: PlatformAdapter> Inner<A> {
     }
 
     fn load(self: &Arc<Self>, source: Option<String>) {
+        // Read before `main` is locked: the adapter is never called under it.
+        let opened_at = self.adapter.now();
         let (page, source, effects, cancelled) = {
             let mut main = self.main();
             if main.disposed {
@@ -2244,7 +2265,7 @@ impl<A: PlatformAdapter> Inner<A> {
             main.panics = 0;
             main.stalled_at = None;
             let page = self.lifecycle.load();
-            main.telemetry.opened(self.adapter.now());
+            main.telemetry.opened(opened_at);
             main.snapshot = None;
             // The surface still holds the previous instance's frame; it is not this page's.
             main.presented_environment = None;
@@ -2279,6 +2300,7 @@ impl<A: PlatformAdapter> Inner<A> {
         let inner = self.clone();
         let logic = self.logic;
         self.worker.run(move |app| {
+            panics::watch();
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 let mut slot = inner.page.lock().unwrap_or_else(|p| p.into_inner());
                 if let Some(old) = slot.take() {
@@ -2382,9 +2404,17 @@ impl<A: PlatformAdapter> Inner<A> {
             main.disposed = true;
             main.animation_timer += 1;
             main.bootstrap_timer += 1;
+            // A pending tick or reveal wait would keep posting itself, and this page, alive.
+            main.clock.stop();
+            main.reveal.cancel();
             main.forget_frames();
             main.caret.stop();
             main.webviews.reset();
+            // Its connection ends with it; no frame will release these.
+            main.acks.clear();
+            for slot in main.automation_calls.values_mut() {
+                slot.get_or_insert_with(|| Err("E_PAGE_NOT_READY: the page was closed".into()));
+            }
             let effects = main.interaction.cancel_all();
             let cancelled = main.images.inflight_tokens();
             main.images.clear();
@@ -2562,6 +2592,8 @@ impl<A: PlatformAdapter> Inner<A> {
             self.main().dirty = true;
             return;
         }
+        // Read before `main` is locked: the adapter is never called under it.
+        let environment = self.adapter.environment();
         let (failure, effects, repeats, shown) = {
             let mut main = self.main();
             if main.disposed {
@@ -2584,7 +2616,7 @@ impl<A: PlatformAdapter> Inner<A> {
                 1
             };
             if main.failure_repeats >= STALL_AFTER {
-                main.stalled_at = self.adapter.environment().as_ref().map(stall_key);
+                main.stalled_at = environment.as_ref().map(stall_key);
             }
             let recovery = self.lifecycle.fail(&error);
             let effects = if recovery.kind == FailureKind::Session {

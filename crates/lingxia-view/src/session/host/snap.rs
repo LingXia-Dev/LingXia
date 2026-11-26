@@ -74,9 +74,7 @@ impl<A: PlatformAdapter> Inner<A> {
     }
 
     fn settle_snaps(self: &Arc<Self>, serial: u64) {
-        let reduce = self.adapter.environment().is_some_and(|env| {
-            env.value["reducedMotion"] == true || env.value["animatorDurationScale"] == 0.0
-        });
+        let reduce = self.reduced_motion();
         let moves = {
             let mut main = self.main();
             if main.snaps.serial != serial {

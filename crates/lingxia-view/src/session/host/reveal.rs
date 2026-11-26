@@ -42,6 +42,11 @@ pub(super) struct Reveal {
 }
 
 impl Reveal {
+    /// Drops the pending wait, so its deadline finds nothing to do.
+    pub(super) fn cancel(&mut self) {
+        self.pending = None;
+    }
+
     /// `{deadlines, watchdogs, windowCovered, covers, snapshotShown, lastCoverMs, lastReveal:
     /// {reason, atMs}}`, times since `opened`.
     pub(super) fn metrics(&self, opened: Duration) -> serde_json::Value {

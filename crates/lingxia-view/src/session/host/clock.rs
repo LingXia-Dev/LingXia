@@ -21,6 +21,15 @@ pub(super) struct Clock {
     running: bool,
 }
 
+impl Clock {
+    /// Stops for good: the armed timer, if any, finds its serial gone and does nothing.
+    pub(super) fn stop(&mut self) {
+        self.running = false;
+        self.due = None;
+        self.serial += 1;
+    }
+}
+
 pub(super) fn wall_ms() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -36,6 +45,7 @@ impl<A: PlatformAdapter> Inner<A> {
             let mut main = self.main();
             let main = &mut *main;
             let running = main.visible
+                && !main.disposed
                 && !stopped
                 && !main.interaction.parked()
                 && main.clock.step > 0

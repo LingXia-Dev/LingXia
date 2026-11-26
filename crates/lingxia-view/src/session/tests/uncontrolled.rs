@@ -79,3 +79,25 @@ fn an_unbound_select_keeps_its_choice_and_reports_each_change_once() {
     assert_eq!(query(&host, "free")["value"], "l");
     assert_eq!(query(&host, "pick")["value"], "b");
 }
+
+#[test]
+fn a_page_parked_and_loaded_again_starts_with_unbound_controls_unset() {
+    let worker = ViewWorker::spawn("test-uncontrolled-park").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let page = "function render(){return h('page',{},h('switch',{'data-testid':'sw','aria-label':'Wifi'}))}";
+    let host = shown(&platform, &worker, page);
+    act(&platform, &host, "sw", serde_json::json!({"kind":"click"}));
+    assert_eq!(query(&host, "sw")["checked"], true);
+    host.set_visible(false);
+    host.park();
+    platform.settle(&[&host]);
+    host.load(source(page));
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    run_frames(&platform, &host, 2);
+    assert_eq!(
+        query(&host, "sw")["checked"],
+        false,
+        "the parked instance's value does not carry over"
+    );
+}

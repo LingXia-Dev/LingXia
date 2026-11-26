@@ -14,9 +14,7 @@ impl<A: PlatformAdapter> Inner<A> {
         if started.is_empty() {
             return;
         }
-        let jump = self.adapter.environment().is_some_and(|env| {
-            env.value["reducedMotion"] == true || env.value["animatorDurationScale"] == 0.0
-        });
+        let jump = self.reduced_motion();
         for id in started {
             self.glide_step(id, jump);
         }

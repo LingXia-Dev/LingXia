@@ -194,7 +194,7 @@ fn run(job: &Job) -> Result<Value, String> {
         }
     }
     let cost = display.cost();
-    let metrics = page.metrics().clone();
+    let metrics = page.frame_metrics().clone();
     if let Some(path) = &job.nodes {
         let json = serde_json::to_string_pretty(&display.nodes).map_err(|e| e.to_string())?;
         std::fs::write(path, json).map_err(|e| e.to_string())?;
@@ -224,7 +224,7 @@ fn run(job: &Job) -> Result<Value, String> {
     for _ in 0..5 {
         let mut cold = session(job, &source)?;
         layout(&mut cold, width, height, job.scale, at)?;
-        times.push(cold.metrics().total_us);
+        times.push(cold.frame_metrics().total_us);
     }
     times.sort_unstable();
     Ok(json!({

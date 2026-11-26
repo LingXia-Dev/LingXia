@@ -829,12 +829,13 @@ impl<A: PlatformAdapter> Inner<A> {
         if !self.paced_hidden() {
             return self.adapter.request_vsync();
         }
+        // Read before `main` is locked: the adapter is never called under it.
+        let now = self.adapter.now();
         let (tick, interval, delay) = {
             let mut main = self.main();
             if std::mem::replace(&mut main.covered_tick, true) {
                 return;
             }
-            let now = self.adapter.now();
             let tick = main.expected_vsync(now, 0);
             (tick, main.vsync_interval, tick.saturating_sub(now))
         };

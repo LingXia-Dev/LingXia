@@ -68,9 +68,9 @@ pub(crate) fn supports(feature: Feature) -> bool {
     features().contains(&feature)
 }
 
-use rong::Source;
 #[cfg(test)]
 use rong::JSEngine;
+use rong::Source;
 
 /// A bare classic-script render for engine tests: no budget, console or microtask drain, so
 /// pages run through [`crate::ViewSession`]. `environment` gains the viewport.
@@ -180,7 +180,9 @@ impl DevWarnings {
         let (mut warnings, dropped) =
             std::mem::take(&mut *self.0.lock().unwrap_or_else(|p| p.into_inner()));
         if dropped > 0 {
-            warnings.push(format!("UI_LIMIT: {dropped} more dev warnings were left out"));
+            warnings.push(format!(
+                "UI_LIMIT: {dropped} more dev warnings were left out"
+            ));
         }
         warnings
     }

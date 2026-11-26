@@ -2130,8 +2130,19 @@ fn a_state_write_is_acknowledged_once_a_frame_showing_it_is_built() {
     );
     platform.settle(&[&host]);
     assert_eq!(acks(&host), 1);
-    platform.advance(Duration::from_millis(250));
-    assert_eq!(acks(&host), 2);
+    platform.advance(Duration::from_millis(150));
+    // A later write keeps its own deadline: the earlier one's does not free it.
+    deliver(
+        &host,
+        connection,
+        serde_json::json!({"v":2,"kind":"state.patch","baseRev":2,"rev":3,"ack":true,
+            "ops":[{"op":"replace","path":"/count","value":6}]}),
+    );
+    platform.settle(&[&host]);
+    platform.advance(Duration::from_millis(100));
+    assert_eq!(acks(&host), 2, "only the first write's deadline passed");
+    platform.advance(Duration::from_millis(150));
+    assert_eq!(acks(&host), 3);
 }
 
 // Motion: wakeups, hidden silence and the animation frame counter.
@@ -6245,6 +6256,34 @@ fn a_list_anchor_with_a_duration_glides_there_and_input_stops_it() {
 }
 
 #[test]
+fn a_glide_jumps_when_automation_stills_motion() {
+    let worker = ViewWorker::spawn("test-list-glide-still").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source(
+            "function render(){return h(listTag,{count:200,anchor:{index:50,align:'start',duration:400},style:{height:100},row:i=>h('text',{'data-testid':'r'+i,style:{height:40}},String(i))})}",
+        ),
+        false,
+    );
+    host.automation_request(&serde_json::json!({"op": "environment", "still": true}))
+        .unwrap();
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    for _ in 0..3 {
+        *host.adapter().clock.lock().unwrap() += Duration::from_millis(16);
+        platform.advance(Duration::from_millis(16));
+        platform.settle(&[&host]);
+    }
+    let offset = host.snapshot().unwrap().frame.nodes[0]
+        .scroll
+        .as_ref()
+        .unwrap()
+        .offset;
+    assert_eq!(offset, 2000.0, "a stilled page lands at once");
+}
+
+#[test]
 fn a_held_slider_draws_its_active_parts_on_the_presented_frame() {
     let worker = ViewWorker::spawn("test-view").unwrap();
     let platform = Platform::new(&[&worker]);
@@ -8023,6 +8062,37 @@ fn a_list_reports_its_rows_by_key() {
 
 /// A test's `now` pins `useNow` and press `timeStamp`s; moving the pin renders the new minute at
 /// once, and a page reading the clock unpinned arms one timer to its next step.
+#[test]
+fn a_disposed_page_stops_its_clock_and_arms_no_more_ticks() {
+    let worker = ViewWorker::spawn("test-view").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source("function render(){return h('text',{},String(useNow('second')))}"),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let tick = Duration::from_millis(1_002);
+    let armed = || {
+        platform
+            .timers
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(delay, _)| *delay <= tick)
+            .count()
+    };
+    assert!(armed() > 0, "a shown page reading the second arms a tick");
+    host.dispose();
+    platform.settle(&[&host]);
+    for _ in 0..3 {
+        platform.advance(tick);
+        platform.settle(&[&host]);
+    }
+    assert_eq!(armed(), 0, "no tick re-arms after dispose");
+}
+
 #[test]
 fn use_now_follows_a_pinned_clock_and_ticks_only_when_read() {
     let worker = ViewWorker::spawn("test-view").unwrap();

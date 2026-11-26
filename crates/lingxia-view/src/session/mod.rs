@@ -299,7 +299,7 @@ impl ViewSession {
     }
 
     /// Hold a host bar's snapshot to draw under the top layer while it stays open; see
-    /// [`crate::ViewHost::set_chrome_snapshot`].
+    /// [`crate::session::host::ViewHost::set_chrome_snapshot`].
     pub fn set_chrome_snapshot(
         &mut self,
         edge: crate::scene::display::ChromeEdge,
@@ -314,10 +314,6 @@ impl ViewSession {
 
     pub fn clear_chrome_snapshots(&mut self) {
         self.chrome.clear();
-    }
-
-    pub fn metrics(&self) -> &crate::FrameMetrics {
-        &self.metrics
     }
 
     pub fn new(source: &str) -> Result<Self, String> {
@@ -532,6 +528,19 @@ impl ViewSession {
         self.input_rebuild = false;
         self.reveal_input = false;
         self.pending_inputs = None;
+        // A reopened page starts unpressed, unfocused and unmeasured: the host's state for
+        // these starts over too, and only sends changes.
+        self.pressed = None;
+        self.hovered = None;
+        self.focused_control = None;
+        self.uncontrolled = Default::default();
+        self.boxes.clear();
+        self.boxes_due.clear();
+        self.visibility = Default::default();
+        self.video_reported.clear();
+        self.keyboard_reveal = None;
+        self.active_shown = None;
+        self.clicks.clear();
         self.metrics = Default::default();
         self.advance();
         self.layout_commit = self.generation;

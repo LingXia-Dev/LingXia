@@ -63,6 +63,19 @@ impl ViewSession {
         );
         std::mem::swap(&mut self.loaded_languages, &mut other.loaded_languages);
         crate::engine::intl::update(&self.context, &self.intl);
+        // Each isolate drives its own page's players, and hears loudness from its page.
+        let _ = video::install(
+            &self.context,
+            self.renderer.videos.scope(),
+            self.renderer.videos.orientation_writer(),
+        );
+        let _ = video::install(
+            &other.context,
+            other.renderer.videos.scope(),
+            other.renderer.videos.orientation_writer(),
+        );
+        self.loud_sent.set(None);
+        other.loud_sent.set(None);
         // The buffers each isolate referenced are its own.
         self.wire.swap(&other.wire);
         // Each keeps resolving against its own page's scales.

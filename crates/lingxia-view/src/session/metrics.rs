@@ -38,7 +38,7 @@ pub struct FrameMetrics {
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub top_layer_open: bool,
     /// The bar snapshots this frame draws under the top layer, by the generation
-    /// [`crate::ViewHost::set_chrome_snapshot`] returned; 0 when it draws none.
+    /// [`crate::session::host::ViewHost::set_chrome_snapshot`] returned; 0 when it draws none.
     #[serde(skip_serializing_if = "is_zero_u64")]
     pub chrome_snapshot: u64,
 }

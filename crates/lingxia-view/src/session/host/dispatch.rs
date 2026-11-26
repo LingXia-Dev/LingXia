@@ -650,17 +650,40 @@ impl<A: PlatformAdapter> Inner<A> {
             .collect();
         let mut changed = false;
         let mut ran = Vec::with_capacity(queued.len());
+        let mut panicked = None;
         for Queued { page, run, done } in queued {
+            // After a native panic the page fails; what is left is answered, never dropped.
+            if panicked.is_some() {
+                ran.push((done, None));
+                continue;
+            }
             let result = self.lifecycle.is_current_page(page).then(|| {
-                let result =
-                    run(session).and_then(|changed| Ok(session.apply_picker_results()? || changed));
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    #[cfg(test)]
+                    {
+                        let mut main = self.main();
+                        if main.input_panics > 0 {
+                            main.input_panics -= 1;
+                            drop(main);
+                            panic!("test fault while running input");
+                        }
+                    }
+                    run(session).and_then(|changed| Ok(session.apply_picker_results()? || changed))
+                }))
+                .unwrap_or_else(|panic| {
+                    let error = super::panics::describe(panic);
+                    panicked = Some(error.clone());
+                    Err(error)
+                });
                 let clicks = session.take_clicks();
                 result.map(|c| (clicks, c))
             });
             changed |= matches!(result, Some(Ok((_, true))));
             ran.push((done, result));
         }
-        let update = if changed {
+        let update = if let Some(error) = panicked {
+            Err(error)
+        } else if changed {
             self.drained(session)
         } else {
             Ok(None)

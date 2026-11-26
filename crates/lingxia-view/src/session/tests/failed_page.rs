@@ -118,3 +118,22 @@ fn three_panics_in_a_row_stall_the_page_and_automation_hears_it_at_once() {
         "recovery chrome is taken down"
     );
 }
+
+#[test]
+fn a_panic_while_input_runs_fails_the_page_and_releases_the_input() {
+    let (_worker, platform, host) = opened("test-panic-input");
+    host.panic_input(1);
+    tap(&host, 20.0, 20.0);
+    platform.settle(&[&host]);
+    let failure = host.failure().expect("the page fails");
+    assert!(
+        failure.error.starts_with("UI_RENDER: native panic"),
+        "{}",
+        failure.error
+    );
+    assert_eq!(
+        host.input_held(),
+        (0, false),
+        "nothing waits on the input that panicked"
+    );
+}

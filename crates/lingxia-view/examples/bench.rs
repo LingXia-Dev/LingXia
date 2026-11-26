@@ -82,7 +82,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             continue;
         }
         gc_us += started.elapsed().as_micros() as u64;
-        let m = page.metrics();
+        let m = page.frame_metrics();
         if let Some(p) = m.view_phases {
             // Vnode counts are scaled so they print as counts beside the ms columns.
             let spans = [

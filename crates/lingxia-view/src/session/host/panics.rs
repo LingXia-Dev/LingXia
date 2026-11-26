@@ -25,17 +25,20 @@ pub(super) fn watch() {
 }
 
 /// The failure a caught panic becomes: the short form, or with its message and location
-/// under a dev session.
+/// under a dev session. The log always gets the full text, release builds included.
 pub(super) fn describe(panic: Box<dyn std::any::Any + Send>) -> String {
     let location = LOCATION.with(|slot| slot.borrow_mut().take());
-    if !crate::engine::dev_globals() {
-        return crate::session::PANIC.to_owned();
-    }
     let message = panic
         .downcast_ref::<&str>()
         .map(|message| (*message).to_owned())
         .or_else(|| panic.downcast_ref::<String>().cloned());
-    text(message.as_deref(), location.as_deref())
+    let full = text(message.as_deref(), location.as_deref());
+    log::error!(target: "lingxia_view", "{full}");
+    if crate::engine::dev_globals() {
+        full
+    } else {
+        crate::session::PANIC.to_owned()
+    }
 }
 
 fn text(message: Option<&str>, location: Option<&str>) -> String {

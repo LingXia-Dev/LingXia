@@ -43,6 +43,18 @@ fn a_swapped_module_keeps_local_state_and_a_broken_one_rolls_back() {
 }
 
 #[test]
+fn a_swapped_module_drives_the_pages_own_players() {
+    let mut page = ViewSession::new(&module("Count")).unwrap();
+    page.swap_module(&module("Total")).unwrap();
+    page.eval("__lingxiaVideoOrientation('landscape')").unwrap();
+    assert_eq!(
+        page.renderer.videos.orientation(),
+        Some(crate::scene::video::Orientation::Landscape),
+        "the new isolate's video globals reach this page's renderer"
+    );
+}
+
+#[test]
 fn component_locals_survive_a_swap_whatever_order_components_first_rendered_in() {
     // Two tab components; the page shows Paint first, then Inputs, whose local is set.
     let module = |label: &str| {

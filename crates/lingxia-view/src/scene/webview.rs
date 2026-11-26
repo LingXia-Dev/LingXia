@@ -170,7 +170,7 @@ fn overlaps(a: [f32; 4], b: [f32; 4]) -> bool {
     a[0] < b[0] + b[2] && b[0] < a[0] + a[2] && a[1] < b[1] + b[3] && b[1] < a[1] + a[3]
 }
 
-/// Extracts [`WebViewMount`] geometry from the active `<webview>` [`crate::scene::node::NodeSnapshot`].
+/// Extracts [`WebViewMount`] geometry from an active `<webview>` node.
 pub fn mount_of(node: &crate::scene::node::NodeSnapshot) -> Option<WebViewMount> {
     let wv = node.webview.as_ref().filter(|wv| wv.active)?;
     let (bounds, radius, radii) = match node.content_clip {

@@ -431,6 +431,17 @@ fn palettes(pack: &lingxia_theme::Pack, revision: u64) -> Result<[serde_json::Va
     ])
 }
 
+impl<A: crate::platform::PlatformAdapter> super::Inner<A> {
+    /// Whether motion runs instantly, with the overrides automation set taken into account.
+    pub(super) fn reduced_motion(&self) -> bool {
+        let Some(mut env) = self.adapter.environment() else {
+            return false;
+        };
+        self.main().host_environment.apply(&mut env.value);
+        env.value["reducedMotion"] == true || env.value["animatorDurationScale"] == 0.0
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

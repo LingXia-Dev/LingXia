@@ -1012,6 +1012,8 @@ fn failed_frames_and_callback_errors_do_not_commit_candidate_editors() {
         "globalThis.show=false;function render(){return h('view',{},show?h('input',{key:'a',autoFocus:true,value:'old',onInput(){throw Error('handler failed')}}):null)}",
     );
     let mut page = ViewSession::new(&module).unwrap();
+    // Loud, so a throwing handler fails the call rather than being reported quietly.
+    page.loud = true;
     page.layout(300, 300, 1.0).unwrap();
     page.eval("show=true").unwrap();
     assert!(
@@ -2028,6 +2030,21 @@ fn a_handler_that_throws_reports_its_own_message() {
     let run = frame.nodes.iter().find_map(|n| n.on_click).unwrap();
     let error = page.click(page.generation(), run).unwrap_err();
     assert!(error.contains("missingHelper"), "{error}");
+}
+
+#[test]
+fn a_value_handler_that_throws_reports_like_a_press() {
+    let module = source(
+        "function render(){return h('plot',{kind:'bar',values:[1,2],'aria-label':'Series',onSelect:()=>{missingSelect()},style:{width:200,height:100}})}",
+    );
+    let mut page = ViewSession::new(&module).unwrap();
+    page.loud = true;
+    let frame = page.layout(240, 160, 1.0).unwrap();
+    let select = frame.nodes[0].plot.as_ref().unwrap().on_select.unwrap();
+    let error = page
+        .number_event(page.generation(), select, 1.0)
+        .unwrap_err();
+    assert!(error.contains("missingSelect"), "{error}");
 }
 
 #[test]

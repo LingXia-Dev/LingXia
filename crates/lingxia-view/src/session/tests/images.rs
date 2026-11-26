@@ -42,14 +42,13 @@ fn image_outcomes_follow_committed_identity_and_retry_without_idle_loops() {
     page.layout(200, 200, 1.0).unwrap();
     let original = page.image_requests()[0].clone();
     page.image_completed(original.clone(), false);
+    // A page committing every frame presents one commit behind; its outcomes still arrive.
     assert!(
-        !page
-            .dispatch_image_events(crate::session::lifecycle::CommitTicket::new(
-                page.generation().get() - 1
-            ))
-            .unwrap()
+        page.dispatch_image_events(crate::session::lifecycle::CommitTicket::new(
+            page.generation().get() - 1
+        ))
+        .unwrap()
     );
-    assert!(page.dispatch_image_events(page.generation()).unwrap());
     let frame = page.layout(200, 200, 1.0).unwrap();
     assert_eq!(
         frame

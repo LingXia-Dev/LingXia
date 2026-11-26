@@ -225,14 +225,8 @@ impl ViewSession {
             uncontrolled::Proposal::Bound => false,
         };
         let encoded = serde_json::to_string(text).map_err(|e| e.to_string())?;
-        self.execute(|| {
-            self.context
-                .eval(Source::from_bytes(
-                    format!("__lingxiaDispatch({handle},{encoded})").as_bytes(),
-                ))
-                .map_err(|e| crate::engine::js_error(&self.context, e))
-        })
-        .map(|ran: bool| ran || took)
+        self.dispatch_payload(handle, &encoded)
+            .map(|ran| ran || took)
     }
 
     /// Collects the `onLayout` elements whose content size differs from the one last reported.
@@ -596,14 +590,23 @@ impl ViewSession {
                 false,
             ),
         };
-        self.execute(|| {
+        self.dispatch_payload(handle, &encoded)
+            .map(|ran| ran || took)
+    }
+
+    /// Runs `handle` with a JSON payload, as [`Self::dispatch_handle`] runs a press: the
+    /// runtime hears whether failures are loud, and a handler that threw is reported.
+    fn dispatch_payload(&mut self, handle: u64, encoded: &str) -> Result<bool, String> {
+        self.send_loudness()?;
+        let ran: bool = self.execute(|| {
             self.context
                 .eval(Source::from_bytes(
                     format!("__lingxiaDispatch({handle},{encoded})").as_bytes(),
                 ))
                 .map_err(|e| crate::engine::js_error(&self.context, e))
-        })
-        .map(|ran: bool| ran || took)
+        })?;
+        self.take_handler_failure()?;
+        Ok(ran)
     }
 }
 

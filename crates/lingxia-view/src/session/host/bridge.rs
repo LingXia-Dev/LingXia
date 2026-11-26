@@ -108,12 +108,14 @@ impl<A: PlatformAdapter> Inner<A> {
                 main.visible && !main.disposed
             };
             if showing && (!self.window_hidden() || self.paced_hidden()) {
+                // The deadline frees these writes only, not ones that arrive after them.
+                let latest = update.acks.iter().copied().max().unwrap_or(0);
                 self.main()
                     .acks
                     .extend(update.acks.into_iter().map(|rev| (connection, rev)));
                 let inner = self.clone();
                 self.adapter
-                    .post_after(ACK_DEADLINE, Box::new(move || inner.release_acks(u64::MAX)));
+                    .post_after(ACK_DEADLINE, Box::new(move || inner.release_acks(latest)));
             } else {
                 for rev in update.acks {
                     self.adapter.state(connection, StateSignal::Acked(rev));

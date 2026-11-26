@@ -34,9 +34,7 @@ impl<A: PlatformAdapter> Inner<A> {
                 })
                 .collect::<Vec<_>>()
         };
-        let reduce = self.adapter.environment().is_some_and(|env| {
-            env.value["reducedMotion"] == true || env.value["animatorDurationScale"] == 0.0
-        });
+        let reduce = self.reduced_motion();
         for (release, serial) in releases {
             self.drag_step(
                 Arc::new(release),

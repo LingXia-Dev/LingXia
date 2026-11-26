@@ -179,7 +179,7 @@ impl ViewWorker {
         self.key.as_deref()
     }
 
-    /// The worker for `key`, started on first use and stopped [`KEEP_ALIVE`] after its last
+    /// The worker for `key`, started on first use and stopped a moment after its last
     /// owner drops unless another page takes it first.
     pub fn shared(key: &str) -> Result<Arc<Self>, String> {
         Self::shared_for(key, KEEP_ALIVE)
@@ -225,7 +225,7 @@ impl ViewWorker {
     }
 
     /// The app session behind `key` closed: its worker stops once no page holds it, without
-    /// waiting out [`KEEP_ALIVE`].
+    /// waiting out the keep-alive.
     pub fn close(key: &str) {
         let Some(slot) = SHARED.lock().unwrap_or_else(|p| p.into_inner()).remove(key) else {
             return;

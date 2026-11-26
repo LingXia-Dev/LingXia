@@ -27,7 +27,10 @@ static POOL: LazyLock<Mutex<Sender<Job>>> = LazyLock::new(|| {
                 loop {
                     let job = queue.lock().unwrap_or_else(|p| p.into_inner()).recv();
                     match job {
-                        Ok(job) => job(),
+                        // A job that panics must not take one of the two threads with it.
+                        Ok(job) => {
+                            let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(job));
+                        }
                         Err(_) => return,
                     }
                 }
@@ -35,6 +38,10 @@ static POOL: LazyLock<Mutex<Sender<Job>>> = LazyLock::new(|| {
     }
     Mutex::new(jobs)
 });
+
+/// Bytes the decoder panics on, under test.
+#[cfg(test)]
+const PANICKING_BYTES: &[u8] = b"test: decoder panic";
 
 static PENDING: AtomicUsize = AtomicUsize::new(0);
 static CACHE: LazyLock<Mutex<Cache>> = LazyLock::new(|| Mutex::new(Cache::new(BUDGET)));
@@ -182,7 +189,15 @@ pub(super) fn decode(
     }
     PENDING.fetch_add(1, Ordering::AcqRel);
     let job: Job = Box::new(move || {
-        let result = Bitmap::decode_to(&bytes, bucket);
+        // A decoder panic on page-supplied bytes fails this image, and its waiters hear it.
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            #[cfg(test)]
+            if bytes.as_slice() == PANICKING_BYTES {
+                panic!("test fault while decoding");
+            }
+            Bitmap::decode_to(&bytes, bucket)
+        }))
+        .unwrap_or_else(|_| Err("UI_IMAGE: the decoder failed on these bytes".into()));
         let ready = {
             let mut cache = cache();
             #[cfg(test)]
@@ -258,6 +273,29 @@ pub(crate) fn occupy(release: std::sync::mpsc::Receiver<()>) {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_decoder_panic_fails_its_waiters_and_the_pool_keeps_decoding() {
+        let decoded = |bytes: Vec<u8>| {
+            let (sent, received) = std::sync::mpsc::channel();
+            decode(bytes, B64, move |result| {
+                let _ = sent.send(result.map(|_| ()));
+            });
+            received
+                .recv_timeout(std::time::Duration::from_secs(10))
+                .expect("the decode answers")
+        };
+        // Two in a row: the pool has two threads, and each panic must leave its thread alive.
+        for _ in 0..2 {
+            let error = decoded(PANICKING_BYTES.to_vec()).unwrap_err();
+            assert!(error.starts_with("UI_IMAGE:"), "{error}");
+        }
+        assert!(decoded(png(8, 8)).is_ok(), "the pool still decodes");
+        assert!(
+            decoded(PANICKING_BYTES.to_vec()).is_err(),
+            "the failed key is not left waiting"
+        );
+    }
     use super::*;
     use vello_cpu::Pixmap;
 

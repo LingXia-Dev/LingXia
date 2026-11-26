@@ -61,14 +61,17 @@ impl ViewSession {
         }
     }
 
-    /// Called after presentation; newly mounted consumers also receive cached outcomes.
+    /// Called after `presented` reached the screen; newly mounted consumers also receive cached
+    /// outcomes. They go to the latest commit's handlers: a page that commits every frame (a
+    /// spinner) is always a commit past its last present.
     pub fn dispatch_image_events(
         &mut self,
-        generation: crate::session::lifecycle::CommitTicket,
+        presented: crate::session::lifecycle::CommitTicket,
     ) -> Result<bool, String> {
-        if generation != self.generation {
+        if presented.get() > self.generation.get() {
             return Ok(false);
         }
+        let generation = self.generation;
         let records = self.input_records.as_deref().unwrap_or_default();
         let identities = crate::protocol::identities(records);
         let mut handles = Vec::new();
