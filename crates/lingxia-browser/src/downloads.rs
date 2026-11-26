@@ -11,7 +11,7 @@ use lingxia_platform::traits::app_runtime::AppRuntime;
 use lingxia_transfer as transfer;
 use lingxia_transfer::network::BrowserNetwork;
 use lingxia_webview::DownloadRequest;
-use lxapp::{LxApp, LxAppError, publish_app_event};
+use lxapp::{LxApp, publish_app_event};
 use std::path::PathBuf;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -171,31 +171,19 @@ pub(crate) async fn browser_download_resource(
     }
 }
 
-fn map_lxapp_error_to_downloads(err: LxAppError) -> transfer::DownloadsError {
-    match err {
-        LxAppError::InvalidParameter(message) | LxAppError::SurfaceConflict(message) => {
+fn map_lxapp_error_to_downloads(err: impl Into<lingxia_error::Error>) -> transfer::DownloadsError {
+    use lingxia_error::code;
+    let err = err.into();
+    let message = err.message().to_string();
+    match err.code() {
+        code::INVALID_ARG | code::SURFACE_CONFLICT => {
             transfer::DownloadsError::InvalidParameter(message)
         }
-        LxAppError::ResourceNotFound(message) => {
-            transfer::DownloadsError::ResourceNotFound(message)
-        }
-        LxAppError::UnsupportedOperation(message) | LxAppError::SurfaceRoleLocked(message) => {
+        code::NOT_FOUND => transfer::DownloadsError::ResourceNotFound(message),
+        code::NOT_SUPPORTED | code::SURFACE_ROLE_LOCKED => {
             transfer::DownloadsError::UnsupportedOperation(message)
         }
-        LxAppError::IoError(message)
-        | LxAppError::Runtime(message)
-        | LxAppError::ChannelError(message)
-        | LxAppError::ResourceExhausted(message)
-        | LxAppError::Bridge(message)
-        | LxAppError::RongJS(message)
-        | LxAppError::PluginNotConfigured(message)
-        | LxAppError::PluginDownloadFailed(message)
-        | LxAppError::InvalidJsonFile(message)
-        | LxAppError::WebView(message) => transfer::DownloadsError::Runtime(message),
-        LxAppError::RongJSHost { code, message, .. } => {
-            transfer::DownloadsError::Runtime(format!("{code}: {message}"))
-        }
-        LxAppError::Coded(error) => transfer::DownloadsError::Runtime(error.to_string()),
+        _ => transfer::DownloadsError::Runtime(message),
     }
 }
 
@@ -361,20 +349,24 @@ pub(crate) fn start_native_browser_download(
     suggested_filename: Option<&str>,
     source_page_url: Option<&str>,
     cookie: Option<&str>,
-) -> Result<(), LxAppError> {
+) -> Result<(), lingxia_error::Error> {
     let normalized_tab_id = normalize_runtime_tab_id(tab_id).ok_or_else(|| {
-        LxAppError::InvalidParameter("tab_id must be a valid runtime browser tab id".to_string())
+        lingxia_error::Error::invalid_arg(
+            "tab_id must be a valid runtime browser tab id".to_string(),
+        )
     })?;
 
     let normalized_url = url.trim();
     if normalized_url.is_empty() {
-        return Err(LxAppError::InvalidParameter("url is required".to_string()));
+        return Err(lingxia_error::Error::invalid_arg(
+            "url is required".to_string(),
+        ));
     }
     if !matches!(
         extract_url_scheme(normalized_url).as_deref(),
         Some("http" | "https")
     ) {
-        return Err(LxAppError::InvalidParameter(
+        return Err(lingxia_error::Error::invalid_arg(
             "browser download url must be http(s)".to_string(),
         ));
     }
@@ -382,7 +374,7 @@ pub(crate) fn start_native_browser_download(
     let source_page_url = normalize_optional_string(source_page_url)
         .or_else(|| browser_tab_info(&normalized_tab_id).and_then(|info| info.current_url));
     if !browser_tab_exists(&normalized_tab_id) {
-        return Err(LxAppError::ResourceNotFound(format!(
+        return Err(lingxia_error::Error::not_found(format!(
             "browser tab not found: {}",
             normalized_tab_id
         )));

@@ -13,6 +13,7 @@ categories = ["web-programming", "api-bindings"]
 
 [dependencies]
 lingxia-service = { workspace = true }
+lingxia-error = { workspace = true }
 lxapp = { workspace = true, default-features = false }
 lingxia-log = { workspace = true }
 lingxia-transfer = { workspace = true, features = ["http-proxy"] }

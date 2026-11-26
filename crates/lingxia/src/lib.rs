@@ -102,7 +102,7 @@ impl RuntimeInfo {
         &self,
         page: &str,
         query: Option<&serde_json::Value>,
-    ) -> std::result::Result<(), lxapp::LxAppError> {
+    ) -> crate::Result<()> {
         crate::browser::open_system_page(page, query)
     }
 }

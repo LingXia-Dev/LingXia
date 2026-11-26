@@ -7,8 +7,8 @@ pub(crate) const APP_ID: &str = lingxia_browser::BUILTIN_BROWSER_APPID;
 pub(crate) const APP_ID: &str = "";
 
 #[cfg(not(feature = "browser-runtime"))]
-fn unavailable<T>() -> Result<T, lxapp::LxAppError> {
-    Err(lxapp::LxAppError::UnsupportedOperation(
+fn unavailable<T>() -> Result<T, lingxia_error::Error> {
+    Err(lingxia_error::Error::not_supported(
         "browser not available (browser feature disabled)".to_string(),
     ))
 }
@@ -33,7 +33,7 @@ pub(crate) fn register_bundled_app_once() {
 }
 
 #[cfg(any(target_os = "ios", target_os = "macos"))]
-pub(crate) fn open(url: &str, tab_id: Option<&str>) -> Result<String, lxapp::LxAppError> {
+pub(crate) fn open(url: &str, tab_id: Option<&str>) -> Result<String, lingxia_error::Error> {
     #[cfg(feature = "browser-runtime")]
     return lingxia_browser::open(url, tab_id);
     #[cfg(not(feature = "browser-runtime"))]
@@ -48,7 +48,7 @@ pub(crate) fn open_for_app(
     session_id: u64,
     url: &str,
     tab_id: Option<&str>,
-) -> Result<String, lxapp::LxAppError> {
+) -> Result<String, lingxia_error::Error> {
     #[cfg(feature = "browser-runtime")]
     return lingxia_browser::open_for_app(appid, session_id, url, tab_id);
     #[cfg(not(feature = "browser-runtime"))]
@@ -63,11 +63,11 @@ pub(crate) fn open_for_app(
 pub(crate) fn open_system_page(
     page: &str,
     query: Option<&serde_json::Value>,
-) -> Result<(), lxapp::LxAppError> {
+) -> Result<(), lingxia_error::Error> {
     #[cfg(feature = "browser-runtime")]
     {
         let options = lxapp::LxAppStartupOptions::for_page(Some(page), query)
-            .map_err(lxapp::LxAppError::InvalidParameter)?;
+            .map_err(lingxia_error::Error::invalid_arg)?;
         lxapp::open_control_surface_lxapp_page(
             super::native_control_authority()?,
             lingxia_browser::BUILTIN_BROWSER_APPID,
@@ -115,7 +115,7 @@ pub(crate) fn open_aside_for_app(
     session_id: u64,
     url: &str,
     tab_id: Option<&str>,
-) -> Result<String, lxapp::LxAppError> {
+) -> Result<String, lingxia_error::Error> {
     #[cfg(feature = "browser-runtime")]
     return lingxia_browser::open_aside_for_app(appid, session_id, url, tab_id);
     #[cfg(not(feature = "browser-runtime"))]
@@ -157,7 +157,7 @@ pub(crate) fn open_standalone_for_app(
     tab_id: Option<&str>,
     data_mode: lingxia_webview::WebViewDataMode,
     url_callback: bool,
-) -> Result<String, lxapp::LxAppError> {
+) -> Result<String, lingxia_error::Error> {
     #[cfg(feature = "browser-runtime")]
     return lingxia_browser::open_standalone_for_app(
         appid,
@@ -262,7 +262,7 @@ pub(crate) fn set_tabs_changed_handler(handler: std::sync::Arc<dyn Fn() + Send +
     target_os = "android",
     target_env = "ohos"
 ))]
-pub(crate) fn navigate(tab_id: &str, url: &str) -> Result<(), lxapp::LxAppError> {
+pub(crate) fn navigate(tab_id: &str, url: &str) -> Result<(), lingxia_error::Error> {
     #[cfg(feature = "browser-runtime")]
     return lingxia_browser::open(url, Some(tab_id)).map(|_| ());
     #[cfg(not(feature = "browser-runtime"))]
@@ -309,7 +309,7 @@ pub(crate) fn reload(tab_id: &str) -> bool {
     }
 }
 
-pub(crate) fn close(tab_id: &str) -> Result<(), lxapp::LxAppError> {
+pub(crate) fn close(tab_id: &str) -> Result<(), lingxia_error::Error> {
     #[cfg(feature = "browser-runtime")]
     return lingxia_browser::close(tab_id);
     #[cfg(not(feature = "browser-runtime"))]
@@ -320,7 +320,7 @@ pub(crate) fn close(tab_id: &str) -> Result<(), lxapp::LxAppError> {
 }
 
 #[cfg(any(target_os = "ios", target_os = "macos"))]
-pub(crate) fn discard(tab_id: &str) -> Result<(), lxapp::LxAppError> {
+pub(crate) fn discard(tab_id: &str) -> Result<(), lingxia_error::Error> {
     #[cfg(feature = "browser-runtime")]
     return lingxia_browser::discard(tab_id);
     #[cfg(not(feature = "browser-runtime"))]
@@ -331,7 +331,7 @@ pub(crate) fn discard(tab_id: &str) -> Result<(), lxapp::LxAppError> {
 }
 
 #[cfg(any(target_os = "ios", target_os = "macos"))]
-pub(crate) fn reactivate(tab_id: &str) -> Result<(), lxapp::LxAppError> {
+pub(crate) fn reactivate(tab_id: &str) -> Result<(), lingxia_error::Error> {
     #[cfg(feature = "browser-runtime")]
     return lingxia_browser::reactivate(tab_id);
     #[cfg(not(feature = "browser-runtime"))]
@@ -394,7 +394,7 @@ pub(crate) fn download(
     suggested_filename: Option<&str>,
     source_page_url: Option<&str>,
     cookie: Option<&str>,
-) -> Result<(), lxapp::LxAppError> {
+) -> Result<(), lingxia_error::Error> {
     #[cfg(feature = "browser-runtime")]
     return lingxia_browser::start_download(
         tab_id,

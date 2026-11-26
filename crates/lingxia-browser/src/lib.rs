@@ -28,8 +28,6 @@ pub use types::{
     BrowserWaitCondition, BrowserWaitResult,
 };
 
-pub use lxapp::LxAppError;
-
 pub const BUILTIN_BROWSER_APPID: &str = "app.lingxia.browser";
 /// `(url, title)` observer; `title` is empty when no title has been reported
 /// for that URL yet.
@@ -77,7 +75,7 @@ pub(crate) fn native_control_authority() -> Option<&'static lxapp::NativeControl
     NATIVE_CONTROL_AUTHORITY.get()
 }
 
-pub fn open(url: &str, tab_id: Option<&str>) -> Result<String, LxAppError> {
+pub fn open(url: &str, tab_id: Option<&str>) -> Result<String, lingxia_error::Error> {
     tabs::open_internal_browser_tab(url, tab_id)
 }
 
@@ -113,7 +111,7 @@ pub fn open_for_app(
     session_id: u64,
     url: &str,
     tab_id: Option<&str>,
-) -> Result<String, LxAppError> {
+) -> Result<String, lingxia_error::Error> {
     tabs::open_internal_browser_tab_for_owner(
         appid,
         session_id,
@@ -132,7 +130,7 @@ pub fn open_aside_for_app(
     session_id: u64,
     url: &str,
     tab_id: Option<&str>,
-) -> Result<String, LxAppError> {
+) -> Result<String, lingxia_error::Error> {
     tabs::open_internal_browser_tab_for_owner(
         appid,
         session_id,
@@ -155,7 +153,7 @@ pub fn open_standalone_for_app(
     tab_id: Option<&str>,
     data_mode: lingxia_webview::WebViewDataMode,
     url_callback: bool,
-) -> Result<String, LxAppError> {
+) -> Result<String, lingxia_error::Error> {
     tabs::open_internal_browser_tab_for_owner(
         appid,
         session_id,
@@ -188,7 +186,7 @@ pub fn tab_is_standalone(tab_id: &str) -> bool {
 
 /// Move a docked aside tab into the product browser as its active tab,
 /// keeping the same tab id and WebView. The shell re-hosts the WebView.
-pub fn promote_standalone_tab(tab_id: &str) -> Result<(), LxAppError> {
+pub fn promote_standalone_tab(tab_id: &str) -> Result<(), lingxia_error::Error> {
     tabs::promote_standalone_tab(tab_id)
 }
 
@@ -204,7 +202,7 @@ pub fn demote_tab_to_standalone(
     tab_id: &str,
     owner_appid: &str,
     owner_session_id: u64,
-) -> Result<(), LxAppError> {
+) -> Result<(), lingxia_error::Error> {
     tabs::demote_tab_to_standalone(tab_id, owner_appid, owner_session_id)
 }
 
@@ -214,7 +212,7 @@ pub fn can_demote_tab_to_standalone(tab_id: &str) -> bool {
     tabs::can_demote_tab_to_standalone(tab_id)
 }
 
-pub fn close(tab_id: &str) -> Result<(), LxAppError> {
+pub fn close(tab_id: &str) -> Result<(), lingxia_error::Error> {
     let owner_appid = tabs::tab_owner_appid(tab_id);
     tabs::close_browser_tab(tab_id)?;
     if let Some(owner_appid) = owner_appid {
@@ -235,12 +233,12 @@ pub fn prune_stale_owner_tabs(owner_appid: &str, current_session_id: u64) -> usi
 }
 
 /// Discard a tab's WebView to free memory while keeping its sidebar entry.
-pub fn discard(tab_id: &str) -> Result<(), LxAppError> {
+pub fn discard(tab_id: &str) -> Result<(), lingxia_error::Error> {
     tabs::discard_browser_tab(tab_id)
 }
 
 /// Recreate a discarded tab's WebView, reload its URL, and activate it.
-pub fn reactivate(tab_id: &str) -> Result<(), LxAppError> {
+pub fn reactivate(tab_id: &str) -> Result<(), lingxia_error::Error> {
     tabs::reactivate_browser_tab(tab_id)
 }
 
@@ -502,7 +500,7 @@ pub fn start_download(
     suggested_filename: Option<&str>,
     source_page_url: Option<&str>,
     cookie: Option<&str>,
-) -> Result<(), LxAppError> {
+) -> Result<(), lingxia_error::Error> {
     downloads::start_native_browser_download(
         tab_id,
         url,

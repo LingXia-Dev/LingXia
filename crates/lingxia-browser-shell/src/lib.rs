@@ -43,7 +43,6 @@ pub use facade::{
     should_hide_url, tab_path, update_tab,
 };
 pub use history::{record_visit as record_history_visit, update_title as update_history_title};
-use lingxia_browser::LxAppError;
 pub use lingxia_browser::{
     BrowserAddressAction, BrowserAddressInputContext, BrowserAddressInputRequest,
     BrowserAddressInputResponse, BrowserAddressInputTrigger, BrowserAddressValueKind,
@@ -55,6 +54,7 @@ pub use lingxia_native_macros::framework_native;
 use lingxia_platform::traits::app_runtime::AppRuntime;
 #[doc(hidden)]
 pub use lxapp::LxApp;
+use lxapp::LxAppError;
 #[doc(hidden)]
 pub use lxapp::host;
 pub use panel::{open_panel_lxapp, panel_item_for_id, panels_config_json};

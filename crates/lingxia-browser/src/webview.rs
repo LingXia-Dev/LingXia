@@ -27,7 +27,6 @@ use lingxia_webview::{
     WebViewBuilder, WebViewController, WebViewDataMode, WebViewDelegate, WebViewSession,
     WebViewStateChange, render_load_error_page,
 };
-use lxapp::LxAppError;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -297,7 +296,7 @@ pub(crate) fn browser_create_webview(
     create_token: u64,
     data_mode: WebViewDataMode,
     url_callback: Arc<AtomicBool>,
-) -> Result<(), LxAppError> {
+) -> Result<(), lingxia_error::Error> {
     let webtag = browser_webtag(path, session_id, create_token);
     let browser_owner = ensure_browser_lxapp()?;
     let tab_path_owned = path.to_string();
@@ -525,19 +524,23 @@ async fn browser_on_webview_ready(
 pub(crate) fn browser_find_webview(
     path: &str,
     session_id: u64,
-) -> Result<Arc<WebView>, LxAppError> {
+) -> Result<Arc<WebView>, lingxia_error::Error> {
     let create_token = browser_create_token_for_path(path, session_id)
-        .ok_or_else(|| LxAppError::ResourceNotFound(format!("browser tab not found: {path}")))?;
+        .ok_or_else(|| lingxia_error::Error::not_found(format!("browser tab not found: {path}")))?;
     let webtag = browser_webtag(path, session_id, create_token);
     find_managed_webview(&webtag).ok_or_else(|| {
-        LxAppError::ResourceNotFound(format!("browser webview not found: {}", webtag.as_str()))
+        lingxia_error::Error::not_found(format!("browser webview not found: {}", webtag.as_str()))
     })
 }
 
-pub(crate) fn browser_load_url(path: &str, session_id: u64, url: &str) -> Result<(), LxAppError> {
+pub(crate) fn browser_load_url(
+    path: &str,
+    session_id: u64,
+    url: &str,
+) -> Result<(), lingxia_error::Error> {
     browser_find_webview(path, session_id)?
         .load_url(url)
-        .map_err(LxAppError::from)
+        .map_err(lingxia_error::Error::from)
 }
 
 pub(crate) fn browser_reload_document(
@@ -545,15 +548,15 @@ pub(crate) fn browser_reload_document(
     path: &str,
     session_id: u64,
     create_token: u64,
-) -> Result<(), LxAppError> {
+) -> Result<(), lingxia_error::Error> {
     if !browser_tab_generation_matches(tab_id, session_id, create_token) {
-        return Err(LxAppError::ResourceNotFound(format!(
+        return Err(lingxia_error::Error::not_found(format!(
             "browser tab generation is stale: {tab_id}"
         )));
     }
     browser_find_webview(path, session_id)?
         .reload()
-        .map_err(LxAppError::from)
+        .map_err(lingxia_error::Error::from)
 }
 
 pub(crate) fn browser_destroy_webview_if_matches(expected: &Arc<WebView>) -> bool {

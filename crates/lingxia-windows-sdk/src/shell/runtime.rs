@@ -441,7 +441,7 @@ fn enforce_browser_tab_memory_limit(recent_tab_id: Option<&str>) {
 }
 
 #[cfg(feature = "browser-runtime")]
-fn reactivate_browser_tab_if_needed(tab_id: &str) -> Result<(), lxapp::LxAppError> {
+fn reactivate_browser_tab_if_needed(tab_id: &str) -> lingxia::Result<()> {
     lingxia_browser::reactivate(tab_id)?;
     if let Ok(mut state) = BROWSER_TAB_MEMORY_STATE
         .get_or_init(|| Mutex::new(BrowserTabMemoryState::default()))
@@ -496,7 +496,7 @@ fn is_builtin_browser_appid(_appid: &str) -> bool {
 }
 
 #[cfg(feature = "browser-runtime")]
-fn navigate_browser_tab(tab_id: &str, url: &str) -> Result<(), lxapp::LxAppError> {
+fn navigate_browser_tab(tab_id: &str, url: &str) -> lingxia::Result<()> {
     lingxia_browser::open(url, Some(tab_id)).map(|_| ())
 }
 

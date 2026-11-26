@@ -1,6 +1,5 @@
-use lingxia_browser::{
-    BrowserNavigationPolicyRequest, BrowserNavigationPolicyResponse, LxAppError,
-};
+use lingxia_browser::{BrowserNavigationPolicyRequest, BrowserNavigationPolicyResponse};
+use lingxia_error::Error;
 
 pub const APP_ID: &str = lingxia_browser::BUILTIN_BROWSER_APPID;
 
@@ -27,7 +26,7 @@ pub fn should_hide_url(raw: &str) -> bool {
         || lowered == "about:blank"
 }
 
-pub fn open(url: &str, tab_id: Option<&str>) -> Result<String, LxAppError> {
+pub fn open(url: &str, tab_id: Option<&str>) -> Result<String, Error> {
     lingxia_browser::open(url, tab_id)
 }
 
@@ -36,11 +35,11 @@ pub fn open_for_app(
     session_id: u64,
     url: &str,
     tab_id: Option<&str>,
-) -> Result<String, LxAppError> {
+) -> Result<String, Error> {
     lingxia_browser::open_for_app(appid, session_id, url, tab_id)
 }
 
-pub fn close(tab_id: &str) -> Result<(), LxAppError> {
+pub fn close(tab_id: &str) -> Result<(), Error> {
     lingxia_browser::close(tab_id)
 }
 
@@ -59,7 +58,7 @@ pub fn download(
     suggested_filename: Option<&str>,
     source_page_url: Option<&str>,
     cookie: Option<&str>,
-) -> Result<(), LxAppError> {
+) -> Result<(), Error> {
     lingxia_browser::start_download(
         tab_id,
         url,

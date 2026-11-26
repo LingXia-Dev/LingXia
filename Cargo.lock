@@ -3722,6 +3722,7 @@ version = "0.30.0"
 dependencies = [
  "base64 0.23.1",
  "http",
+ "lingxia-error",
  "lingxia-log",
  "lingxia-lxapp",
  "lingxia-platform",

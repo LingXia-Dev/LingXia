@@ -226,7 +226,7 @@ pub enum BrowserAutomationError {
     #[error("browser tab webview not found: {0}")]
     WebViewNotFound(String),
     #[error(transparent)]
-    Open(#[from] lxapp::LxAppError),
+    Open(#[from] lingxia_error::Error),
     #[error(transparent)]
     Script(#[from] WebViewScriptError),
     #[error(transparent)]

@@ -10,7 +10,7 @@ use crate::webview::{
 };
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lingxia_webview::{WebView, WebViewDataMode};
-use lxapp::{LxApp, LxAppError};
+use lxapp::LxApp;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
@@ -209,9 +209,9 @@ fn validate_reused_tab_policy(
     tab: &BrowserTabState,
     data_mode: WebViewDataMode,
     standalone: bool,
-) -> Result<(), LxAppError> {
+) -> Result<(), lingxia_error::Error> {
     if tab.data_mode != data_mode || tab.standalone != standalone {
-        return Err(LxAppError::InvalidParameter(
+        return Err(lingxia_error::Error::invalid_arg(
             "an existing browser tab cannot change data mode or standalone status".to_string(),
         ));
     }
@@ -347,10 +347,10 @@ fn generate_tab_id() -> String {
     }
 }
 
-fn validate_requested_tab_key(input: &str) -> Result<String, LxAppError> {
+fn validate_requested_tab_key(input: &str) -> Result<String, lingxia_error::Error> {
     let trimmed = input.trim();
     if trimmed.is_empty() {
-        return Err(LxAppError::InvalidParameter(
+        return Err(lingxia_error::Error::invalid_arg(
             "tab_id is required".to_string(),
         ));
     }
@@ -358,7 +358,7 @@ fn validate_requested_tab_key(input: &str) -> Result<String, LxAppError> {
         .chars()
         .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
     {
-        return Err(LxAppError::InvalidParameter(
+        return Err(lingxia_error::Error::invalid_arg(
             "tab_id must contain only ASCII letters, digits, '-' or '_'".to_string(),
         ));
     }
@@ -401,7 +401,7 @@ fn deterministic_tab_suffix(seed: &str) -> String {
 fn resolve_browser_tab_id(
     requested_tab_key: Option<&str>,
     scope: BrowserTabScope<'_>,
-) -> Result<String, LxAppError> {
+) -> Result<String, lingxia_error::Error> {
     match requested_tab_key {
         Some(tab_key) => {
             let stable_tab_key = validate_requested_tab_key(tab_key)?;
@@ -433,23 +433,26 @@ fn next_browser_created_order() -> u64 {
 // Owner resolution (used by FFI bridge layer)
 // ---------------------------------------------------------------------------
 
-fn resolve_owner_lxapp(owner_appid: &str, owner_session_id: u64) -> Result<Arc<LxApp>, LxAppError> {
+fn resolve_owner_lxapp(
+    owner_appid: &str,
+    owner_session_id: u64,
+) -> Result<Arc<LxApp>, lingxia_error::Error> {
     let owner_appid = owner_appid.trim();
     if owner_appid.is_empty() || owner_session_id == 0 {
-        return Err(LxAppError::InvalidParameter(
+        return Err(lingxia_error::Error::invalid_arg(
             "owner_appid and owner_session_id are required".to_string(),
         ));
     }
 
     let owner = lxapp::try_get(owner_appid).ok_or_else(|| {
-        LxAppError::ResourceNotFound(format!(
+        lingxia_error::Error::not_found(format!(
             "owner lxapp not found for browser tab operation: {}",
             owner_appid
         ))
     })?;
 
     if owner.session_id() != owner_session_id {
-        return Err(LxAppError::InvalidParameter(format!(
+        return Err(lingxia_error::Error::invalid_arg(format!(
             "owner session mismatch for {}: expected {}, got {}",
             owner_appid,
             owner.session_id(),
@@ -467,7 +470,7 @@ pub(crate) fn register_builtin_browser_host() {
 }
 
 /// Ensure browser lxapp instance exists in manager.
-pub(crate) fn ensure_browser_lxapp() -> Result<Arc<LxApp>, LxAppError> {
+pub(crate) fn ensure_browser_lxapp() -> Result<Arc<LxApp>, lingxia_error::Error> {
     let _load_guard = BROWSER_LOAD_MUTEX
         .get_or_init(|| Mutex::new(()))
         .lock()
@@ -481,17 +484,17 @@ pub(crate) fn ensure_browser_lxapp() -> Result<Arc<LxApp>, LxAppError> {
     // replace the session every tab belongs to.
     if lxapp::is_host_bundled_lxapp(BUILTIN_BROWSER_APPID) {
         let authority = crate::native_control_authority().ok_or_else(|| {
-            LxAppError::UnsupportedOperation(
+            lingxia_error::Error::not_supported(
                 "browser native control authority is not installed".to_string(),
             )
         })?;
-        return lxapp::ensure_control_surface_lxapp(
+        return Ok(lxapp::ensure_control_surface_lxapp(
             authority,
             BUILTIN_BROWSER_APPID,
             lxapp::Channel::Release,
-        );
+        )?);
     }
-    lxapp::ensure_builtin_lxapp(BUILTIN_BROWSER_APPID)
+    Ok(lxapp::ensure_builtin_lxapp(BUILTIN_BROWSER_APPID)?)
 }
 
 pub(crate) fn browser_create_token_for_path(path: &str, session_id: u64) -> Option<u64> {
@@ -934,7 +937,7 @@ fn open_internal_browser_tab_with_scope(
     aside: bool,
     data_mode: WebViewDataMode,
     url_callback: bool,
-) -> Result<String, LxAppError> {
+) -> Result<String, lingxia_error::Error> {
     let browser = ensure_browser_lxapp()?;
     let browser_session_id = browser.session_id();
 
@@ -1039,7 +1042,7 @@ fn open_internal_browser_tab_with_scope(
             .get(&tab_id)
             .map(|tab| tab.create_in_flight)
             .ok_or_else(|| {
-                LxAppError::ResourceNotFound(format!("browser tab not found: {tab_id}"))
+                lingxia_error::Error::not_found(format!("browser tab not found: {tab_id}"))
             })?;
         if create_in_flight {
             if !standalone {
@@ -1055,7 +1058,7 @@ fn open_internal_browser_tab_with_scope(
                     s.current_url = Some(normalized_target_url.clone());
                 }
             }
-            Err(LxAppError::ResourceNotFound(_)) => {
+            Err(error) if error.is(lingxia_error::code::NOT_FOUND) => {
                 // WebView is missing. If a create is still in-flight, keep
                 // pending_url for replay once the WebView becomes ready.
                 // Otherwise the earlier create failed (or the WebView is gone),
@@ -1104,7 +1107,7 @@ fn open_internal_browser_tab_with_scope(
 pub(crate) fn open_internal_browser_tab(
     url: &str,
     tab_id: Option<&str>,
-) -> Result<String, LxAppError> {
+) -> Result<String, lingxia_error::Error> {
     open_internal_browser_tab_with_scope(
         url,
         tab_id,
@@ -1125,7 +1128,7 @@ pub(crate) fn open_internal_browser_tab_for_owner(
     aside: bool,
     data_mode: WebViewDataMode,
     url_callback: bool,
-) -> Result<String, LxAppError> {
+) -> Result<String, lingxia_error::Error> {
     let _owner = resolve_owner_lxapp(owner_appid, owner_session_id)?;
     if aside && tab_id.is_none() {
         let normalized_target = normalize_browser_target_url(url);
@@ -1218,27 +1221,27 @@ pub(crate) fn can_promote_standalone_tab(tab_id: &str) -> bool {
     })
 }
 
-pub(crate) fn promote_standalone_tab(tab_id: &str) -> Result<(), LxAppError> {
+pub(crate) fn promote_standalone_tab(tab_id: &str) -> Result<(), lingxia_error::Error> {
     let normalized = normalize_runtime_tab_id(tab_id)
-        .ok_or_else(|| LxAppError::InvalidParameter(format!("invalid tab id: {tab_id}")))?;
+        .ok_or_else(|| lingxia_error::Error::invalid_arg(format!("invalid tab id: {tab_id}")))?;
     {
         let mut state = lock_state();
         let tab = state
             .tabs
             .get_mut(&normalized)
-            .ok_or_else(|| LxAppError::ResourceNotFound(format!("browser tab {normalized}")))?;
+            .ok_or_else(|| lingxia_error::Error::not_found(format!("browser tab {normalized}")))?;
         if !tab.standalone {
-            return Err(LxAppError::InvalidParameter(format!(
+            return Err(lingxia_error::Error::invalid_arg(format!(
                 "browser tab {normalized} is not docked"
             )));
         }
         if tab.url_callback.load(Ordering::Acquire) {
-            return Err(LxAppError::UnsupportedOperation(
+            return Err(lingxia_error::Error::not_supported(
                 "a URL-callback tab cannot move into the main browser".to_string(),
             ));
         }
         if tab.data_mode == WebViewDataMode::Ephemeral {
-            return Err(LxAppError::UnsupportedOperation(
+            return Err(lingxia_error::Error::not_supported(
                 "an ephemeral tab cannot move into the main browser".to_string(),
             ));
         }
@@ -1270,22 +1273,22 @@ pub(crate) fn demote_tab_to_standalone(
     tab_id: &str,
     owner_appid: &str,
     owner_session_id: u64,
-) -> Result<(), LxAppError> {
+) -> Result<(), lingxia_error::Error> {
     let normalized = normalize_runtime_tab_id(tab_id)
-        .ok_or_else(|| LxAppError::InvalidParameter(format!("invalid tab id: {tab_id}")))?;
+        .ok_or_else(|| lingxia_error::Error::invalid_arg(format!("invalid tab id: {tab_id}")))?;
     {
         let mut state = lock_state();
         let tab = state
             .tabs
             .get_mut(&normalized)
-            .ok_or_else(|| LxAppError::ResourceNotFound(format!("browser tab {normalized}")))?;
+            .ok_or_else(|| lingxia_error::Error::not_found(format!("browser tab {normalized}")))?;
         if tab.standalone {
-            return Err(LxAppError::InvalidParameter(format!(
+            return Err(lingxia_error::Error::invalid_arg(format!(
                 "browser tab {normalized} is already docked"
             )));
         }
         if tab.url_callback.load(Ordering::Acquire) || tab.data_mode == WebViewDataMode::Ephemeral {
-            return Err(LxAppError::UnsupportedOperation(
+            return Err(lingxia_error::Error::not_supported(
                 "a URL-callback or ephemeral tab cannot move into the side panel".to_string(),
             ));
         }
@@ -1310,13 +1313,15 @@ pub fn browser_tab_exists(tab_id: &str) -> bool {
     lock_state().tabs.contains_key(&normalized)
 }
 
-pub(crate) fn close_browser_tab(tab_id: &str) -> Result<(), LxAppError> {
+pub(crate) fn close_browser_tab(tab_id: &str) -> Result<(), lingxia_error::Error> {
     close_browser_tab_inner(tab_id, true)
 }
 
-fn close_browser_tab_inner(tab_id: &str, remember: bool) -> Result<(), LxAppError> {
+fn close_browser_tab_inner(tab_id: &str, remember: bool) -> Result<(), lingxia_error::Error> {
     let normalized = normalize_runtime_tab_id(tab_id).ok_or_else(|| {
-        LxAppError::InvalidParameter("tab_id must be a valid runtime browser tab id".to_string())
+        lingxia_error::Error::invalid_arg(
+            "tab_id must be a valid runtime browser tab id".to_string(),
+        )
     })?;
 
     let tab_path = browser_tab_path_for_runtime_id(&normalized);
@@ -1400,12 +1405,14 @@ pub(crate) fn prune_stale_owner_tabs(owner_appid: &str, current_session_id: u64)
 /// memory while keeping the tab entry (`current_url` / `title`) so the sidebar
 /// still shows it. Reactivation recreates the WebView and reloads the URL.
 /// Refuses to discard the active tab.
-pub(crate) fn discard_browser_tab(tab_id: &str) -> Result<(), LxAppError> {
+pub(crate) fn discard_browser_tab(tab_id: &str) -> Result<(), lingxia_error::Error> {
     let normalized = normalize_runtime_tab_id(tab_id).ok_or_else(|| {
-        LxAppError::InvalidParameter("tab_id must be a valid runtime browser tab id".to_string())
+        lingxia_error::Error::invalid_arg(
+            "tab_id must be a valid runtime browser tab id".to_string(),
+        )
     })?;
     if lock_active_tab().as_deref() == Some(normalized.as_str()) {
-        return Err(LxAppError::InvalidParameter(
+        return Err(lingxia_error::Error::invalid_arg(
             "cannot discard the active browser tab".to_string(),
         ));
     }
@@ -1474,16 +1481,18 @@ pub(crate) fn clear_active_browser_tab() {
 
 /// Recreate a discarded tab's WebView and reload its saved URL, then make it
 /// the active tab. No-op if the tab is already live.
-pub(crate) fn reactivate_browser_tab(tab_id: &str) -> Result<(), LxAppError> {
+pub(crate) fn reactivate_browser_tab(tab_id: &str) -> Result<(), lingxia_error::Error> {
     let normalized = normalize_runtime_tab_id(tab_id).ok_or_else(|| {
-        LxAppError::InvalidParameter("tab_id must be a valid runtime browser tab id".to_string())
+        lingxia_error::Error::invalid_arg(
+            "tab_id must be a valid runtime browser tab id".to_string(),
+        )
     })?;
     // Returns the create params when the tab needs its WebView rebuilt, or
     // `None` when it is already live (just needs (re)activating below).
     let recreate = {
         let mut state = lock_state();
         let Some(tab) = state.tabs.get_mut(&normalized) else {
-            return Err(LxAppError::ResourceNotFound(
+            return Err(lingxia_error::Error::not_found(
                 "browser tab not found".to_string(),
             ));
         };
@@ -1571,14 +1580,14 @@ pub fn recently_closed() -> Vec<ClosedBrowserTab> {
     lock_state().recently_closed.iter().rev().cloned().collect()
 }
 
-pub fn reopen_closed(id: Option<&str>) -> Result<String, LxAppError> {
+pub fn reopen_closed(id: Option<&str>) -> Result<String, lingxia_error::Error> {
     let entry = {
         let mut state = lock_state();
         let index = state
             .recently_closed
             .iter()
             .rposition(|entry| id.is_none_or(|id| entry.id == id))
-            .ok_or_else(|| LxAppError::ResourceNotFound("no recently closed tab".to_string()))?;
+            .ok_or_else(|| lingxia_error::Error::not_found("no recently closed tab".to_string()))?;
         state.recently_closed.remove(index)
     };
     let result = match (&entry.owner_appid, entry.owner_session_id) {
@@ -1854,7 +1863,7 @@ mod tests {
     #[test]
     fn stable_browser_tab_ids_reject_invalid_keys() {
         let result = resolve_browser_tab_id(Some("settings/main"), BrowserTabScope::Global);
-        assert!(matches!(result, Err(LxAppError::InvalidParameter(_))));
+        assert!(result.is_err_and(|error| error.is(lingxia_error::code::INVALID_ARG)));
     }
 
     #[test]
