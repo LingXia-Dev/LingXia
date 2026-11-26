@@ -159,7 +159,7 @@ const series: readonly ChartSeries<(typeof plans)[number]>[] = [{ field: 'free',
 /** Dragging across the plot, a mouse over it or the arrow keys choose the month the readout shows. */
 export function Selected() {
   const month = useLocal<string | null>('month', 'Apr');
-  return <LineChart rows={plans} x="month" y={series} label="Accounts by plan and month" value={month.value} onChange={month.set} legend="none" size="sm" data-testid="picked" />;
+  return <LineChart rows={plans} x="month" y={series} label="Accounts by plan and month" value={month.value} onChange={month.set} legendPosition="none" size="sm" data-testid="picked" />;
 }
 ```
 
@@ -200,12 +200,14 @@ export function Gaps() {
 | `hasScale` | `boolean` |  | Shows the scale: round numbers at the start edge, each with a hairline across the plot. The range reaches just past the data, so the plot is filled. By default on, except at the `xs` size. |
 | `hasEndLabel` | `boolean` | `false` | Writes the latest value at the end of the line. One series only. |
 | `xLabels` | `LineChartLabels` |  | Category labels under the plot: `fit` writes as many as fit side by side, each under its point; `ends` the first and last. By default `fit`, except at the `xs` size. |
-| `legend` | `ChartLegendPosition` | `'bottom'` | Shown when there is more than one series. |
+| `legendPosition` | `ChartLegendPosition` | `'bottom'` | Shown when there is more than one series. |
 | `legendLabel` | `string` |  | The legend's accessible name; by default the chart's `label`. |
 | `value` | `string \| null` |  | The row to mark with a rule and a dot on each line, and to read out above the plot. |
 | `onChange` | `((key: string \| null) => void)` |  | Makes the plot a scrubber: a finger dragged across it, a tap, a mouse moving over it and the arrow keys choose the nearest row and run this with its key; a mouse leaving runs it with `null`. |
+| `defaultValue` | `string \| null` |  | Where the choice starts when the chart keeps it itself: give this instead of `value`; `onChange` still hears each choice. |
 | `hiddenSeries` | `readonly string[]` | `[]` | Series fields not drawn at present. |
 | `onHiddenSeriesChange` | `((fields: readonly string[]) => void)` |  | Makes each legend entry a button that shows or hides its series. |
+| `defaultHiddenSeries` | `readonly string[]` |  | The series hidden at first when the chart keeps them itself: give this instead of `hiddenSeries`; the legend entries then toggle them, and `onHiddenSeriesChange` still hears each change. |
 | `references` | `readonly ChartReference[]` | `[]` | Levels drawn across the plot as dashed lines, each named at the end edge with its value: a target, an average. The range widens to hold them. |
 | `domainMin` | `number` |  | Widens the value range downward. A line fits its data; an area starts from zero. |
 | `domainMax` | `number` |  | Widens the value range upward, so charts that are compared share a scale. |

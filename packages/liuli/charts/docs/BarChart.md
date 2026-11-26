@@ -152,12 +152,14 @@ export function Month() {
 | `summarize` | `ChartSummarize` |  | Writes the summary a screen reader hears from the chart's facts; see `@liulidesign/charts/summary/en`. |
 | `xLabels` | `BarChartLabels` | `'fit'` | Category labels under the bars: `fit` writes as many as fit side by side, each under its bar; `all` every one, cut short where it is too long; `ends` the first and last. |
 | `valueLabels` | `BarChartValueLabels` | `'auto'` | How the chart shows its scale. `auto` writes each value over its bar up to eight bars of one series, and otherwise the top of the scale, a round number, above the plot; `always` writes every value of one series; `none` shows neither. |
-| `legend` | `ChartLegendPosition` | `'bottom'` | Shown when there is more than one series. |
+| `legendPosition` | `ChartLegendPosition` | `'bottom'` | Shown when there is more than one series. |
 | `legendLabel` | `string` |  | The legend's accessible name; by default the chart's `label`. |
 | `value` | `string \| null` |  | The chosen row's key; its bars keep their colour and the rest step back. |
 | `onChange` | `((key: string \| null) => void)` |  | Makes each category a button, up to 36 of them; runs with its key, or `null` when the chosen one is pressed again. A drag across the bars chooses each it passes. |
+| `defaultValue` | `string \| null` |  | Where the choice starts when the chart keeps it itself: give this instead of `value`; `onChange` still hears each choice. |
 | `hiddenSeries` | `readonly string[]` | `[]` | Series fields not drawn at present. |
 | `onHiddenSeriesChange` | `((fields: readonly string[]) => void)` |  | Makes each legend entry a button that shows or hides its series. |
+| `defaultHiddenSeries` | `readonly string[]` |  | The series hidden at first when the chart keeps them itself: give this instead of `hiddenSeries`; the legend entries then toggle them, and `onHiddenSeriesChange` still hears each change. |
 | `references` | `readonly ChartReference[]` | `[]` | Levels drawn across the plot as dashed lines, each named at the end edge with its value: a target, a limit. The range widens to hold them. |
 | `domainMin` | `number` |  | Widens the value range downward; zero is always in range. |
 | `domainMax` | `number` |  | Widens the value range upward, so charts that are compared share a scale. |

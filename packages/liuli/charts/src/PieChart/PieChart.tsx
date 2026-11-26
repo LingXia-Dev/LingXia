@@ -1,4 +1,4 @@
-import { cx, useBox, type ColorAlpha, type ColorRole, type VectorPath } from '@lingxia/view';
+import { cx, useBox, useLocal, type ColorAlpha, type ColorRole, type VectorPath } from '@lingxia/view';
 import { Chart, ChartLegend, type ChartColor, type ChartField, type ChartLegendPosition, type ChartRecord, type ChartRow, type ChartSize, type ChartSummarize } from '../Chart/Chart';
 import { liuliText } from '@liulidesign/core/internal/text';
 import { colorOf, keysOf, numberOf, plain, roleOf, seriesFacts, textOf } from '../internal/data';
@@ -37,13 +37,15 @@ export interface PieChartProps<Row extends ChartRecord<Row> = ChartRow> {
   /** How many parts keep their own slice when `otherLabel` is set. @default 5 */
   maxParts?: number;
   /** The legend lists each part with its amount and share. @default 'bottom' */
-  legend?: ChartLegendPosition;
+  legendPosition?: ChartLegendPosition;
   /** The legend's accessible name; by default the chart's `label`. */
   legendLabel?: string;
   /** The chosen part's key; its slice grows a little and keeps its colour, the rest step back. */
   value?: string | null;
   /** Makes each legend row a button; runs with its part's key, or `null` when the chosen one is pressed again. */
   onChange?: (key: string | null) => void;
+  /** Where the choice starts when the chart keeps it itself: give this instead of `value`; `onChange` still hears each choice. */
+  defaultValue?: string | null;
   /** @default 'md' */
   size?: ChartSize;
   /** @default false */
@@ -74,9 +76,14 @@ export const otherKey = '__other';
 /** Parts of one whole, as a ring with the total in its hole and the parts listed under it. */
 export function PieChart<Row extends ChartRecord<Row>>({
   rows, nameField: name, valueField: value, keyField, label, title, description, formatValue: format, formatShare, summarize, variant = 'donut', totalLabel,
-  otherLabel, maxParts = 5, legend = 'bottom', legendLabel, value: selectedKey, onChange: onSelect, size = 'md',
+  otherLabel, maxParts = 5, legendPosition = 'bottom', legendLabel, value: given, onChange, defaultValue, size = 'md',
   isLoading = false, error, emptyLabel, emptyHint, onRetry, retryLabel, className, 'data-testid': testId,
 }: PieChartProps<Row>) {
+  // Without `value`, a `defaultValue` makes the choice the chart's own.
+  const own = useLocal<string | null>('chosen', defaultValue ?? null);
+  const isOwn = given === undefined && defaultValue !== undefined;
+  const selectedKey = isOwn ? own.value : given;
+  const onSelect = isOwn ? (key: string | null) => { own.set(key); onChange?.(key); } : onChange;
   // Only the fields named are read, and each of those holds a datum.
   const data = rows as readonly ChartRow[];
   const formatValue = format ?? plain;
@@ -142,7 +149,7 @@ export function PieChart<Row extends ChartRecord<Row>>({
       emptyLabel={emptyLabel}
       className={className}
       data-testid={testId}
-      legendPosition={legend}
+      legendPosition={legendPosition}
       legend={(
         <ChartLegend
           label={legendLabel ?? label}
@@ -163,7 +170,7 @@ export function PieChart<Row extends ChartRecord<Row>>({
       </view>
       {isUnder && words}
       {/* Without a legend the parts are still read, each with its amount. */}
-      {legend === 'none' && (
+      {legendPosition === 'none' && (
         <view role="list" aria-label={legendLabel ?? label} className={r.reading.base}>
           {parts.map(part => <text key={part.key} role="listitem">{`${part.name}: ${formatValue(part.amount)}${formatShare ? `, ${formatShare(part.amount / total)}` : ''}`}</text>)}
         </view>

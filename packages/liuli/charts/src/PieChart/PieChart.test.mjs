@@ -143,7 +143,7 @@ test('without a legend each part is still read with its amount and share', async
   const screen = await renderPage(`
     import { PieChart } from '@liulidesign/charts/PieChart';
     const rows = [{ k: 'Rent', v: 3 }, { k: 'Food', v: 1 }];
-    export function render() { return <page><PieChart rows={rows} nameField="k" valueField="v" label="Spending" legend="none" formatShare={share => Math.round(share * 100) + '%'} /></page>; }
+    export function render() { return <page><PieChart rows={rows} nameField="k" valueField="v" label="Spending" legendPosition="none" formatShare={share => Math.round(share * 100) + '%'} /></page>; }
   `);
   const list = screen.queryAll(node => node.props.role === 'list' && node.props.accessibilityLabel === 'Spending')[0];
   assert.deepEqual(list.children.map(textOf), ['Rent: 3, 75%', 'Food: 1, 25%']);
@@ -156,4 +156,16 @@ test('rows that share a key, or are keyed like the remainder, each keep a slice 
     export function render() { return <page><PieChart rows={rows} nameField="k" valueField="v" keyField="id" otherLabel="Rest" maxParts={4} data-testid="pie" /></page>; }
   `);
   assert.deepEqual(screen.getByTestId('pie-legend').children.map(textOf), ['a1', 'b2', 'c3', 'd4', 'Rest3']);
+});
+
+test('with defaultValue the chart keeps its own choice, and the legend rows choose', async () => {
+  const screen = await renderPage(`
+    import { PieChart } from '@liulidesign/charts/PieChart';
+    const rows = [{ k: 'Rent', v: 3 }, { k: 'Food', v: 1 }];
+    export function render() { return <page><PieChart rows={rows} nameField="k" valueField="v" label="Spending" defaultValue="Rent" data-testid="pie" /></page>; }
+  `);
+  const row = key => screen.getByTestId(`pie-legend-${key}`);
+  assert.deepEqual([row('Rent').props.statePressed, row('Food').props.statePressed], [1, 0]);
+  screen.press(row('Food'));
+  assert.deepEqual([row('Rent').props.statePressed, row('Food').props.statePressed], [0, 1]);
 });

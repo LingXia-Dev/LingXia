@@ -116,10 +116,11 @@ export function Merged() {
 | `totalLabel` | `string` |  | Names the total shown in a donut's hole: "Total". Without it the hole is empty until a part is chosen. |
 | `otherLabel` | `string` |  | Names one part that gathers every part after the first `maxParts`: "Other". Without it every part is drawn up to 24, and any past those are one part named "Other" in the page's language. |
 | `maxParts` | `number` | `5` | How many parts keep their own slice when `otherLabel` is set. |
-| `legend` | `ChartLegendPosition` | `'bottom'` | The legend lists each part with its amount and share. |
+| `legendPosition` | `ChartLegendPosition` | `'bottom'` | The legend lists each part with its amount and share. |
 | `legendLabel` | `string` |  | The legend's accessible name; by default the chart's `label`. |
 | `value` | `string \| null` |  | The chosen part's key; its slice grows a little and keeps its colour, the rest step back. |
 | `onChange` | `((key: string \| null) => void)` |  | Makes each legend row a button; runs with its part's key, or `null` when the chosen one is pressed again. |
+| `defaultValue` | `string \| null` |  | Where the choice starts when the chart keeps it itself: give this instead of `value`; `onChange` still hears each choice. |
 | `size` | `ChartSize` | `'md'` |  |
 | `isLoading` | `boolean` | `false` |  |
 | `error` | `string` |  |  |

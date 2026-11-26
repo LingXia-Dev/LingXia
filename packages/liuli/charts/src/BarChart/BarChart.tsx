@@ -1,4 +1,4 @@
-import { cx, useBox, type PointerEvent, type VectorPath } from '@lingxia/view';
+import { cx, useBox, useLocal, type PointerEvent, type VectorPath } from '@lingxia/view';
 import { Chart, ChartLegend, ChartReadout, type ChartLegendPosition, type ChartField, type ChartRecord, type ChartReference, type ChartRow, type ChartSeries, type ChartSize, type ChartSummarize } from '../Chart/Chart';
 import { colorOf, keysOf, numberOf, plain, roleOf, seriesFacts, seriesOf, textOf, type ChartColor } from '../internal/data';
 import { leftPressed, pressed, pressedIndex, pressedKey, scrubbing } from '../internal/gesture';
@@ -41,7 +41,7 @@ export interface BarChartProps<Row extends ChartRecord<Row> = ChartRow> {
    */
   valueLabels?: BarChartValueLabels;
   /** Shown when there is more than one series. @default 'bottom' */
-  legend?: ChartLegendPosition;
+  legendPosition?: ChartLegendPosition;
   /** The legend's accessible name; by default the chart's `label`. */
   legendLabel?: string;
   /** The chosen row's key; its bars keep their colour and the rest step back. */
@@ -51,10 +51,14 @@ export interface BarChartProps<Row extends ChartRecord<Row> = ChartRow> {
    * one is pressed again. A drag across the bars chooses each it passes.
    */
   onChange?: (key: string | null) => void;
+  /** Where the choice starts when the chart keeps it itself: give this instead of `value`; `onChange` still hears each choice. */
+  defaultValue?: string | null;
   /** Series fields not drawn at present. @default [] */
   hiddenSeries?: readonly string[];
   /** Makes each legend entry a button that shows or hides its series. */
   onHiddenSeriesChange?: (fields: readonly string[]) => void;
+  /** The series hidden at first when the chart keeps them itself: give this instead of `hiddenSeries`; the legend entries then toggle them, and `onHiddenSeriesChange` still hears each change. */
+  defaultHiddenSeries?: readonly string[];
   /**
    * Levels drawn across the plot as dashed lines, each named at the end edge with its value: a target,
    * a limit. The range widens to hold them. @default []
@@ -139,10 +143,19 @@ function barPaths(
 
 /** Amounts by category, as bars that stand on a zero line. */
 export function BarChart<Row extends ChartRecord<Row>>({
-  rows, x, y, keyField, label, title, description, formatValue: format, summarize, xLabels, valueLabels = 'auto', legend = 'bottom', legendLabel,
-  value: selectedKey, onChange: onSelect, hiddenSeries = [], onHiddenSeriesChange, references: given = [], domainMin, domainMax, size = 'md',
+  rows, x, y, keyField, label, title, description, formatValue: format, summarize, xLabels, valueLabels = 'auto', legendPosition = 'bottom', legendLabel,
+  value, onChange, defaultValue, hiddenSeries: givenHidden, onHiddenSeriesChange: onHiddenChange, defaultHiddenSeries, references: given = [], domainMin, domainMax, size = 'md',
   isLoading = false, error, emptyLabel, emptyHint, onRetry, retryLabel, className, 'data-testid': testId,
 }: BarChartProps<Row>) {
+  // Without `value`, a `defaultValue` makes the choice the chart's own.
+  const own = useLocal<string | null>('chosen', defaultValue ?? null);
+  const isOwn = value === undefined && defaultValue !== undefined;
+  const selectedKey = isOwn ? own.value : value;
+  const onSelect = isOwn ? (key: string | null) => { own.set(key); onChange?.(key); } : onChange;
+  const ownHidden = useLocal<readonly string[]>('hidden', defaultHiddenSeries ?? []);
+  const isOwnHidden = givenHidden === undefined && defaultHiddenSeries !== undefined;
+  const hiddenSeries = isOwnHidden ? ownHidden.value : givenHidden ?? [];
+  const onHiddenSeriesChange = isOwnHidden ? (fields: readonly string[]) => { ownHidden.set(fields); onHiddenChange?.(fields); } : onHiddenChange;
   // Only the fields named are read, and each of those holds a datum.
   const data = rows as readonly ChartRow[];
   const formatValue = format ?? plain;
@@ -322,7 +335,7 @@ export function BarChart<Row extends ChartRecord<Row>>({
           }))}
         />
       )}
-      legendPosition={legend}
+      legendPosition={legendPosition}
       legend={all.length > 1 && (
         <ChartLegend
           label={legendLabel ?? label}

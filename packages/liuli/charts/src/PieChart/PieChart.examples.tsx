@@ -68,18 +68,18 @@ export function Merged() {
 export function Sizes() {
   return (
     <view className="gap-6">
-      <PieChart rows={storage} nameField="kind" valueField="gb" label="Storage by kind, small" size="sm" formatValue={gigabytes} totalLabel="Used" legend="none" />
-      <PieChart rows={storage} nameField="kind" valueField="gb" label="Storage by kind, large" size="lg" formatValue={gigabytes} totalLabel="Used" legend="none" />
+      <PieChart rows={storage} nameField="kind" valueField="gb" label="Storage by kind, small" size="sm" formatValue={gigabytes} totalLabel="Used" legendPosition="none" />
+      <PieChart rows={storage} nameField="kind" valueField="gb" label="Storage by kind, large" size="lg" formatValue={gigabytes} totalLabel="Used" legendPosition="none" />
     </view>
   );
 }
 
 export function StateSelected() {
-  return <PieChart rows={storage} nameField="kind" valueField="gb" label="Storage by kind" size="sm" formatValue={gigabytes} totalLabel="Used" value="Apps" legend="none" data-testid="selected" />;
+  return <PieChart rows={storage} nameField="kind" valueField="gb" label="Storage by kind" size="sm" formatValue={gigabytes} totalLabel="Used" value="Apps" legendPosition="none" data-testid="selected" />;
 }
 
 export function StateWhole() {
-  return <PieChart rows={storage.slice(0, 1)} nameField="kind" valueField="gb" label="Storage by kind" size="sm" formatValue={gigabytes} totalLabel="Used" legend="none" data-testid="whole" />;
+  return <PieChart rows={storage.slice(0, 1)} nameField="kind" valueField="gb" label="Storage by kind" size="sm" formatValue={gigabytes} totalLabel="Used" legendPosition="none" data-testid="whole" />;
 }
 
 export function StateLoading() {
@@ -96,5 +96,5 @@ export function StateError() {
 
 /** The home tile. */
 export function Specimen() {
-  return <PieChart rows={storage} nameField="kind" valueField="gb" label="Storage" size="xs" legend="none" className="w-28 self-center" />;
+  return <PieChart rows={storage} nameField="kind" valueField="gb" label="Storage" size="xs" legendPosition="none" className="w-28 self-center" />;
 }

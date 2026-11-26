@@ -115,7 +115,7 @@ test('hasScale off fits the data exactly; the smallest size is bare; several ser
   assert.deepEqual(points(drawing(bare).paths[0].d).map(point => point[1]), [100, 0, 50]);
   assert.deepEqual(texts(bare), ['a', 'c']);
   assert.deepEqual(texts(await renderPage(page('y="v" size="xs" hasEndLabel'))).filter(text => /\d/.test(text)), ['5']);
-  const two = await renderPage(page('y={[{ field: "v", label: "V" }, { field: "w", label: "W" }]} hasEndLabel legend="none"'));
+  const two = await renderPage(page('y={[{ field: "v", label: "V" }, { field: "w", label: "W" }]} hasEndLabel legendPosition="none"'));
   assert.deepEqual(texts(two).filter(text => /\d/.test(text)), Array(3).fill(['40', '30', '20', '10']).flat(), 'the scale, its unseen copy for its own width and one for the category labels; no end figure for two lines');
   const apart = await renderPage(page('y="w" hasEndLabel'));
   const scale = ['40', '35', '', '25', '20'];
@@ -497,4 +497,15 @@ test('an area over negative values closes at the zero line; one chosen row is ma
     const rows = [{ t: 'a', v: 4 }];
     export function render() { return <page><LineChart rows={rows} x="t" y="v" label="V" value="a" onChange={() => {}} /></page>; }`);
   assert.equal(marker(one)[0].d, 'M50 0V100', 'in the middle, with the point');
+});
+
+test('with defaultHiddenSeries the legend toggles series the chart keeps itself', async () => {
+  const screen = await renderPage(`
+    import { LineChart } from '@liulidesign/charts/LineChart';
+    const rows = [{ t: 'a', v: 3, w: 40 }, { t: 'b', v: 7, w: 20 }];
+    export function render() { return <page><LineChart rows={rows} x="t" y={[{ field: 'v', label: 'V' }, { field: 'w', label: 'W' }]} label="Chart" defaultHiddenSeries={['w']} data-testid="lines" /></page>; }`);
+  const entry = () => screen.getByTestId('lines-legend-w');
+  assert.equal(entry().props.statePressed, 0);
+  screen.press(entry());
+  assert.equal(entry().props.statePressed, 1);
 });

@@ -587,3 +587,16 @@ test('rows that share a key, have none, or have an empty one each keep their own
   assert.deepEqual(buttons.map(node => node.props.accessibilityLabel), ['x: 1', 'y: 2', 'z: 3', 'w: 4']);
   assert.deepEqual(buttons.map(node => node.props.statePressed), [1, 0, 0, 0]);
 });
+
+test('with defaultValue and defaultHiddenSeries the chart keeps its own choice and hidden series', async () => {
+  const screen = await renderPage(page('y={[{ field: "v", label: "V" }, { field: "w", label: "W" }]} defaultValue="1" defaultHiddenSeries={["w"]}', many(3)));
+  const pressed = () => slots(screen.getByTestId('chart')).filter(slot => slot.props.statePressed === 1).map(slot => slot.props.accessibilityLabel);
+  assert.deepEqual(pressed(), ['1: V 2']);
+  screen.press(slots(screen.getByTestId('chart'))[2]);
+  assert.deepEqual(pressed(), ['2: V 3']);
+  const legend = () => screen.getByTestId('chart-legend-w');
+  assert.equal(legend().props.statePressed, 0, 'starts hidden');
+  screen.press(legend());
+  assert.equal(legend().props.statePressed, 1);
+  assert.deepEqual(pressed(), ['2: V 3, W 1']);
+});

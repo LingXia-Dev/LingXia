@@ -104,7 +104,7 @@
           "default": "'auto'"
         },
         {
-          "name": "legend",
+          "name": "legendPosition",
           "type": "ChartLegendPosition",
           "required": false,
           "description": "Shown when there is more than one series.",
@@ -134,6 +134,12 @@
           "description": "Makes each category a button, up to 36 of them; runs with its key, or `null` when the chosen one is pressed again. A drag across the bars chooses each it passes."
         },
         {
+          "name": "defaultValue",
+          "type": "string | null",
+          "required": false,
+          "description": "Where the choice starts when the chart keeps it itself: give this instead of `value`; `onChange` still hears each choice."
+        },
+        {
           "name": "hiddenSeries",
           "type": "readonly string[]",
           "required": false,
@@ -145,6 +151,12 @@
           "type": "((fields: readonly string[]) => void)",
           "required": false,
           "description": "Makes each legend entry a button that shows or hides its series."
+        },
+        {
+          "name": "defaultHiddenSeries",
+          "type": "readonly string[]",
+          "required": false,
+          "description": "The series hidden at first when the chart keeps them itself: give this instead of `hiddenSeries`; the legend entries then toggle them, and `onHiddenSeriesChange` still hears each change."
         },
         {
           "name": "references",
@@ -1219,7 +1231,7 @@
           ]
         },
         {
-          "name": "legend",
+          "name": "legendPosition",
           "type": "ChartLegendPosition",
           "required": false,
           "description": "Shown when there is more than one series.",
@@ -1249,6 +1261,12 @@
           "description": "Makes the plot a scrubber: a finger dragged across it, a tap, a mouse moving over it and the arrow keys choose the nearest row and run this with its key; a mouse leaving runs it with `null`."
         },
         {
+          "name": "defaultValue",
+          "type": "string | null",
+          "required": false,
+          "description": "Where the choice starts when the chart keeps it itself: give this instead of `value`; `onChange` still hears each choice."
+        },
+        {
           "name": "hiddenSeries",
           "type": "readonly string[]",
           "required": false,
@@ -1260,6 +1278,12 @@
           "type": "((fields: readonly string[]) => void)",
           "required": false,
           "description": "Makes each legend entry a button that shows or hides its series."
+        },
+        {
+          "name": "defaultHiddenSeries",
+          "type": "readonly string[]",
+          "required": false,
+          "description": "The series hidden at first when the chart keeps them itself: give this instead of `hiddenSeries`; the legend entries then toggle them, and `onHiddenSeriesChange` still hears each change."
         },
         {
           "name": "references",
@@ -1508,7 +1532,7 @@
         {
           "name": "Selected",
           "title": "Scrubbing chooses a row",
-          "source": "import { useLocal } from '@lingxia/view';\nimport type { ChartSeries } from '@liulidesign/charts/Chart';\nimport { LineChart } from '@liulidesign/charts/LineChart';\n\nconst plans = [\n  { month: 'Jan', free: 410, team: 120, pro: 64 }, { month: 'Feb', free: 455, team: 131, pro: 71 }, { month: 'Mar', free: 440, team: 150, pro: 83 },\n  { month: 'Apr', free: 492, team: 171, pro: 88 }, { month: 'May', free: 530, team: 204, pro: 97 }, { month: 'Jun', free: 561, team: 236, pro: 121 },\n];\nconst series: readonly ChartSeries<(typeof plans)[number]>[] = [{ field: 'free', label: 'Free' }, { field: 'team', label: 'Team' }, { field: 'pro', label: 'Pro' }];\n\n/** Dragging across the plot, a mouse over it or the arrow keys choose the month the readout shows. */\nexport function Selected() {\n  const month = useLocal<string | null>('month', 'Apr');\n  return <LineChart rows={plans} x=\"month\" y={series} label=\"Accounts by plan and month\" value={month.value} onChange={month.set} legend=\"none\" size=\"sm\" data-testid=\"picked\" />;\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport type { ChartSeries } from '@liulidesign/charts/Chart';\nimport { LineChart } from '@liulidesign/charts/LineChart';\n\nconst plans = [\n  { month: 'Jan', free: 410, team: 120, pro: 64 }, { month: 'Feb', free: 455, team: 131, pro: 71 }, { month: 'Mar', free: 440, team: 150, pro: 83 },\n  { month: 'Apr', free: 492, team: 171, pro: 88 }, { month: 'May', free: 530, team: 204, pro: 97 }, { month: 'Jun', free: 561, team: 236, pro: 121 },\n];\nconst series: readonly ChartSeries<(typeof plans)[number]>[] = [{ field: 'free', label: 'Free' }, { field: 'team', label: 'Team' }, { field: 'pro', label: 'Pro' }];\n\n/** Dragging across the plot, a mouse over it or the arrow keys choose the month the readout shows. */\nexport function Selected() {\n  const month = useLocal<string | null>('month', 'Apr');\n  return <LineChart rows={plans} x=\"month\" y={series} label=\"Accounts by plan and month\" value={month.value} onChange={month.set} legendPosition=\"none\" size=\"sm\" data-testid=\"picked\" />;\n}"
         },
         {
           "name": "Gaps",
@@ -1741,7 +1765,7 @@
           "default": "5"
         },
         {
-          "name": "legend",
+          "name": "legendPosition",
           "type": "ChartLegendPosition",
           "required": false,
           "description": "The legend lists each part with its amount and share.",
@@ -1769,6 +1793,12 @@
           "type": "((key: string | null) => void)",
           "required": false,
           "description": "Makes each legend row a button; runs with its part's key, or `null` when the chosen one is pressed again."
+        },
+        {
+          "name": "defaultValue",
+          "type": "string | null",
+          "required": false,
+          "description": "Where the choice starts when the chart keeps it itself: give this instead of `value`; `onChange` still hears each choice."
         },
         {
           "name": "size",
