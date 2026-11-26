@@ -83,9 +83,9 @@ pub fn profiles_base(app_data_dir: &Path) -> PathBuf {
 }
 
 /// [`profiles_base`] of the running host.
-pub fn host_profiles_base() -> Result<PathBuf, LxAppError> {
+pub fn host_profiles_base() -> Result<PathBuf, lingxia_error::Error> {
     let platform = super::runtime_registry::get_platform()
-        .ok_or_else(|| LxAppError::Runtime("LingXia runtime is not initialized".to_string()))?;
+        .ok_or_else(|| lingxia_error::Error::internal("LingXia runtime is not initialized"))?;
     Ok(profiles_base(&platform.app_data_dir()))
 }
 
@@ -128,27 +128,27 @@ pub struct ProfileManifest {
 impl ProfileManifest {
     /// Refuse a snapshot of another app, another channel/service env/device, or a
     /// storage format this build does not write.
-    pub fn check_matches(&self, expected: &ProfileManifest) -> Result<(), LxAppError> {
+    pub fn check_matches(&self, expected: &ProfileManifest) -> Result<(), lingxia_error::Error> {
         if self.format != PROFILE_FORMAT {
-            return Err(LxAppError::InvalidParameter(format!(
+            return Err(lingxia_error::Error::invalid_arg(format!(
                 "profile snapshot format {} is not supported (expected {PROFILE_FORMAT})",
                 self.format
             )));
         }
         if self.storage_format != expected.storage_format {
-            return Err(LxAppError::InvalidParameter(format!(
+            return Err(lingxia_error::Error::invalid_arg(format!(
                 "profile snapshot storage format {} does not match this host ({})",
                 self.storage_format, expected.storage_format
             )));
         }
         if self.appid != expected.appid {
-            return Err(LxAppError::InvalidParameter(format!(
+            return Err(lingxia_error::Error::invalid_arg(format!(
                 "profile snapshot belongs to lxapp {}, not {}",
                 self.appid, expected.appid
             )));
         }
         if self.fingermark != expected.fingermark {
-            return Err(LxAppError::InvalidParameter(format!(
+            return Err(lingxia_error::Error::invalid_arg(format!(
                 "profile snapshot of {} was taken for another channel, service env or device; save it again \
                  on this host",
                 self.appid
@@ -207,7 +207,7 @@ pub struct RunProfile {
 
 impl RunProfile {
     /// Create a fresh, empty profile directory under `base`.
-    pub fn create(base: &Path) -> Result<Self, LxAppError> {
+    pub fn create(base: &Path) -> Result<Self, lingxia_error::Error> {
         let dir = base.join(Uuid::new_v4().simple().to_string());
         create_private_dir(&dir)?;
         create_private_dir(&dir.join(LIVE_DIR))?;
@@ -217,9 +217,9 @@ impl RunProfile {
 
     /// Adopt an existing profile directory. It must sit directly under
     /// `base`, so a caller-supplied path can never reach the app's real data.
-    pub fn open(base: &Path, dir: &Path) -> Result<Self, LxAppError> {
+    pub fn open(base: &Path, dir: &Path) -> Result<Self, lingxia_error::Error> {
         if dir.parent() != Some(base) || !dir.join(LIVE_DIR).is_dir() {
-            return Err(LxAppError::InvalidParameter(format!(
+            return Err(lingxia_error::Error::invalid_arg(format!(
                 "{} is not a test profile",
                 dir.display()
             )));
@@ -238,12 +238,12 @@ impl RunProfile {
         self.dir.join(LIVE_DIR)
     }
 
-    fn checkpoint(&self, id: &str) -> Result<PathBuf, LxAppError> {
+    fn checkpoint(&self, id: &str) -> Result<PathBuf, lingxia_error::Error> {
         let valid = !id.is_empty()
             && id.len() <= 64
             && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-');
         if !valid {
-            return Err(LxAppError::InvalidParameter(format!(
+            return Err(lingxia_error::Error::invalid_arg(format!(
                 "invalid profile checkpoint id: {id:?}"
             )));
         }
@@ -255,7 +255,7 @@ impl RunProfile {
         get(appid).is_some_and(|root| root == self.live())
     }
 
-    pub fn remove(&self) -> Result<(), LxAppError> {
+    pub fn remove(&self) -> Result<(), lingxia_error::Error> {
         match fs::remove_dir_all(&self.dir) {
             Ok(()) => Ok(()),
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
@@ -264,7 +264,7 @@ impl RunProfile {
     }
 
     /// Discard a checkpoint. Unknown ids are not an error.
-    pub fn drop_checkpoint(&self, id: &str) -> Result<(), LxAppError> {
+    pub fn drop_checkpoint(&self, id: &str) -> Result<(), lingxia_error::Error> {
         let dir = self.checkpoint(id)?;
         match fs::remove_dir_all(dir) {
             Ok(()) => Ok(()),
@@ -273,13 +273,13 @@ impl RunProfile {
         }
     }
 
-    fn copy_live_to_checkpoint(&self, id: &str) -> Result<(), LxAppError> {
+    fn copy_live_to_checkpoint(&self, id: &str) -> Result<(), lingxia_error::Error> {
         let target = self.checkpoint(id)?;
         copy_dir(&self.live(), &target)
     }
 
     #[cfg(test)]
-    fn replace_live_from_checkpoint(&self, id: &str) -> Result<(), LxAppError> {
+    fn replace_live_from_checkpoint(&self, id: &str) -> Result<(), lingxia_error::Error> {
         self.replace_live_keeping(id, &KeepKeys::default())
             .map(|_| ())
     }
@@ -290,10 +290,14 @@ impl RunProfile {
     /// happens on the staged copy, so live is either untouched or fully
     /// replaced: the reopened app never sees the checkpoint's values of a
     /// kept key.
-    fn replace_live_keeping(&self, id: &str, keep: &KeepKeys) -> Result<Vec<String>, LxAppError> {
+    fn replace_live_keeping(
+        &self,
+        id: &str,
+        keep: &KeepKeys,
+    ) -> Result<Vec<String>, lingxia_error::Error> {
         let source = self.checkpoint(id)?;
         if !source.is_dir() {
-            return Err(LxAppError::ResourceNotFound(format!(
+            return Err(lingxia_error::Error::not_found(format!(
                 "profile checkpoint {id}"
             )));
         }
@@ -341,16 +345,16 @@ pub struct KeepKeys {
 }
 
 impl KeepKeys {
-    pub fn new(patterns: Vec<String>) -> Result<Self, LxAppError> {
+    pub fn new(patterns: Vec<String>) -> Result<Self, lingxia_error::Error> {
         if patterns.len() > MAX_KEEP_PATTERNS {
-            return Err(LxAppError::InvalidParameter(format!(
+            return Err(lingxia_error::Error::invalid_arg(format!(
                 "a rollback keeps at most {MAX_KEEP_PATTERNS} key patterns, got {}",
                 patterns.len()
             )));
         }
         for pattern in &patterns {
             if pattern.is_empty() || pattern.len() > MAX_KEEP_PATTERN_BYTES {
-                return Err(LxAppError::InvalidParameter(format!(
+                return Err(lingxia_error::Error::invalid_arg(format!(
                     "keep pattern must be 1..={MAX_KEEP_PATTERN_BYTES} bytes, got {:?}",
                     pattern
                 )));
@@ -404,12 +408,15 @@ fn glob_matches(pattern: &str, text: &str) -> bool {
 /// entries in: string keys, encoded values copied as opaque bytes.
 const STORAGE_TABLE: redb::TableDefinition<&str, &[u8]> = redb::TableDefinition::new("storage");
 
-fn storage_err(context: &str, err: impl std::fmt::Display) -> LxAppError {
-    LxAppError::IoError(format!("{context} profile storage: {err}"))
+fn storage_err(context: &str, err: impl std::fmt::Display) -> lingxia_error::Error {
+    lingxia_error::Error::io(format!("{context} profile storage: {err}"))
 }
 
 /// Current entries of the closed storage file whose keys `keep` matches.
-fn read_kept(storage: &Path, keep: &KeepKeys) -> Result<BTreeMap<String, Vec<u8>>, LxAppError> {
+fn read_kept(
+    storage: &Path,
+    keep: &KeepKeys,
+) -> Result<BTreeMap<String, Vec<u8>>, lingxia_error::Error> {
     use redb::{ReadableDatabase, ReadableTable};
     let mut kept = BTreeMap::new();
     if !storage.is_file() {
@@ -437,7 +444,7 @@ fn apply_kept(
     storage: &Path,
     keep: &KeepKeys,
     kept: &BTreeMap<String, Vec<u8>>,
-) -> Result<(), LxAppError> {
+) -> Result<(), lingxia_error::Error> {
     use redb::ReadableTable;
     if !storage.is_file() && kept.is_empty() {
         return Ok(());
@@ -470,7 +477,7 @@ fn apply_kept(
     txn.commit().map_err(|err| storage_err("write", err))
 }
 
-fn create_private_dir(dir: &Path) -> Result<(), LxAppError> {
+fn create_private_dir(dir: &Path) -> Result<(), lingxia_error::Error> {
     fs::create_dir_all(dir)?;
     #[cfg(unix)]
     {
@@ -482,7 +489,7 @@ fn create_private_dir(dir: &Path) -> Result<(), LxAppError> {
 
 /// Recursive copy of regular files and directories; symlinks are skipped.
 /// `std::fs::copy` clones on APFS, so a large redb costs no extra space.
-pub fn copy_dir(source: &Path, target: &Path) -> Result<(), LxAppError> {
+pub fn copy_dir(source: &Path, target: &Path) -> Result<(), lingxia_error::Error> {
     create_private_dir(target)?;
     for entry in fs::read_dir(source)? {
         let entry = entry?;
@@ -513,19 +520,19 @@ fn dir_size(dir: &Path) -> u64 {
 
 /// Pack a closed profile as `tar.zst`: `manifest.json`, then `data/`.
 /// Session temp files are left out; they are wiped on every open anyway.
-pub fn pack(live: &Path, manifest: &ProfileManifest) -> Result<Vec<u8>, LxAppError> {
+pub fn pack(live: &Path, manifest: &ProfileManifest) -> Result<Vec<u8>, lingxia_error::Error> {
     let size = dir_size(live);
     if size > MAX_PROFILE_BYTES {
-        return Err(LxAppError::InvalidParameter(format!(
+        return Err(lingxia_error::Error::invalid_arg(format!(
             "profile is {size} bytes; a snapshot holds at most {MAX_PROFILE_BYTES}"
         )));
     }
-    let io = |err: std::io::Error| LxAppError::IoError(format!("pack profile: {err}"));
+    let io = |err: std::io::Error| lingxia_error::Error::io(format!("pack profile: {err}"));
     let encoder = zstd::stream::write::Encoder::new(Vec::new(), 3).map_err(io)?;
     let mut builder = tar::Builder::new(encoder);
     builder.follow_symlinks(false);
     let manifest = serde_json::to_vec_pretty(manifest)
-        .map_err(|err| LxAppError::IoError(format!("encode profile manifest: {err}")))?;
+        .map_err(|err| lingxia_error::Error::io(format!("encode profile manifest: {err}")))?;
     let mut header = tar::Header::new_gnu();
     header.set_size(manifest.len() as u64);
     header.set_mode(0o600);
@@ -558,17 +565,18 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
         })
 }
 
-fn decoder(bytes: &[u8]) -> Result<tar::Archive<impl Read + '_>, LxAppError> {
-    let decoder = zstd::stream::read::Decoder::new(bytes)
-        .map_err(|err| LxAppError::InvalidParameter(format!("not a profile snapshot: {err}")))?;
+fn decoder(bytes: &[u8]) -> Result<tar::Archive<impl Read + '_>, lingxia_error::Error> {
+    let decoder = zstd::stream::read::Decoder::new(bytes).map_err(|err| {
+        lingxia_error::Error::invalid_arg(format!("not a profile snapshot: {err}"))
+    })?;
     Ok(tar::Archive::new(decoder))
 }
 
 /// Read a snapshot's manifest without unpacking it.
-pub fn read_manifest(bytes: &[u8]) -> Result<ProfileManifest, LxAppError> {
+pub fn read_manifest(bytes: &[u8]) -> Result<ProfileManifest, lingxia_error::Error> {
     let mut archive = decoder(bytes)?;
     let invalid = |err: std::io::Error| {
-        LxAppError::InvalidParameter(format!("not a profile snapshot: {err}"))
+        lingxia_error::Error::invalid_arg(format!("not a profile snapshot: {err}"))
     };
     for entry in archive.entries().map_err(invalid)? {
         let mut entry = entry.map_err(invalid)?;
@@ -580,12 +588,12 @@ pub fn read_manifest(bytes: &[u8]) -> Result<ProfileManifest, LxAppError> {
                 .read_to_end(&mut raw)
                 .map_err(invalid)?;
             return serde_json::from_slice(&raw).map_err(|err| {
-                LxAppError::InvalidParameter(format!("invalid profile manifest: {err}"))
+                lingxia_error::Error::invalid_arg(format!("invalid profile manifest: {err}"))
             });
         }
     }
-    Err(LxAppError::InvalidParameter(
-        "profile snapshot has no manifest".to_string(),
+    Err(lingxia_error::Error::invalid_arg(
+        "profile snapshot has no manifest",
     ))
 }
 
@@ -596,7 +604,7 @@ pub fn unpack(
     bytes: &[u8],
     live: &Path,
     expected: &ProfileManifest,
-) -> Result<ProfileManifest, LxAppError> {
+) -> Result<ProfileManifest, lingxia_error::Error> {
     let manifest = read_manifest(bytes)?;
     manifest.check_matches(expected)?;
     let staging = live.with_file_name(format!("unpack-{}", Uuid::new_v4().simple()));
@@ -616,9 +624,9 @@ pub fn unpack(
     Ok(manifest)
 }
 
-fn unpack_data(bytes: &[u8], staging: &Path) -> Result<(), LxAppError> {
+fn unpack_data(bytes: &[u8], staging: &Path) -> Result<(), lingxia_error::Error> {
     let invalid = |err: std::io::Error| {
-        LxAppError::InvalidParameter(format!("invalid profile snapshot: {err}"))
+        lingxia_error::Error::invalid_arg(format!("invalid profile snapshot: {err}"))
     };
     let mut archive = decoder(bytes)?;
     let mut total = 0u64;
@@ -637,7 +645,7 @@ fn unpack_data(bytes: &[u8], staging: &Path) -> Result<(), LxAppError> {
         }
         total = total.saturating_add(entry.size());
         if total > MAX_PROFILE_BYTES {
-            return Err(LxAppError::InvalidParameter(format!(
+            return Err(lingxia_error::Error::invalid_arg(format!(
                 "profile snapshot unpacks to more than {MAX_PROFILE_BYTES} bytes"
             )));
         }
@@ -645,8 +653,8 @@ fn unpack_data(bytes: &[u8], staging: &Path) -> Result<(), LxAppError> {
         entry.set_unpack_xattrs(false);
         // `unpack_in` refuses any path that would land outside `staging`.
         if !entry.unpack_in(staging).map_err(invalid)? {
-            return Err(LxAppError::InvalidParameter(
-                "profile snapshot entry escapes its directory".to_string(),
+            return Err(lingxia_error::Error::invalid_arg(
+                "profile snapshot entry escapes its directory",
             ));
         }
     }
@@ -683,15 +691,15 @@ mod switching {
         panel_id: String,
     }
 
-    fn manager() -> Result<Arc<LxApps>, LxAppError> {
+    fn manager() -> Result<Arc<LxApps>, lingxia_error::Error> {
         super::super::runtime_registry::get_lxapps_manager()
-            .ok_or_else(|| LxAppError::Runtime("LxApps manager not initialized".to_string()))
+            .ok_or_else(|| lingxia_error::Error::internal("LxApps manager not initialized"))
     }
 
     /// Point `appid` at `profile` (entering an isolated run), closing and
     /// reopening it if it is live. The override is set only once the app's
     /// Logic has stopped, so the previous data is never open twice.
-    pub async fn enter(appid: &str, profile: &RunProfile) -> Result<(), LxAppError> {
+    pub async fn enter(appid: &str, profile: &RunProfile) -> Result<(), lingxia_error::Error> {
         let live = profile.live();
         let appid_owned = appid.to_string();
         with_app_closed(&manager()?, appid, move || {
@@ -704,7 +712,7 @@ mod switching {
     /// Return `appid` to its normal data. The override is cleared first, so
     /// whatever happens to the close and reopen, the next instance of the app
     /// uses its own data again.
-    pub async fn leave(appid: &str) -> Result<(), LxAppError> {
+    pub async fn leave(appid: &str) -> Result<(), lingxia_error::Error> {
         let previous = get(appid);
         clear(appid);
         if let Some(root) = previous {
@@ -715,7 +723,10 @@ mod switching {
 
     /// Copy the closed profile into a new checkpoint and return its id.
     /// Refused unless `appid` currently runs on `profile`.
-    pub async fn checkpoint(appid: &str, profile: &RunProfile) -> Result<String, LxAppError> {
+    pub async fn checkpoint(
+        appid: &str,
+        profile: &RunProfile,
+    ) -> Result<String, lingxia_error::Error> {
         require_active(appid, profile)?;
         let id = Uuid::new_v4().simple().to_string();
         let profile_owned = profile.clone();
@@ -729,7 +740,11 @@ mod switching {
 
     /// Replace the profile with checkpoint `id`. Refused unless `appid`
     /// currently runs on `profile`, so it can never touch the app's real data.
-    pub async fn restore(appid: &str, profile: &RunProfile, id: &str) -> Result<(), LxAppError> {
+    pub async fn restore(
+        appid: &str,
+        profile: &RunProfile,
+        id: &str,
+    ) -> Result<(), lingxia_error::Error> {
         restore_keeping(appid, profile, id, &KeepKeys::default())
             .await
             .map(|_| ())
@@ -743,7 +758,7 @@ mod switching {
         profile: &RunProfile,
         id: &str,
         keep: &KeepKeys,
-    ) -> Result<Vec<String>, LxAppError> {
+    ) -> Result<Vec<String>, lingxia_error::Error> {
         require_active(appid, profile)?;
         profile.checkpoint(id)?;
         let profile_owned = profile.clone();
@@ -755,11 +770,11 @@ mod switching {
         .await
     }
 
-    fn require_active(appid: &str, profile: &RunProfile) -> Result<(), LxAppError> {
+    fn require_active(appid: &str, profile: &RunProfile) -> Result<(), lingxia_error::Error> {
         if profile.is_active_for(appid) {
             Ok(())
         } else {
-            Err(LxAppError::UnsupportedOperation(format!(
+            Err(lingxia_error::Error::not_supported(format!(
                 "lxapp {appid} is not running on an isolated test profile"
             )))
         }
@@ -792,8 +807,8 @@ mod switching {
     pub(crate) async fn with_app_closed<T>(
         manager: &Arc<LxApps>,
         appid: &str,
-        op: impl FnOnce() -> Result<T, LxAppError>,
-    ) -> Result<T, LxAppError> {
+        op: impl FnOnce() -> Result<T, lingxia_error::Error>,
+    ) -> Result<T, lingxia_error::Error> {
         let _serial = switch_lock().lock().await;
         let Some(app) = manager.lxapps.get(appid).map(|entry| entry.value().clone()) else {
             return op();
@@ -816,8 +831,12 @@ mod switching {
         drop(app);
         tokio::time::timeout(CLOSE_TIMEOUT, contexts.wait_for(|count| *count == 0))
             .await
-            .map_err(|_| LxAppError::Runtime(format!("timed out waiting for {appid} to close")))?
-            .map_err(|_| LxAppError::Runtime(format!("{appid} Logic observer closed")))?;
+            .map_err(|_| {
+                lingxia_error::Error::internal(format!("timed out waiting for {appid} to close"))
+            })?
+            .map_err(|_| {
+                lingxia_error::Error::internal(format!("{appid} Logic observer closed"))
+            })?;
 
         let value = op()?;
         if let Some(reopen) = reopen {
@@ -830,7 +849,7 @@ mod switching {
         manager: &Arc<LxApps>,
         appid: &str,
         reopen: Reopen,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         // A development bundle is read straight from the project's build
         // output, which a rebuild empties and refills: a reopen that lands
         // in between finds no `lxapp.json`. Wait the rebuild out instead of
@@ -861,8 +880,8 @@ mod switching {
         timeout: Duration,
         interval: Duration,
         appid: &str,
-        mut attempt: impl FnMut() -> Result<T, LxAppError>,
-    ) -> Result<T, LxAppError> {
+        mut attempt: impl FnMut() -> Result<T, lingxia_error::Error>,
+    ) -> Result<T, lingxia_error::Error> {
         let deadline = tokio::time::Instant::now() + timeout;
         let mut warned = false;
         loop {
@@ -889,7 +908,7 @@ mod switching {
     /// whatever runs next. Failing to get a ready page within
     /// [`REOPEN_TIMEOUT`] is an error; start-up work still running
     /// [`SETTLE_TIMEOUT`] after that is logged and left running.
-    async fn wait_settled(app: &Arc<LxApp>) -> Result<(), LxAppError> {
+    async fn wait_settled(app: &Arc<LxApp>) -> Result<(), lingxia_error::Error> {
         let launched = app.launch_settled.subscribe();
         let mut settle = Settle::new(tokio::time::Instant::now());
         loop {
@@ -914,7 +933,10 @@ mod switching {
                     return Ok(());
                 }
                 SettleStep::Failed(message) => {
-                    return Err(LxAppError::Runtime(format!("{}: {message}", app.appid)));
+                    return Err(lingxia_error::Error::internal(format!(
+                        "{}: {message}",
+                        app.appid
+                    )));
                 }
             }
             tokio::time::sleep(Duration::from_millis(25)).await;
@@ -1012,7 +1034,7 @@ mod switching {
             let reopened = retry_while(true, Duration::from_secs(5), interval, "app", || {
                 attempts += 1;
                 if attempts < 3 {
-                    Err(LxAppError::ResourceNotFound("lxapp.json".into()))
+                    Err(lingxia_error::Error::not_found("lxapp.json"))
                 } else {
                     Ok(attempts)
                 }
@@ -1024,7 +1046,7 @@ mod switching {
             let mut attempts = 0;
             let failed = retry_while(false, Duration::from_secs(5), interval, "app", || {
                 attempts += 1;
-                Err::<(), _>(LxAppError::ResourceNotFound("lxapp.json".into()))
+                Err::<(), _>(lingxia_error::Error::not_found("lxapp.json"))
             })
             .await;
             assert!(failed.is_err());
@@ -1032,7 +1054,7 @@ mod switching {
 
             // A rebuild that never finishes gives up with the last error.
             let gave_up = retry_while(true, Duration::from_millis(30), interval, "app", || {
-                Err::<(), _>(LxAppError::ResourceNotFound("lxapp.json".into()))
+                Err::<(), _>(lingxia_error::Error::not_found("lxapp.json"))
             })
             .await
             .unwrap_err();

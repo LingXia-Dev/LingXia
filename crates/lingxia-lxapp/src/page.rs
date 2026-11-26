@@ -25,7 +25,7 @@ use crate::page::config::{
 };
 use crate::plugin;
 use crate::startup::parse_query_string;
-use crate::{LxApp, LxAppError, debug, error, info, warn};
+use crate::{LxApp, debug, error, info, warn};
 use base64::Engine;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -50,7 +50,7 @@ use std::time::{Duration, Instant};
 use tokio::sync::watch;
 
 /// Reads one of an lxapp's shared View chunk files by its `_view/` path.
-pub type GpuChunkReader = Arc<dyn Fn(&str) -> Result<String, LxAppError> + Send + Sync>;
+pub type GpuChunkReader = Arc<dyn Fn(&str) -> Result<String, lingxia_error::Error> + Send + Sync>;
 
 /// How long an isolated page's setup waits for its opener to create the
 /// PageSvc. The opener does that in the same turn it awaits this page, so
@@ -481,7 +481,7 @@ impl ViewCallOptions {
     }
 }
 
-fn serialize_view_call_params<P>(params: &P) -> Result<Option<Value>, LxAppError>
+fn serialize_view_call_params<P>(params: &P) -> Result<Option<Value>, lingxia_error::Error>
 where
     P: Serialize + ?Sized,
 {
@@ -492,12 +492,12 @@ where
     Ok(Some(value))
 }
 
-fn decode_view_call_result<R>(method: &str, value: Value) -> Result<R, LxAppError>
+fn decode_view_call_result<R>(method: &str, value: Value) -> Result<R, lingxia_error::Error>
 where
     R: DeserializeOwned,
 {
     serde_json::from_value(value).map_err(|err| {
-        LxAppError::Bridge(format!(
+        lingxia_error::Error::internal(format!(
             "Failed to decode view response for '{}': {}",
             method, err
         ))
@@ -734,7 +734,7 @@ impl PageInstance {
 
     /// Destroy the native WebView without unloading the page. Logic, `data`,
     /// query, and the instance stay; the next show recreates the document.
-    pub(crate) fn discard_webview(&self) -> Result<(), LxAppError> {
+    pub(crate) fn discard_webview(&self) -> Result<(), lingxia_error::Error> {
         if self.inner.isolated {
             return Ok(());
         }
@@ -1187,7 +1187,7 @@ impl PageInstance {
 
     /// WKWebView survives renderer loss; only its document must be rebuilt.
     #[cfg(target_vendor = "apple")]
-    pub(crate) fn recover_renderer(&self) -> Result<(), LxAppError> {
+    pub(crate) fn recover_renderer(&self) -> Result<(), lingxia_error::Error> {
         let _transition = self.reset_transition_guard();
         {
             let mut state = self.inner.state.lock().unwrap();
@@ -1274,8 +1274,8 @@ impl PageInstance {
     pub fn handle_incoming_web_message(
         &self,
         message: IncomingWebMessage,
-    ) -> Result<(), LxAppError> {
-        Ok(self.inner.bridge.handle_incoming(self, message)?)
+    ) -> Result<(), lingxia_error::Error> {
+        self.inner.bridge.handle_incoming(self, message)
     }
 
     /// A typed message from the current GPU View, straight from its worker thread.
@@ -1284,16 +1284,15 @@ impl PageInstance {
         endpoint: &Arc<dyn GpuPageView>,
         generation: GpuViewGeneration,
         event: GpuViewEvent,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         if !self.is_current_gpu_endpoint(endpoint) {
-            return Err(LxAppError::Bridge(
-                "GPU endpoint is no longer attached".into(),
+            return Err(lingxia_error::Error::internal(
+                "GPU endpoint is no longer attached",
             ));
         }
         self.inner
             .bridge
             .handle_gpu_event(self, endpoint, generation, event)
-            .map_err(Into::into)
     }
 
     /// What the current GPU View made of its typed state writes.
@@ -1302,16 +1301,15 @@ impl PageInstance {
         endpoint: &Arc<dyn GpuPageView>,
         generation: GpuViewGeneration,
         signal: GpuStateSignal,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         if !self.is_current_gpu_endpoint(endpoint) {
-            return Err(LxAppError::Bridge(
-                "GPU endpoint is no longer attached".into(),
+            return Err(lingxia_error::Error::internal(
+                "GPU endpoint is no longer attached",
             ));
         }
         self.inner
             .bridge
             .handle_gpu_state_signal(self, endpoint, generation, signal)
-            .map_err(Into::into)
     }
 
     pub(crate) fn is_current_gpu_endpoint(&self, endpoint: &Arc<dyn GpuPageView>) -> bool {
@@ -1320,10 +1318,13 @@ impl PageInstance {
     }
 
     /// Host-requested recovery of the currently attached GPU View and its bridge.
-    pub fn reload_gpu_view(&self, endpoint: &Arc<dyn GpuPageView>) -> Result<(), LxAppError> {
+    pub fn reload_gpu_view(
+        &self,
+        endpoint: &Arc<dyn GpuPageView>,
+    ) -> Result<(), lingxia_error::Error> {
         if !self.is_current_gpu_endpoint(endpoint) {
-            return Err(LxAppError::Bridge(
-                "GPU endpoint is no longer attached".into(),
+            return Err(lingxia_error::Error::internal(
+                "GPU endpoint is no longer attached",
             ));
         }
         self.notify_render_started_inner();
@@ -1331,7 +1332,10 @@ impl PageInstance {
         self.connect_gpu_bridge(endpoint)
     }
 
-    fn connect_gpu_bridge(&self, endpoint: &Arc<dyn GpuPageView>) -> Result<(), LxAppError> {
+    fn connect_gpu_bridge(
+        &self,
+        endpoint: &Arc<dyn GpuPageView>,
+    ) -> Result<(), lingxia_error::Error> {
         if !self.logic_enabled() {
             return Ok(());
         }
@@ -1906,15 +1910,15 @@ impl PageInstance {
     }
 
     /// Attach a native GPU endpoint to its owning page, without creating a browser document.
-    pub fn attach_gpu_view(&self, view: Arc<dyn GpuPageView>) -> Result<(), LxAppError> {
+    pub fn attach_gpu_view(&self, view: Arc<dyn GpuPageView>) -> Result<(), lingxia_error::Error> {
         if self.renderer() != PageRenderer::Gpu {
-            return Err(LxAppError::Runtime(
-                "GPU endpoint requires a GPU page".into(),
+            return Err(lingxia_error::Error::internal(
+                "GPU endpoint requires a GPU page",
             ));
         }
         let mut current = self.inner.view.lock().unwrap();
         if current.is_some() {
-            return Err(LxAppError::Runtime("page already has a View".into()));
+            return Err(lingxia_error::Error::internal("page already has a View"));
         }
         *current = Some(PageView::Gpu(view));
         drop(current);
@@ -2213,7 +2217,7 @@ impl PageInstance {
     ///
     /// Does not wait on the permission snapshot: an empty WebView is torn down
     /// before the grant arrives. Fetches stay denied until it is ready.
-    pub(crate) fn reload_view(&self) -> Result<(), LxAppError> {
+    pub(crate) fn reload_view(&self) -> Result<(), lingxia_error::Error> {
         #[cfg(all(test, feature = "js-appservice"))]
         if let Some(host) = startup_test_host::for_page(self) {
             return host.load_html();
@@ -2263,9 +2267,9 @@ impl PageInstance {
         if let Some(controller) = self.webview_controller() {
             controller
                 .load_data(LoadDataRequest::new(&html_string, &base_url))
-                .map_err(LxAppError::from)
+                .map_err(lingxia_error::Error::from)
         } else {
-            Err(LxAppError::WebView("WebView not ready".to_string()))
+            Err(lingxia_error::Error::internal("WebView not ready"))
         }
     }
 
@@ -2280,10 +2284,10 @@ impl PageInstance {
     }
 
     /// Load the catalog's bundled ESM entry using the app's managed resource source.
-    pub fn gpu_module_source(&self) -> Result<String, LxAppError> {
+    pub fn gpu_module_source(&self) -> Result<String, lingxia_error::Error> {
         if self.renderer() != PageRenderer::Gpu {
-            return Err(LxAppError::Runtime(
-                "page does not use the GPU renderer".into(),
+            return Err(lingxia_error::Error::internal(
+                "page does not use the GPU renderer",
             ));
         }
         self.owning_lxapp().read_gpu_module(&self.inner.path)
@@ -2301,17 +2305,20 @@ impl PageInstance {
     }
 
     /// Resolve package or managed image bytes on the host's resource worker.
-    pub fn gpu_image_bytes(&self, source: &str) -> Result<Vec<u8>, LxAppError> {
+    pub fn gpu_image_bytes(&self, source: &str) -> Result<Vec<u8>, lingxia_error::Error> {
         if self.renderer() != PageRenderer::Gpu {
-            return Err(LxAppError::Runtime(
-                "page does not use the GPU renderer".into(),
+            return Err(lingxia_error::Error::internal(
+                "page does not use the GPU renderer",
             ));
         }
         self.owning_lxapp().read_gpu_image(source)
     }
 
     /// Resolve image resources off the UI thread; remote ones go through the host HTTP store.
-    pub async fn load_gpu_image_bytes(&self, source: &str) -> Result<Vec<u8>, LxAppError> {
+    pub async fn load_gpu_image_bytes(
+        &self,
+        source: &str,
+    ) -> Result<Vec<u8>, lingxia_error::Error> {
         if !source.starts_with("https://") && !source.starts_with("http://") {
             return self.gpu_image_bytes(source);
         }
@@ -2319,23 +2326,23 @@ impl PageInstance {
             || source.len() > view_limits::SOURCE_BYTES
             || source.contains('\0')
         {
-            return Err(LxAppError::InvalidParameter(
-                "invalid GPU image source".into(),
+            return Err(lingxia_error::Error::invalid_arg(
+                "invalid GPU image source",
             ));
         }
         let app = self.owning_lxapp();
         let uri: rong_rt::http::Uri = source
             .parse()
-            .map_err(|_| LxAppError::InvalidParameter("invalid image URL".into()))?;
+            .map_err(|_| lingxia_error::Error::invalid_arg("invalid image URL"))?;
         // Cache hits must still pass the current owning app's grant.
         if app.session.is_cancelled() || !uri.host().is_some_and(|host| app.is_domain_allowed(host))
         {
-            return Err(LxAppError::InvalidParameter(
-                "image URL is not allowed".into(),
+            return Err(lingxia_error::Error::invalid_arg(
+                "image URL is not allowed",
             ));
         }
         let store = lingxia_transfer::store::shared()
-            .ok_or_else(|| LxAppError::Runtime("HTTP store unavailable".into()))?;
+            .ok_or_else(|| lingxia_error::Error::internal("HTTP store unavailable"))?;
         let mut request = lingxia_transfer::store::FetchRequest::new(source, app.appid.clone());
         request.max_bytes = view_limits::IMAGE_BYTES as u64;
         request.timeout = std::time::Duration::from_secs(30);
@@ -2347,53 +2354,53 @@ impl PageInstance {
         let bytes = store
             .fetch_bytes(request)
             .await
-            .map_err(|error| LxAppError::ResourceNotFound(error.to_string()))?;
+            .map_err(|error| lingxia_error::Error::not_found(error.to_string()))?;
         if app.session.is_cancelled() {
-            return Err(LxAppError::Runtime("image owner has closed".into()));
+            return Err(lingxia_error::Error::internal("image owner has closed"));
         }
         Ok(bytes.to_vec())
     }
 
     /// The URL the platform player opens for `<video src>`: a granted http(s) URL as is, a
     /// package path or managed lx:// URI as a file URL.
-    pub fn gpu_video_url(&self, source: &str) -> Result<String, LxAppError> {
+    pub fn gpu_video_url(&self, source: &str) -> Result<String, lingxia_error::Error> {
         if self.renderer() != PageRenderer::Gpu
             || source.is_empty()
             || source.len() > view_limits::SOURCE_BYTES
             || source.contains('\0')
         {
-            return Err(LxAppError::InvalidParameter(
-                "VIDEO_SOURCE: invalid src".into(),
+            return Err(lingxia_error::Error::invalid_arg(
+                "VIDEO_SOURCE: invalid src",
             ));
         }
         let app = self.owning_lxapp();
         if source.starts_with("https://") || source.starts_with("http://") {
             let uri: rong_rt::http::Uri = source
                 .parse()
-                .map_err(|_| LxAppError::InvalidParameter("VIDEO_SOURCE: invalid URL".into()))?;
+                .map_err(|_| lingxia_error::Error::invalid_arg("VIDEO_SOURCE: invalid URL"))?;
             let host = uri.host().unwrap_or_default();
             if !app.is_domain_allowed(host) {
-                return Err(LxAppError::InvalidParameter(format!(
+                return Err(lingxia_error::Error::invalid_arg(format!(
                     "VIDEO_NOT_GRANTED: {host} is not in the app's network grant"
                 )));
             }
             return Ok(source.to_owned());
         }
         if !source.starts_with("lx://") && (source.starts_with('/') || source.contains(':')) {
-            return Err(LxAppError::InvalidParameter(
-                "VIDEO_SOURCE: src is a package path, an lx:// URI or an http(s) URL".into(),
+            return Err(lingxia_error::Error::invalid_arg(
+                "VIDEO_SOURCE: src is a package path, an lx:// URI or an http(s) URL",
             ));
         }
         // AVFoundation refuses file:// HLS, so packaged streams fail on every platform alike.
         let bare = source.split(['?', '#']).next().unwrap_or_default();
         if bare.ends_with(".m3u8") || bare.ends_with(".mpd") {
-            return Err(LxAppError::InvalidParameter(
-                "VIDEO_UNSUPPORTED: adaptive streams play from http(s) URLs; for packaged files give <video sources> labelled mp4s".into(),
+            return Err(lingxia_error::Error::invalid_arg(
+                "VIDEO_UNSUPPORTED: adaptive streams play from http(s) URLs; for packaged files give <video sources> labelled mp4s",
             ));
         }
         let path = app.resolve_accessible_path(source)?;
         if !path.is_file() {
-            return Err(LxAppError::ResourceNotFound(format!(
+            return Err(lingxia_error::Error::not_found(format!(
                 "VIDEO_NOT_FOUND: {source}"
             )));
         }
@@ -2532,11 +2539,11 @@ impl PageInstance {
         &self,
         target_page: PageInstance,
         nav_type: NavigationType,
-    ) -> Result<PageInstance, LxAppError> {
+    ) -> Result<PageInstance, lingxia_error::Error> {
         // Normalize through LxApp to ensure consistent canonical paths (e.g. plugin routes).
         let target_url =
             crate::append_page_query(target_page.path(), &target_page.automation_state().query)
-                .map_err(LxAppError::InvalidParameter)?;
+                .map_err(lingxia_error::Error::invalid_arg)?;
         self.navigate_to_url(&target_url, nav_type)
     }
 
@@ -2546,7 +2553,7 @@ impl PageInstance {
         &self,
         target_url: &str,
         nav_type: NavigationType,
-    ) -> Result<PageInstance, LxAppError> {
+    ) -> Result<PageInstance, lingxia_error::Error> {
         let lxapp = self.owning_lxapp();
         lxapp.validate_navigation_entry(target_url, nav_type)?;
         let target_page = if nav_type == NavigationType::Launch {
@@ -2572,7 +2579,7 @@ impl PageInstance {
         requested_url: &str,
         nav_type: NavigationType,
         lxapp: &Arc<LxApp>,
-    ) -> Result<PageInstance, LxAppError> {
+    ) -> Result<PageInstance, lingxia_error::Error> {
         let (path, query) = match &target_page {
             Some(page) => (page.path(), page.automation_state().query),
             None => {
@@ -2583,8 +2590,8 @@ impl PageInstance {
                 (path, query)
             }
         };
-        let target_url =
-            crate::append_page_query(path.clone(), &query).map_err(LxAppError::InvalidParameter)?;
+        let target_url = crate::append_page_query(path.clone(), &query)
+            .map_err(lingxia_error::Error::invalid_arg)?;
         let mut target_page = target_page;
         // Public entry points run this before resolving PageSvc/query state;
         // keep the same preflight here as a backstop for direct native calls.
@@ -2662,20 +2669,20 @@ impl PageInstance {
                         .as_ref()
                         .is_some_and(|page| id == &page.instance_id_string())
                 }) {
-                    return Err(LxAppError::InvalidParameter(format!(
+                    return Err(lingxia_error::Error::invalid_arg(format!(
                         "'{path}' is already on the page stack; \
                          use lx.nav.go({{ tab }}) or lx.nav.back() to return to it."
                     )));
                 }
             }
             NavigationType::Backward => {
-                return Err(LxAppError::UnsupportedOperation(
-                    "should use navigate_back".to_string(),
+                return Err(lingxia_error::Error::not_supported(
+                    "should use navigate_back",
                 ));
             }
         }
         let target_page = target_page.ok_or_else(|| {
-            LxAppError::InvalidParameter(format!("no page resolved for '{target_url}'"))
+            lingxia_error::Error::invalid_arg(format!("no page resolved for '{target_url}'"))
         })?;
         let already_shown =
             nav_type == NavigationType::SwitchTab && target_page.inner.id == self.inner.id;
@@ -2754,7 +2761,7 @@ impl PageInstance {
                 target_page.webtag().key().to_string(),
                 nav_type.to_animation(),
             )
-            .map_err(LxAppError::from)?;
+            .map_err(lingxia_error::Error::from)?;
 
         lxapp.sync_host_ui();
         lxapp.publish_current_page();
@@ -2768,7 +2775,7 @@ impl PageInstance {
         source == target
     }
 
-    pub fn navigate_back(&self, delta: u32) -> Result<(), LxAppError> {
+    pub fn navigate_back(&self, delta: u32) -> Result<(), lingxia_error::Error> {
         let lxapp = self.owning_lxapp();
         let stack_size = lxapp.get_page_stack_size();
 
@@ -2824,8 +2831,8 @@ impl PageInstance {
             lxapp.publish_current_page();
             Ok(())
         } else {
-            Err(LxAppError::UnsupportedOperation(
-                "PageInstance stack is empty after pop".to_string(),
+            Err(lingxia_error::Error::not_supported(
+                "PageInstance stack is empty after pop",
             ))
         }
     }
@@ -2892,20 +2899,20 @@ impl PageInstance {
     /// * `arg` - JSON string containing function arguments
     ///
     /// # Returns
-    /// `Ok(())` if successful, `Err(LxAppError)` if execution fails
-    pub fn call_js(&self, name: String, arg: String) -> Result<(), LxAppError> {
+    /// `Ok(())` if successful, `Err(lingxia_error::Error)` if execution fails
+    pub fn call_js(&self, name: String, arg: String) -> Result<(), lingxia_error::Error> {
         let lxapp = self.owning_lxapp();
-        Ok(lxapp.executor.call_page_service(
+        lxapp.executor.call_page_service(
             lxapp.clone(),
             self.path(),
             Some(self.instance_id_string()),
             name,
             Some(arg),
-        )?)
+        )
     }
 
     /// Call a View method on this page without a payload and deserialize the response.
-    pub async fn call_view<R>(&self, method: &str) -> Result<R, LxAppError>
+    pub async fn call_view<R>(&self, method: &str) -> Result<R, lingxia_error::Error>
     where
         R: DeserializeOwned,
     {
@@ -2917,7 +2924,7 @@ impl PageInstance {
         &self,
         method: &str,
         options: ViewCallOptions,
-    ) -> Result<R, LxAppError>
+    ) -> Result<R, lingxia_error::Error>
     where
         R: DeserializeOwned,
     {
@@ -2926,7 +2933,11 @@ impl PageInstance {
     }
 
     /// Call a View method on this page with a typed payload and deserialize the response.
-    pub async fn call_view_with<P, R>(&self, method: &str, params: &P) -> Result<R, LxAppError>
+    pub async fn call_view_with<P, R>(
+        &self,
+        method: &str,
+        params: &P,
+    ) -> Result<R, lingxia_error::Error>
     where
         P: Serialize + ?Sized,
         R: DeserializeOwned,
@@ -2941,7 +2952,7 @@ impl PageInstance {
         method: &str,
         params: &P,
         options: ViewCallOptions,
-    ) -> Result<R, LxAppError>
+    ) -> Result<R, lingxia_error::Error>
     where
         P: Serialize + ?Sized,
         R: DeserializeOwned,
@@ -2951,7 +2962,7 @@ impl PageInstance {
     }
 
     /// Call a View method on this page and return the raw JSON response.
-    pub async fn call_view_json(&self, method: &str) -> Result<Value, LxAppError> {
+    pub async fn call_view_json(&self, method: &str) -> Result<Value, lingxia_error::Error> {
         self.call_view_json_in(method, ViewCallOptions::default())
             .await
     }
@@ -2961,7 +2972,7 @@ impl PageInstance {
         &self,
         method: &str,
         options: ViewCallOptions,
-    ) -> Result<Value, LxAppError> {
+    ) -> Result<Value, lingxia_error::Error> {
         self.call_view_json_value(method, None, options).await
     }
 
@@ -2970,7 +2981,7 @@ impl PageInstance {
         &self,
         method: &str,
         params: &P,
-    ) -> Result<Value, LxAppError>
+    ) -> Result<Value, lingxia_error::Error>
     where
         P: Serialize + ?Sized,
     {
@@ -2984,7 +2995,7 @@ impl PageInstance {
         method: &str,
         params: &P,
         options: ViewCallOptions,
-    ) -> Result<Value, LxAppError>
+    ) -> Result<Value, lingxia_error::Error>
     where
         P: Serialize + ?Sized,
     {
@@ -2997,9 +3008,9 @@ impl PageInstance {
         method: &str,
         params: Option<Value>,
         options: ViewCallOptions,
-    ) -> Result<Value, LxAppError> {
+    ) -> Result<Value, lingxia_error::Error> {
         let pending = crate::view_call::call_view(self, method, params)?;
-        Ok(crate::view_call::await_pending_view_call(pending, options.timeout()).await?)
+        crate::view_call::await_pending_view_call(pending, options.timeout()).await
     }
 }
 
@@ -3426,12 +3437,7 @@ mod tests {
         let err = decode_view_call_result::<ViewReply>("example.echo", serde_json::json!({}))
             .unwrap_err();
 
-        match err {
-            LxAppError::Bridge(message) => {
-                assert!(message.contains("example.echo"));
-            }
-            other => panic!("unexpected error: {other:?}"),
-        }
+        assert!(err.message().contains("example.echo"), "{err}");
     }
 
     #[test]

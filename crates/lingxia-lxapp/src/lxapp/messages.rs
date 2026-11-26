@@ -2,7 +2,6 @@
 //! The build ships each `i18n/<tag>.json` beside the compiled page catalogues.
 
 use super::{LxApp, display_language};
-use crate::error::LxAppError;
 use lingxia_i18n::Catalogue;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -12,9 +11,13 @@ static CATALOGUES: Mutex<Option<HashMap<Key, Arc<Catalogue>>>> = Mutex::new(None
 
 impl LxApp {
     /// `key` in the lxapp's language, else in its source language (the first it declares).
-    pub fn message(&self, key: &str, args: &serde_json::Value) -> Result<String, LxAppError> {
+    pub fn message(
+        &self,
+        key: &str,
+        args: &serde_json::Value,
+    ) -> Result<String, lingxia_error::Error> {
         let source = self.config().languages.first().cloned().ok_or_else(|| {
-            LxAppError::UnsupportedOperation("lxapp.json declares no languages".into())
+            lingxia_error::Error::not_supported("lxapp.json declares no languages")
         })?;
         let tag = self.content_language(&display_language());
         for tag in [tag, source] {
@@ -25,7 +28,9 @@ impl LxApp {
                 return Ok(lingxia_i18n::format::format(&entry.message, &tag, args));
             }
         }
-        Err(LxAppError::ResourceNotFound(format!("no message '{key}'")))
+        Err(lingxia_error::Error::not_found(format!(
+            "no message '{key}'"
+        )))
     }
 
     /// `key` in the catalogue the lxapp shows for `language`, and only there: no source fallback, so
@@ -67,7 +72,7 @@ impl LxApp {
         }
     }
 
-    fn catalogue(&self, tag: &str) -> Result<Option<Arc<Catalogue>>, LxAppError> {
+    fn catalogue(&self, tag: &str) -> Result<Option<Arc<Catalogue>>, lingxia_error::Error> {
         let key = (
             self.appid.clone(),
             self.get_lxapp_info().version,
@@ -80,10 +85,11 @@ impl LxApp {
         let Ok(bytes) = self.read_bytes(&format!("i18n/{tag}.json")) else {
             return Ok(None);
         };
-        let text = String::from_utf8(bytes)
-            .map_err(|_| LxAppError::InvalidJsonFile(format!("i18n/{tag}.json is not UTF-8")))?;
+        let text = String::from_utf8(bytes).map_err(|_| {
+            lingxia_error::Error::invalid_data(format!("i18n/{tag}.json is not UTF-8"))
+        })?;
         let catalogue = Catalogue::parse(&text, false).map_err(|problems| {
-            LxAppError::InvalidJsonFile(format!(
+            lingxia_error::Error::invalid_data(format!(
                 "i18n/{tag}.json: {}",
                 problems
                     .iter()

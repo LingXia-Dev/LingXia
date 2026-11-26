@@ -5,7 +5,7 @@ use lingxia_view_harmony::lingxia_view::platform::{DeviceFacts, HostChrome};
 use lingxia_view_harmony::lingxia_view::session::host::{Failure, TransitionEvent};
 use lingxia_view_harmony::lingxia_view::session::lifecycle::ConnectionTicket;
 use lingxia_view_harmony::{Page, Shell};
-use lxapp::{GpuViewGeneration, LxAppError, PageInstance};
+use lxapp::{GpuViewGeneration, PageInstance};
 use napi_derive_ohos::napi;
 use napi_ohos::bindgen_prelude::*;
 use std::cell::RefCell;
@@ -292,7 +292,10 @@ struct HarmonyPage {
 }
 
 impl NativePage for HarmonyPage {
-    fn connect(&self, generation: GpuViewGeneration) -> std::result::Result<(), LxAppError> {
+    fn connect(
+        &self,
+        generation: GpuViewGeneration,
+    ) -> std::result::Result<(), lingxia_error::Error> {
         on_page(self.token, move |page| {
             page.with_host(|host| host.connect(ConnectionTicket::new(generation.get())));
         });
@@ -302,7 +305,7 @@ impl NativePage for HarmonyPage {
         &self,
         generation: GpuViewGeneration,
         message: lxapp::GpuViewMessage,
-    ) -> std::result::Result<(), LxAppError> {
+    ) -> std::result::Result<(), lingxia_error::Error> {
         self.port.deliver(
             ConnectionTicket::new(generation.get()),
             gpu_page::state::message_to_view(message),
@@ -313,7 +316,7 @@ impl NativePage for HarmonyPage {
         &self,
         generation: GpuViewGeneration,
         write: lxapp::GpuStateWrite,
-    ) -> std::result::Result<(), LxAppError> {
+    ) -> std::result::Result<(), lingxia_error::Error> {
         self.port.write_state(
             ConnectionTicket::new(generation.get()),
             gpu_page::state::to_view(write),
@@ -324,7 +327,7 @@ impl NativePage for HarmonyPage {
         &self,
         generation: GpuViewGeneration,
         reason: &str,
-    ) -> std::result::Result<(), LxAppError> {
+    ) -> std::result::Result<(), lingxia_error::Error> {
         let reason = reason.to_owned();
         on_page(self.token, move |page| {
             page.with_host(|host| {
@@ -336,7 +339,7 @@ impl NativePage for HarmonyPage {
     fn update_environment(
         &self,
         update: &serde_json::Value,
-    ) -> std::result::Result<(), LxAppError> {
+    ) -> std::result::Result<(), lingxia_error::Error> {
         let update = update.to_string();
         on_page(self.token, move |page| {
             if let Some(Err(error)) = page.with_host(|host| host.update_environment(&update)) {
@@ -345,7 +348,7 @@ impl NativePage for HarmonyPage {
         });
         Ok(())
     }
-    fn reload(&self, source: &str) -> std::result::Result<(), LxAppError> {
+    fn reload(&self, source: &str) -> std::result::Result<(), lingxia_error::Error> {
         self.stale.set();
         let source = source.to_owned();
         on_page(self.token, move |page| {
@@ -354,27 +357,27 @@ impl NativePage for HarmonyPage {
         Ok(())
     }
     #[cfg(feature = "devtool")]
-    fn swap_module(&self, source: &str) -> std::result::Result<(), LxAppError> {
+    fn swap_module(&self, source: &str) -> std::result::Result<(), lingxia_error::Error> {
         let source = source.to_owned();
         on_page(self.token, move |page| {
             page.with_host(|host| host.swap_module(source));
         });
         Ok(())
     }
-    fn park(&self) -> std::result::Result<(), LxAppError> {
+    fn park(&self) -> std::result::Result<(), lingxia_error::Error> {
         self.stale.set();
         on_page(self.token, |page| {
             page.with_host(|host| host.park());
         });
         Ok(())
     }
-    fn page_left(&self) -> std::result::Result<(), LxAppError> {
+    fn page_left(&self) -> std::result::Result<(), lingxia_error::Error> {
         on_page(self.token, |page| {
             page.with_host(|host| host.page_left());
         });
         Ok(())
     }
-    fn retain_surface(&self, retained: bool) -> std::result::Result<(), LxAppError> {
+    fn retain_surface(&self, retained: bool) -> std::result::Result<(), lingxia_error::Error> {
         arkts(
             self.token,
             "retainSurface",
@@ -382,7 +385,7 @@ impl NativePage for HarmonyPage {
         );
         Ok(())
     }
-    fn trim_surface(&self) -> std::result::Result<(), LxAppError> {
+    fn trim_surface(&self) -> std::result::Result<(), lingxia_error::Error> {
         on_page(self.token, |page| page.trim_surface());
         Ok(())
     }
@@ -459,7 +462,7 @@ impl NativeFactory for Factory {
         token: Token,
         page: &PageInstance,
         request: Creation,
-    ) -> std::result::Result<(), LxAppError> {
+    ) -> std::result::Result<(), lingxia_error::Error> {
         let describe = serde_json::json!({
             "appId": page.appid(), "path": page.path(), "webTag": page.webtag().to_string(),
         })

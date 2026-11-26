@@ -1,4 +1,3 @@
-use crate::error::LxAppError;
 use std::collections::HashSet;
 use std::fmt;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
@@ -147,9 +146,9 @@ impl LxAppSecurityPrivilege {
     /// This only normalizes and validates the id. It does not grant any
     /// capability; each privileged API must still call
     /// [`crate::LxApp::has_security_privilege`] before doing sensitive work.
-    pub fn new(privilege: impl AsRef<str>) -> Result<Self, LxAppError> {
+    pub fn new(privilege: impl AsRef<str>) -> Result<Self, lingxia_error::Error> {
         let normalized = normalize_security_privilege_id(privilege.as_ref()).ok_or_else(|| {
-            LxAppError::InvalidParameter(format!(
+            lingxia_error::Error::invalid_arg(format!(
                 "security privilege id must be a lowercase identifier: {:?}",
                 privilege.as_ref()
             ))

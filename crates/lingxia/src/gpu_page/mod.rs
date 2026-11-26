@@ -6,7 +6,7 @@
 #![cfg_attr(not(target_os = "android"), allow(dead_code, unused_imports))]
 use lxapp::{
     GpuChunkReader, GpuPageView, GpuPageViewFactory, GpuStateSignal, GpuStateWrite,
-    GpuViewCreation, GpuViewGeneration, GpuViewMessage, LeaveReason, LxAppError, PageInstance,
+    GpuViewCreation, GpuViewGeneration, GpuViewMessage, LeaveReason, PageInstance,
     PageViewEnvironment,
 };
 use std::{
@@ -57,34 +57,38 @@ pub(crate) fn decode_reply(reply: &str) -> Result<serde_json::Value, String> {
 
 /// A platform's native page shell. Calls enqueue on its UI thread without blocking.
 pub(crate) trait NativePage: Send + Sync + 'static {
-    fn connect(&self, generation: GpuViewGeneration) -> Result<(), LxAppError>;
+    fn connect(&self, generation: GpuViewGeneration) -> Result<(), lingxia_error::Error>;
     /// Any thread: a typed Logic message, straight into the View host.
     fn deliver(
         &self,
         generation: GpuViewGeneration,
         message: GpuViewMessage,
-    ) -> Result<(), LxAppError>;
+    ) -> Result<(), lingxia_error::Error>;
     /// Any thread: typed Logic state, straight into the View host.
     fn write_state(
         &self,
         generation: GpuViewGeneration,
         write: GpuStateWrite,
-    ) -> Result<(), LxAppError>;
-    fn request_leave(&self, generation: GpuViewGeneration, reason: &str) -> Result<(), LxAppError>;
-    fn update_environment(&self, update: &serde_json::Value) -> Result<(), LxAppError>;
-    fn reload(&self, source: &str) -> Result<(), LxAppError>;
+    ) -> Result<(), lingxia_error::Error>;
+    fn request_leave(
+        &self,
+        generation: GpuViewGeneration,
+        reason: &str,
+    ) -> Result<(), lingxia_error::Error>;
+    fn update_environment(&self, update: &serde_json::Value) -> Result<(), lingxia_error::Error>;
+    fn reload(&self, source: &str) -> Result<(), lingxia_error::Error>;
     /// Dev sessions: replace the module keeping page state (`ViewHost::swap_module`);
     /// a shell without it reloads.
     #[cfg_attr(not(feature = "devtool"), allow(dead_code))]
-    fn swap_module(&self, source: &str) -> Result<(), LxAppError> {
+    fn swap_module(&self, source: &str) -> Result<(), lingxia_error::Error> {
         self.reload(source)
     }
-    fn park(&self) -> Result<(), LxAppError>;
-    fn page_left(&self) -> Result<(), LxAppError> {
+    fn park(&self) -> Result<(), lingxia_error::Error>;
+    fn page_left(&self) -> Result<(), lingxia_error::Error> {
         Ok(())
     }
-    fn retain_surface(&self, retained: bool) -> Result<(), LxAppError>;
-    fn trim_surface(&self) -> Result<(), LxAppError> {
+    fn retain_surface(&self, retained: bool) -> Result<(), lingxia_error::Error>;
+    fn trim_surface(&self) -> Result<(), lingxia_error::Error> {
         Ok(())
     }
     /// `{op: query|act|screenshot, css, index, all, maxText, action: {kind, text, force}}`,
@@ -101,7 +105,7 @@ pub(crate) trait NativeFactory: Send + Sync + 'static {
         token: Token,
         page: &PageInstance,
         request: Creation,
-    ) -> Result<(), LxAppError>;
+    ) -> Result<(), lingxia_error::Error>;
     /// Release the shell for `token`, created or still pending.
     fn dispose(&self, token: Token);
 }
@@ -246,7 +250,7 @@ impl GpuPageView for Endpoint {
         &self,
         generation: GpuViewGeneration,
         write: GpuStateWrite,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         if self.current(generation.get()).is_none() {
             return Ok(());
         }
@@ -257,25 +261,27 @@ impl GpuPageView for Endpoint {
         &self,
         generation: GpuViewGeneration,
         message: GpuViewMessage,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         if self.current(generation.get()).is_none() {
             return Ok(());
         }
         self.native.deliver(generation, message)
     }
 
-    fn connect(&self, generation: GpuViewGeneration) -> Result<(), LxAppError> {
+    fn connect(&self, generation: GpuViewGeneration) -> Result<(), lingxia_error::Error> {
         {
             let mut current = self.generation();
             if current.is_some_and(|current| current.get() > generation.get()) {
-                return Err(LxAppError::Bridge("GPU connection was superseded".into()));
+                return Err(lingxia_error::Error::internal(
+                    "GPU connection was superseded",
+                ));
             }
             *current = Some(generation);
         }
         self.native.connect(generation)
     }
 
-    fn request_leave(&self, reason: LeaveReason) -> Result<(), LxAppError> {
+    fn request_leave(&self, reason: LeaveReason) -> Result<(), lingxia_error::Error> {
         let Some(generation) = *self.generation() else {
             return Ok(());
         };
@@ -289,7 +295,7 @@ impl GpuPageView for Endpoint {
         self.native.request_leave(generation, reason)
     }
 
-    fn update_environment(&self, update: PageViewEnvironment) -> Result<(), LxAppError> {
+    fn update_environment(&self, update: PageViewEnvironment) -> Result<(), lingxia_error::Error> {
         if self.lease.disposed() {
             return Ok(());
         }
@@ -321,34 +327,34 @@ impl GpuPageView for Endpoint {
         self.native.update_environment(&update)
     }
 
-    fn reload(&self) -> Result<(), LxAppError> {
+    fn reload(&self) -> Result<(), lingxia_error::Error> {
         let page = lxapp::find_page_by_instance_id(&self.lease.page)
-            .ok_or_else(|| LxAppError::Runtime("GPU page was removed".into()))?;
+            .ok_or_else(|| lingxia_error::Error::internal("GPU page was removed"))?;
         let source = page.gpu_module_source()?;
         *self.generation() = None;
         self.native.reload(&source)
     }
 
-    fn park(&self) -> Result<(), LxAppError> {
+    fn park(&self) -> Result<(), lingxia_error::Error> {
         *self.generation() = None;
         self.native.park()
     }
 
-    fn page_left(&self) -> Result<(), LxAppError> {
+    fn page_left(&self) -> Result<(), lingxia_error::Error> {
         if self.lease.disposed() {
             return Ok(());
         }
         self.native.page_left()
     }
 
-    fn retain_surface(&self, retained: bool) -> Result<(), LxAppError> {
+    fn retain_surface(&self, retained: bool) -> Result<(), lingxia_error::Error> {
         if self.lease.disposed() {
             return Ok(());
         }
         self.native.retain_surface(retained)
     }
 
-    fn trim_surface(&self) -> Result<(), LxAppError> {
+    fn trim_surface(&self) -> Result<(), lingxia_error::Error> {
         if self.lease.disposed() {
             return Ok(());
         }
@@ -392,8 +398,8 @@ impl GpuPageViewFactory for Binding {
             )?;
             let native = rx
                 .await
-                .map_err(|_| LxAppError::Runtime("GPU creation cancelled".into()))?
-                .map_err(LxAppError::Runtime)?;
+                .map_err(|_| lingxia_error::Error::internal("GPU creation cancelled"))?
+                .map_err(lingxia_error::Error::internal)?;
             Ok(register(lease, native) as Arc<dyn GpuPageView>)
         })
     }
@@ -423,7 +429,9 @@ fn install_app_chunks(key: &str, reader: GpuChunkReader) {
     {
         let loader: lingxia_view::ChunkLoader = Arc::new(move |path| match reader(path) {
             Ok(source) => Ok(source),
-            Err(LxAppError::ResourceNotFound(_)) => Err(lingxia_view::ChunkLoadError::NotFound),
+            Err(error) if error.is(lingxia_error::code::NOT_FOUND) => {
+                Err(lingxia_view::ChunkLoadError::NotFound)
+            }
             Err(_) => Err(lingxia_view::ChunkLoadError::IntegrityMismatch),
         });
         lingxia_view::set_app_chunks(key, Some(loader));
@@ -512,7 +520,7 @@ fn register(lease: Lease, native: Arc<dyn NativePage>) -> Arc<Endpoint> {
 /// Dev sessions: swap the module of every live GPU page `select` returns a
 /// source for (by page instance id). Returns how many pages took it.
 #[cfg_attr(not(feature = "devtool"), allow(dead_code))]
-fn swap_pages(select: impl Fn(&str) -> Option<String>) -> Result<usize, LxAppError> {
+fn swap_pages(select: impl Fn(&str) -> Option<String>) -> Result<usize, lingxia_error::Error> {
     let pages: Vec<(String, Token)> = registry()
         .pages
         .iter()
@@ -532,7 +540,7 @@ fn swap_pages(select: impl Fn(&str) -> Option<String>) -> Result<usize, LxAppErr
 /// Dev sessions: the pages of `appid` at `path` take the module now in the bundle. A page
 /// that could not swap in place reloads with it, and that is returned as the error.
 #[cfg_attr(not(feature = "devtool"), allow(dead_code))]
-pub(crate) fn hot_swap(appid: &str, path: &str) -> Result<usize, LxAppError> {
+pub(crate) fn hot_swap(appid: &str, path: &str) -> Result<usize, lingxia_error::Error> {
     #[cfg(all(
         feature = "devtool",
         any(
@@ -560,7 +568,6 @@ pub(crate) fn hot_swap(appid: &str, path: &str) -> Result<usize, LxAppError> {
 /// swap in.
 #[cfg_attr(not(feature = "devtool"), allow(dead_code))]
 mod swap_reports {
-    use lxapp::LxAppError;
     use std::hash::{Hash, Hasher};
     use std::sync::{
         Mutex,
@@ -621,7 +628,11 @@ mod swap_reports {
         }
 
         /// How `pages` swaps ended; one that has not reported by `wait` counts as landed.
-        pub(super) fn outcome(self, pages: usize, wait: Duration) -> Result<(), LxAppError> {
+        pub(super) fn outcome(
+            self,
+            pages: usize,
+            wait: Duration,
+        ) -> Result<(), lingxia_error::Error> {
             let deadline = Instant::now() + wait;
             let mut errors = Vec::new();
             for _ in 0..pages {
@@ -636,7 +647,7 @@ mod swap_reports {
                 return Ok(());
             }
             errors.dedup();
-            Err(LxAppError::Runtime(format!(
+            Err(lingxia_error::Error::internal(format!(
                 "could not update in place, reloaded (local state lost): {}",
                 errors.join("; ")
             )))

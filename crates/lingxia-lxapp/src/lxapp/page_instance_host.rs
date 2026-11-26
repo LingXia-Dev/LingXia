@@ -20,15 +20,13 @@ fn navigation_entry_error(
     nav_type: crate::page::NavigationType,
     target: &str,
     detail: String,
-) -> LxAppError {
-    LxAppError::Coded(
-        lingxia_error::Error::invalid_arg(detail)
-            .with_reason(reason)
-            .with_data(serde_json::json!({
-                "operation": navigation_operation(nav_type),
-                "target": target,
-            })),
-    )
+) -> lingxia_error::Error {
+    lingxia_error::Error::invalid_arg(detail)
+        .with_reason(reason)
+        .with_data(serde_json::json!({
+            "operation": navigation_operation(nav_type),
+            "target": target,
+        }))
 }
 
 fn validate_navigation_stack(
@@ -36,7 +34,7 @@ fn validate_navigation_stack(
     pinned_instance: Option<&str>,
     target_path: &str,
     nav_type: crate::page::NavigationType,
-) -> Result<(), LxAppError> {
+) -> Result<(), lingxia_error::Error> {
     match nav_type {
         // Every forward entry mints its own instance, so the same route may
         // stack repeatedly. Only a path-pinned singleton (tab page) can
@@ -82,7 +80,7 @@ impl LxApp {
     }
 
     /// Validate that a page URL resolves to a configured page before navigation.
-    pub fn ensure_page_exists(&self, url: &str) -> Result<(), LxAppError> {
+    pub fn ensure_page_exists(&self, url: &str) -> Result<(), lingxia_error::Error> {
         let resolved = crate::route::resolve_route(self, url)?;
         self.ensure_resolved_route_exists(&resolved)
     }
@@ -90,20 +88,20 @@ impl LxApp {
     fn ensure_resolved_route_exists(
         &self,
         resolved: &crate::route::ResolvedRoute,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         match &resolved.target {
             crate::route::RouteTarget::Normal { path } => {
                 if self.is_configured_page(path) {
                     Ok(())
                 } else {
-                    Err(LxAppError::ResourceNotFound(path.clone()))
+                    Err(lingxia_error::Error::not_found(path.clone()))
                 }
             }
             crate::route::RouteTarget::Plugin { name, path } => {
                 if self.is_plugin_page_configured(name, path, &resolved.original) {
                     Ok(())
                 } else {
-                    Err(LxAppError::ResourceNotFound(format!(
+                    Err(lingxia_error::Error::not_found(format!(
                         "plugin/{}/{}",
                         name, path
                     )))
@@ -151,11 +149,11 @@ impl LxApp {
         &self,
         target: &PageTarget,
         query: Option<&PageQueryInput>,
-    ) -> Result<String, LxAppError> {
+    ) -> Result<String, lingxia_error::Error> {
         let base = match target {
             PageTarget::Name(name) => self
                 .find_page_path_by_name(name.trim())
-                .ok_or_else(|| LxAppError::ResourceNotFound(format!("page name: {}", name)))?,
+                .ok_or_else(|| lingxia_error::Error::not_found(format!("page name: {}", name)))?,
             PageTarget::Path(path) => {
                 let trimmed = path.trim();
                 if trimmed.is_empty() {
@@ -167,8 +165,8 @@ impl LxApp {
         };
 
         if base.is_empty() {
-            return Err(LxAppError::InvalidParameter(
-                "page target path must not be empty".to_string(),
+            return Err(lingxia_error::Error::invalid_arg(
+                "page target path must not be empty",
             ));
         }
 
@@ -246,7 +244,7 @@ impl LxApp {
         &self,
         target: &PageTarget,
         query: Option<&PageQueryInput>,
-    ) -> Result<ResolvedPage, LxAppError> {
+    ) -> Result<ResolvedPage, lingxia_error::Error> {
         let target_url = self.build_page_target_url(target, query)?;
         let resolved = crate::route::resolve_route(self, &target_url)?;
         self.ensure_resolved_route_exists(&resolved)?;
@@ -267,7 +265,7 @@ impl LxApp {
         target: PageTarget,
         query: Option<PageQueryInput>,
         surface: PresentationKind,
-    ) -> Result<CreatedPageInstance, LxAppError> {
+    ) -> Result<CreatedPageInstance, lingxia_error::Error> {
         let target_url = self.build_page_target_url(&target, query.as_ref())?;
         let resolved = self.resolve_page_target(&target, query.as_ref())?;
 
@@ -297,8 +295,8 @@ impl LxApp {
                     self.session.id,
                 );
                 if resolved_path.is_empty() {
-                    return Err(LxAppError::UnsupportedOperation(
-                        "failed to open page instance for current session".to_string(),
+                    return Err(lingxia_error::Error::not_supported(
+                        "failed to open page instance for current session",
                     ));
                 }
 
@@ -375,9 +373,9 @@ impl LxApp {
         &self,
         id: &PageInstanceId,
         event: PageInstanceEvent,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         let page = self.get_page_by_instance_id(id).ok_or_else(|| {
-            LxAppError::ResourceNotFound(format!("page instance id: {}", id.as_str()))
+            lingxia_error::Error::not_found(format!("page instance id: {}", id.as_str()))
         })?;
         let (
             owner_for_log,
@@ -443,7 +441,7 @@ impl LxApp {
 
     /// Leave a stack page the way Back does: `this.close()` on a pushed page.
     /// Only the top entry above the root can leave.
-    pub(crate) fn leave_page_instance(&self, id: &str) -> Result<(), LxAppError> {
+    pub(crate) fn leave_page_instance(&self, id: &str) -> Result<(), lingxia_error::Error> {
         let (position, depth, pinned) = {
             let state = self.state.lock().unwrap();
             let (position, depth) = {
@@ -464,7 +462,7 @@ impl LxApp {
         match leave_outcome(position, depth, pinned, closed) {
             Leave::Back => self.current_page()?.navigate_back(1),
             Leave::AlreadyClosed => Ok(()),
-            Leave::Refused(detail) => Err(LxAppError::UnsupportedOperation(detail.to_string())),
+            Leave::Refused(detail) => Err(lingxia_error::Error::not_supported(detail.to_string())),
         }
     }
 
@@ -489,7 +487,7 @@ impl LxApp {
         &self,
         id: &PageInstanceId,
         reason: CloseReason,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         self.dispose_page_instance_internal(id, reason, true)
     }
 
@@ -498,7 +496,7 @@ impl LxApp {
         id: &PageInstanceId,
         reason: CloseReason,
         dispatch_on_hide: bool,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         // Closing a hosting surface disposes its content page, and disposing a
         // page closes the surfaces it hosts; the second entry must not unload twice.
         let (first_entry, lifecycle) = {
@@ -536,7 +534,7 @@ impl LxApp {
         reason: CloseReason,
         dispatch_on_hide: bool,
         lifecycle: Option<PageInstanceLifecycleState>,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         self.cancel_page_reset(id.as_str());
         let child_reason = if matches!(reason, CloseReason::AppClosed) {
             CloseReason::AppClosed
@@ -554,7 +552,7 @@ impl LxApp {
         self.close_surfaces_hosting(id, reason);
 
         let page = self.get_page_by_instance_id(id).ok_or_else(|| {
-            LxAppError::ResourceNotFound(format!("page instance id: {}", id.as_str()))
+            lingxia_error::Error::not_found(format!("page instance id: {}", id.as_str()))
         })?;
         let path = page.path();
 
@@ -622,7 +620,7 @@ impl LxApp {
         &self,
         url: &str,
         nav_type: crate::page::NavigationType,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         let resolved = match crate::route::resolve_route(self, url) {
             Ok(resolved) => resolved,
             Err(_) => return Ok(()),
@@ -877,23 +875,27 @@ impl LxApp {
 
     /// Clear the page navigation stack
     /// This removes all pages from the navigation history
-    pub(crate) fn clear_page_stack(&self) -> Result<(), LxAppError> {
+    pub(crate) fn clear_page_stack(&self) -> Result<(), lingxia_error::Error> {
         let state = self.state.lock().unwrap();
         state.page_stack.lock().unwrap().clear();
         Ok(())
     }
 
     /// Push a page instance onto the navigation stack.
-    pub(crate) fn push_to_page_stack(&self, page: &PageInstance) -> Result<(), LxAppError> {
+    pub(crate) fn push_to_page_stack(
+        &self,
+        page: &PageInstance,
+    ) -> Result<(), lingxia_error::Error> {
         let state = self.state.lock().unwrap();
         let mut stack = state.page_stack.lock().unwrap();
 
         // Navigation preflight normally catches this before any page state is
         // mutated. Keep the stack primitive strict as a final invariant guard.
         if stack.len() >= PAGE_STACK_MAX {
-            return Err(LxAppError::ResourceExhausted(format!(
-                "Page stack is full (capacity: {PAGE_STACK_MAX})"
-            )));
+            return Err(lingxia_error::Error::new(
+                lingxia_error::code::QUOTA,
+                format!("Page stack is full (capacity: {PAGE_STACK_MAX})"),
+            ));
         }
 
         // Add to the back of the stack (most recent)
@@ -1077,7 +1079,7 @@ impl LxApp {
 
     /// reLaunch from any entry point. It resolves the target only after every
     /// instance is retired, so callers must not create the target page first.
-    pub fn relaunch(&self, target_url: &str) -> Result<PageInstance, LxAppError> {
+    pub fn relaunch(&self, target_url: &str) -> Result<PageInstance, lingxia_error::Error> {
         let current = self
             .current_page()
             // An app whose initial page has not reached the stack yet.
@@ -1098,7 +1100,7 @@ impl LxApp {
     /// The stack head and the instance map are read under one lock: reading
     /// them separately let a concurrent teardown land in between, so a caller
     /// saw an id the map had already dropped.
-    pub fn current_page(&self) -> Result<PageInstance, LxAppError> {
+    pub fn current_page(&self) -> Result<PageInstance, lingxia_error::Error> {
         let state = self.state.lock().unwrap();
         let id = state
             .page_stack
@@ -1106,14 +1108,16 @@ impl LxApp {
             .unwrap()
             .back()
             .cloned()
-            .ok_or_else(|| LxAppError::WebView("No current page".to_string()))?;
+            .ok_or_else(|| lingxia_error::Error::internal("No current page"))?;
         state
             .pages_by_id
             .lock()
             .unwrap()
             .get(&id)
             .cloned()
-            .ok_or_else(|| LxAppError::WebView(format!("Current page instance not found: {id}")))
+            .ok_or_else(|| {
+                lingxia_error::Error::internal(format!("Current page instance not found: {id}"))
+            })
     }
 
     /// WebView key of the current page, whose window owns a system dialog.
@@ -1124,9 +1128,10 @@ impl LxApp {
     }
 
     /// Return a page by path or an error when that page is not currently alive.
-    pub fn require_page(&self, path: &str) -> Result<PageInstance, LxAppError> {
-        self.get_page(path)
-            .ok_or_else(|| LxAppError::WebView(format!("PageInstance not found: {}", path)))
+    pub fn require_page(&self, path: &str) -> Result<PageInstance, lingxia_error::Error> {
+        self.get_page(path).ok_or_else(|| {
+            lingxia_error::Error::internal(format!("PageInstance not found: {}", path))
+        })
     }
 
     /// Snapshot every live page instance, including isolated surface pages.
@@ -1208,7 +1213,7 @@ impl LxApp {
     }
 
     /// Call the current page View method without a payload and deserialize the response.
-    pub async fn call_view<R>(&self, method: &str) -> Result<R, LxAppError>
+    pub async fn call_view<R>(&self, method: &str) -> Result<R, lingxia_error::Error>
     where
         R: DeserializeOwned,
     {
@@ -1220,7 +1225,7 @@ impl LxApp {
         &self,
         method: &str,
         options: ViewCallOptions,
-    ) -> Result<R, LxAppError>
+    ) -> Result<R, lingxia_error::Error>
     where
         R: DeserializeOwned,
     {
@@ -1228,7 +1233,11 @@ impl LxApp {
     }
 
     /// Call the current page View method with a typed payload and deserialize the response.
-    pub async fn call_view_with<P, R>(&self, method: &str, params: &P) -> Result<R, LxAppError>
+    pub async fn call_view_with<P, R>(
+        &self,
+        method: &str,
+        params: &P,
+    ) -> Result<R, lingxia_error::Error>
     where
         P: Serialize + ?Sized,
         R: DeserializeOwned,
@@ -1242,7 +1251,7 @@ impl LxApp {
         method: &str,
         params: &P,
         options: ViewCallOptions,
-    ) -> Result<R, LxAppError>
+    ) -> Result<R, lingxia_error::Error>
     where
         P: Serialize + ?Sized,
         R: DeserializeOwned,
@@ -1292,7 +1301,7 @@ impl LxApp {
         &self,
         event: AppServiceEvent,
         payload_json: Option<String>,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         match event {
             AppServiceEvent::OnHide => self.mark_hidden(),
             AppServiceEvent::OnShow => {
@@ -1304,15 +1313,14 @@ impl LxApp {
         if !self.logic_enabled() || self.status() == LxAppSessionStatus::Restarting {
             return Ok(());
         }
-        Ok(self
-            .executor
-            .call_app_service_event(self.clone_arc(), event, payload_json)?)
+        self.executor
+            .call_app_service_event(self.clone_arc(), event, payload_json)
     }
     /// Back to the topmost instance of `url`'s page on the stack, closing the pages above it as
     /// a back by that many does (their results settle canceled); `url`'s params become its
     /// params and reach the `onShow` that reveals it. `false` when no instance is on the stack:
     /// the caller opens one.
-    pub fn reuse_page(&self, url: &str) -> Result<bool, LxAppError> {
+    pub fn reuse_page(&self, url: &str) -> Result<bool, lingxia_error::Error> {
         let resolved = self.resolve_entry_route(url);
         let path = resolved.internal_path().to_string();
         let pages = self.get_page_stack_pages();
@@ -1603,11 +1611,8 @@ mod tests {
         assert!(isolated_page_waits_for_page_service(true));
     }
 
-    fn navigation_reason(error: crate::LxAppError) -> String {
-        match error {
-            crate::LxAppError::Coded(error) => error.reason().unwrap().to_string(),
-            other => panic!("unexpected navigation error: {other:?}"),
-        }
+    fn navigation_reason(error: lingxia_error::Error) -> String {
+        error.reason().unwrap().to_string()
     }
 
     #[test]

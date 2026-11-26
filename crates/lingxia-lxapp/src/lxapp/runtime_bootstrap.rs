@@ -3,7 +3,7 @@
 use super::*;
 
 /// Prepares the base directory structure for lxapps
-fn prepare_directory_structure(runtime: Arc<Platform>) -> Result<(), LxAppError> {
+fn prepare_directory_structure(runtime: Arc<Platform>) -> Result<(), lingxia_error::Error> {
     let data_dir = runtime.app_data_dir();
     let cache_dir = runtime.app_cache_dir();
 
@@ -115,7 +115,7 @@ fn content_hash(mut files: Vec<(String, Vec<u8>)>) -> String {
 fn installed_home_version(
     appid: &str,
     release_type: Channel,
-) -> Result<Option<Version>, LxAppError> {
+) -> Result<Option<Version>, lingxia_error::Error> {
     let Some(record) = metadata::get(appid, release_type)? else {
         return Ok(None);
     };
@@ -127,11 +127,13 @@ fn installed_home_version(
         return Ok(None);
     }
 
-    let manifest = fs::read_to_string(&manifest_path).map_err(LxAppError::from)?;
-    let manifest_json: serde_json::Value = serde_json::from_str(&manifest)
-        .map_err(|e| LxAppError::InvalidJsonFile(format!("{}: {}", manifest_path.display(), e)))?;
-    let config = LxAppConfig::from_value(manifest_json)
-        .map_err(|e| LxAppError::InvalidJsonFile(format!("{}: {}", manifest_path.display(), e)))?;
+    let manifest = fs::read_to_string(&manifest_path).map_err(lingxia_error::Error::from)?;
+    let manifest_json: serde_json::Value = serde_json::from_str(&manifest).map_err(|e| {
+        lingxia_error::Error::invalid_data(format!("{}: {}", manifest_path.display(), e))
+    })?;
+    let config = LxAppConfig::from_value(manifest_json).map_err(|e| {
+        lingxia_error::Error::invalid_data(format!("{}: {}", manifest_path.display(), e))
+    })?;
     if config.get_initial_route().trim().is_empty() {
         warn!(
             "Installed home lxapp manifest has no pages: {}; reinstalling bundled home app",
@@ -188,7 +190,7 @@ pub fn runner_active() -> bool {
 }
 
 /// Initialize the LxApps singleton using the host app configuration from app-context.
-pub fn init(runtime: Platform) -> Result<Option<String>, LxAppError> {
+pub fn init(runtime: Platform) -> Result<Option<String>, lingxia_error::Error> {
     init_with_native_authority(runtime, None, None, Box::new(|_, _, _, _| Ok(())))
         .map(|(home_app_id, _, _)| home_app_id)
 }
@@ -198,7 +200,7 @@ type NativeAuthorityInstaller = dyn FnOnce(
         crate::NativeControlPlaneAuthority,
         crate::NativeControlPlaneAuthority,
         crate::terminal_automation::TerminalAutomationAuthority,
-    ) -> Result<(), LxAppError>
+    ) -> Result<(), lingxia_error::Error>
     + 'static;
 
 /// Private Rust-ABI edge used by the `lingxia` platform facade. Keeping this
@@ -217,7 +219,7 @@ pub(crate) extern "Rust" fn platform_bootstrap(
         crate::terminal_automation::TerminalAutomationAuthority,
         crate::NativeControlPlaneAuthority,
     ),
-    LxAppError,
+    lingxia_error::Error,
 > {
     init_with_native_authority(
         runtime,
@@ -238,7 +240,7 @@ fn init_with_native_authority(
         crate::terminal_automation::TerminalAutomationAuthority,
         crate::NativeControlPlaneAuthority,
     ),
-    LxAppError,
+    lingxia_error::Error,
 > {
     // Set up panic hook to capture panic information
     std::panic::set_hook(Box::new(|panic_info| {
@@ -268,7 +270,7 @@ fn init_with_native_authority(
         app_grant_resolver,
         devtools_grant_resolver,
     )
-    .map_err(|message| LxAppError::Runtime(message.to_string()))?;
+    .map_err(|message| lingxia_error::Error::internal(message.to_string()))?;
     let terminal_authority =
         crate::terminal_automation::TerminalAutomationAuthority::for_native_runtime(&native_token);
     install_authorities(
@@ -294,7 +296,7 @@ fn init_with_native_authority(
     let lxapps_manager = Arc::new(LxApps::new(runtime, executor.clone(), num_workers));
     if let Err(e) = super::runtime_registry::set_lxapps_manager(lxapps_manager.clone()) {
         error!("{}", e);
-        return Err(LxAppError::Runtime(e.to_string()));
+        return Err(lingxia_error::Error::internal(e.to_string()));
     }
 
     let (Some(home_app_id), Some(home_app_version)) = (
@@ -315,7 +317,7 @@ fn init_with_native_authority(
                 home_app_version, e
             )
             .with_appid(home_app_id.clone());
-            return Err(LxAppError::InvalidParameter(format!(
+            return Err(lingxia_error::Error::invalid_arg(format!(
                 "invalid bundled home lxapp version '{home_app_version}': {e}"
             )));
         }
@@ -384,7 +386,7 @@ fn init_with_native_authority(
             home_app_version,
         ) {
             error!("Failed to install home LxApp: {}", e);
-            return Err(e);
+            return Err(e.into());
         }
         if let Some(hash) = &dev_bundle {
             let _ = fs::write(&marker, hash);

@@ -270,9 +270,7 @@ async fn present_toast(ctx: &JSContext, request: ToastRequest) -> JSResult<()> {
                     if page.instance_id_string() != id {
                         return Err(lingxia_error::Error::internal("the page changed"));
                     }
-                    page.call_view_with::<_, ()>("ui.showToast", &params)
-                        .await
-                        .map_err(Into::into)
+                    page.call_view_with::<_, ()>("ui.showToast", &params).await
                 }
             },
             || tokio::time::sleep(std::time::Duration::from_millis(20)),

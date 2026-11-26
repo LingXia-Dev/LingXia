@@ -9,7 +9,6 @@
 
 use super::page_chrome::{AppearancePreference, ResolvedAppearance};
 use super::runtime_registry::{get_lxapps_manager, get_platform};
-use crate::error::LxAppError;
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lingxia_platform::traits::ui::Appearance;
 use serde::{Deserialize, Serialize};
@@ -146,9 +145,9 @@ pub fn initialize_host_appearance(
 /// not find the product already running in the scheme it rejected.
 pub fn set_host_appearance_preference(
     preference: AppearancePreference,
-) -> Result<HostAppearanceState, LxAppError> {
+) -> Result<HostAppearanceState, lingxia_error::Error> {
     let platform = get_platform()
-        .ok_or_else(|| LxAppError::Runtime("platform runtime is not initialized".to_string()))?;
+        .ok_or_else(|| lingxia_error::Error::internal("platform runtime is not initialized"))?;
     // The choice is stored as made, `auto` included. A product that defaults to
     // `dark` must not put a user who picked `auto` back in dark on the next
     // launch; `auto` itself still follows the system as it is then.
@@ -156,7 +155,7 @@ pub fn set_host_appearance_preference(
         &platform.app_data_dir(),
         Some(preference.as_str()),
     )
-    .map_err(|error| LxAppError::Runtime(error.to_string()))?;
+    .map_err(|error| lingxia_error::Error::internal(error.to_string()))?;
     let changed = {
         let mut slot = preference_slot()
             .write()

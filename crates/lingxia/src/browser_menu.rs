@@ -9,7 +9,6 @@ use lingxia_shell::{
     BrowserSurfaceMenuAction as Action, MainRow, SurfaceMenuContext, SurfaceMenuItem as Item,
     SurfaceMenuParts, SurfaceMenuSnapshot,
 };
-use lxapp::LxAppError;
 
 /// The menu for `tab_id`. `rows` are the sidebar's main-area rows in order -
 /// lxapp mains and browser tabs alike - which the close family counts.
@@ -64,16 +63,16 @@ fn browser_tab_menu_parts(web: bool, pinned: bool, movable: bool) -> SurfaceMenu
 /// Hand a main-area tab to the side panel, keeping its WebView, history and
 /// state. The platform must already have let go of the tab in its main
 /// browser. Returns the side-panel surface id.
-pub fn move_browser_tab_to_side_panel(tab_id: &str) -> Result<String, LxAppError> {
+pub fn move_browser_tab_to_side_panel(tab_id: &str) -> crate::Result<String> {
     let url = lingxia_browser::tabs()
         .into_iter()
         .find(|tab| tab.tab_id == tab_id)
-        .ok_or_else(|| LxAppError::ResourceNotFound(format!("browser tab {tab_id}")))?
+        .ok_or_else(|| crate::Error::not_found(format!("browser tab {tab_id}")))?
         .current_url
         .unwrap_or_default();
     let owner = lingxia_app_context::home_app_id()
         .and_then(lxapp::try_get)
-        .ok_or_else(|| LxAppError::ResourceNotFound("shell owner lxapp".to_string()))?;
+        .ok_or_else(|| crate::Error::not_found("shell owner lxapp"))?;
     lingxia_browser::demote_tab_to_standalone(tab_id, &owner.appid, owner.session_id())?;
     match owner.open_browser_tab_aside(tab_id, &url) {
         Ok(surface) => Ok(surface.id),

@@ -18,7 +18,6 @@ use super::metadata::{self, RegistryRecord};
 use super::metadata::{StoredGrant, StoredPermissions};
 use super::runtime_registry;
 use crate::archive;
-use crate::error::LxAppError;
 use crate::provider::{
     LxAppChannel, LxAppPermissions, LxAppRegistryInfo, LxAppRegistryRequest, LxAppStatus,
     lxapp_registry_provider,
@@ -215,8 +214,9 @@ pub fn set_open_blocked_listener(listener: OpenBlockedListener) {
 }
 
 /// Tell host chrome a blocked open happened. Logs when nothing is registered.
-pub fn notify_open_blocked(error: &LxAppError) {
-    if let Some(status) = registry_unavailable_status(&error.clone().into()) {
+pub fn notify_open_blocked<E: Clone + Into<lingxia_error::Error>>(error: &E) {
+    let error: lingxia_error::Error = error.clone().into();
+    if let Some(status) = registry_unavailable_status(&error) {
         let guard = open_blocked_listener()
             .lock()
             .unwrap_or_else(|e| e.into_inner());
@@ -405,7 +405,7 @@ pub(crate) fn ensure_fresh<S: AsRef<str>>(appids: &[S]) {
 /// re-check when the cached status has aged out. But a check that cannot reach
 /// the registry is not evidence of anything either, and an installed app must
 /// keep opening offline — so only a status we just confirmed can block.
-pub async fn ensure_open_allowed(appid: &str) -> Result<(), LxAppError> {
+pub async fn ensure_open_allowed(appid: &str) -> Result<(), lingxia_error::Error> {
     if lxapp_registry_provider().is_none() {
         return Ok(());
     }
@@ -460,14 +460,12 @@ pub async fn ensure_open_allowed(appid: &str) -> Result<(), LxAppError> {
 /// user — "come back later" against "this is not yours to open" — so the status
 /// travels as the error's `reason` rather than only inside a sentence; the message
 /// is a fallback for a host that shows the raw text.
-fn unavailable_error(appid: &str, status: LxAppStatus) -> LxAppError {
-    LxAppError::Coded(
-        lingxia_error::Error::permission_denied(format!(
-            "lxapp {appid} is {status} and cannot be opened"
-        ))
-        .with_reason(unavailable_reason(status))
-        .with_data(serde_json::json!({ "appId": appid })),
-    )
+fn unavailable_error(appid: &str, status: LxAppStatus) -> lingxia_error::Error {
+    lingxia_error::Error::permission_denied(format!(
+        "lxapp {appid} is {status} and cannot be opened"
+    ))
+    .with_reason(unavailable_reason(status))
+    .with_data(serde_json::json!({ "appId": appid }))
 }
 
 /// Fetch the registry's answer for one channel and store it. Artwork is *not*
@@ -481,7 +479,7 @@ fn unavailable_error(appid: &str, status: LxAppStatus) -> LxAppError {
 pub(crate) async fn fetch_records(
     appid: &str,
     channel: LxAppChannel,
-) -> Result<Option<LxAppRegistryInfo>, LxAppError> {
+) -> Result<Option<LxAppRegistryInfo>, lingxia_error::Error> {
     let Some(provider) = lxapp_registry_provider() else {
         return Ok(None);
     };
@@ -1192,9 +1190,6 @@ mod tests {
         // status has to survive as data rather than only inside a sentence.
         for status in [LxAppStatus::Suspended, LxAppStatus::Maintain] {
             let error = unavailable_error("com.example.app", status);
-            let LxAppError::Coded(error) = error else {
-                panic!("a blocked open must carry a coded error, got {error:?}");
-            };
             assert_eq!(registry_unavailable_status(&error), Some(status));
             assert_eq!(error.code(), "E_PERMISSION_DENIED");
             assert_eq!(error.reason(), Some(unavailable_reason(status)));

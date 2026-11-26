@@ -1,4 +1,3 @@
-use crate::LxAppError;
 use crate::lxapp::LxApp;
 use crate::lxapp::navbar::{NavigationBarConfig, NavigationBarState, NavigationStyle};
 use crate::warn;
@@ -290,7 +289,7 @@ impl PageConfig {
 
     /// Create PageConfig from JSON config file path.
     /// Missing files use defaults; malformed files are hard page-load errors.
-    pub fn from_json(lxapp: &LxApp, path: &str) -> Result<Self, LxAppError> {
+    pub fn from_json(lxapp: &LxApp, path: &str) -> Result<Self, lingxia_error::Error> {
         if path.trim().is_empty() {
             return Ok(Self::default());
         }
@@ -304,9 +303,9 @@ impl PageConfig {
                 } else {
                     format!("{json_path}: {detail}")
                 };
-                LxAppError::InvalidJsonFile(detail)
+                lingxia_error::Error::invalid_data(detail)
             }),
-            Err(LxAppError::ResourceNotFound(_)) => Ok(Self::default()),
+            Err(error) if error.is(lingxia_error::code::NOT_FOUND) => Ok(Self::default()),
             Err(error) => Err(error),
         }?;
         let mut config = config;

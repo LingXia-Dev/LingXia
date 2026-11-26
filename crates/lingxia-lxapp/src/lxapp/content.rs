@@ -1,5 +1,4 @@
 use crate::error;
-use crate::error::LxAppError;
 use crate::info;
 use crate::lxapp::LxApp;
 
@@ -170,7 +169,7 @@ impl LxApp {
         html_data: &[u8],
         css_data: &[u8],
         path: &str,
-    ) -> Result<Vec<u8>, LxAppError> {
+    ) -> Result<Vec<u8>, lingxia_error::Error> {
         // Convert CSS content to string
         let css_content = String::from_utf8_lossy(css_data);
         let style_tag = format!("<style>\n{}\n</style>", css_content);

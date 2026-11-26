@@ -1,4 +1,3 @@
-use crate::error::LxAppError;
 use crate::page::PageInstanceId;
 use crate::page::config::PageConfig;
 use serde::{Deserialize, Serialize};
@@ -172,7 +171,7 @@ impl CloseReason {
 pub(crate) fn transition_page_instance_lifecycle(
     current: PageInstanceLifecycleState,
     event: &PageInstanceEvent,
-) -> Result<PageInstanceLifecycleState, LxAppError> {
+) -> Result<PageInstanceLifecycleState, lingxia_error::Error> {
     use PageInstanceEvent as Event;
     use PageInstanceLifecycleState as State;
 
@@ -181,37 +180,37 @@ pub(crate) fn transition_page_instance_lifecycle(
             State::Created => Ok(State::Mounted),
             State::Mounted => Ok(State::Mounted),
             State::Visible | State::Hidden => Ok(current),
-            State::Disposed => Err(LxAppError::UnsupportedOperation(
-                "cannot notify mounted after disposed".to_string(),
+            State::Disposed => Err(lingxia_error::Error::not_supported(
+                "cannot notify mounted after disposed",
             )),
         },
         Event::Visible => match current {
             State::Mounted | State::Visible | State::Hidden => Ok(State::Visible),
-            State::Created => Err(LxAppError::UnsupportedOperation(
-                "visible before mounted is not allowed".to_string(),
+            State::Created => Err(lingxia_error::Error::not_supported(
+                "visible before mounted is not allowed",
             )),
-            State::Disposed => Err(LxAppError::UnsupportedOperation(
-                "cannot notify visible after disposed".to_string(),
+            State::Disposed => Err(lingxia_error::Error::not_supported(
+                "cannot notify visible after disposed",
             )),
         },
         Event::Hidden { .. } => match current {
             State::Mounted | State::Visible | State::Hidden => Ok(State::Hidden),
-            State::Created => Err(LxAppError::UnsupportedOperation(
-                "hidden before mounted is not allowed".to_string(),
+            State::Created => Err(lingxia_error::Error::not_supported(
+                "hidden before mounted is not allowed",
             )),
-            State::Disposed => Err(LxAppError::UnsupportedOperation(
-                "cannot notify hidden after disposed".to_string(),
+            State::Disposed => Err(lingxia_error::Error::not_supported(
+                "cannot notify hidden after disposed",
             )),
         },
         Event::Resized { .. } => match current {
-            State::Disposed => Err(LxAppError::UnsupportedOperation(
-                "cannot notify resized after disposed".to_string(),
+            State::Disposed => Err(lingxia_error::Error::not_supported(
+                "cannot notify resized after disposed",
             )),
             _ => Ok(current),
         },
         Event::Disposed { .. } => match current {
-            State::Disposed => Err(LxAppError::UnsupportedOperation(
-                "page instance already disposed".to_string(),
+            State::Disposed => Err(lingxia_error::Error::not_supported(
+                "page instance already disposed",
             )),
             _ => Ok(State::Disposed),
         },

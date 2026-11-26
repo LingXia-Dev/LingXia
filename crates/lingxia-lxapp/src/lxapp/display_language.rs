@@ -2,7 +2,6 @@
 
 use super::LxApp;
 use super::runtime_registry::{get_lxapps_manager, get_platform};
-use crate::error::LxAppError;
 use language_tags::LanguageTag as ParsedLanguageTag;
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lingxia_platform::traits::ui::UIUpdate;
@@ -435,8 +434,8 @@ impl DisplayLanguageService {
     fn set_preference_persisted(
         &self,
         preference: DisplayLanguagePreference,
-        persist: impl FnOnce(&DisplayLanguagePreference) -> Result<(), LxAppError>,
-    ) -> Result<bool, LxAppError> {
+        persist: impl FnOnce(&DisplayLanguagePreference) -> Result<(), lingxia_error::Error>,
+    ) -> Result<bool, lingxia_error::Error> {
         // Keep persistence and publication serialized. A failed write never
         // mutates memory or emits either event.
         let mut inner = self.inner.lock().unwrap_or_else(|error| error.into_inner());
@@ -604,12 +603,12 @@ pub fn initialize_display_language(
     system: &str,
     languages: &[String],
     runner_override: Option<DisplayLanguagePreference>,
-) -> Result<Option<DisplayLanguageSessionOwner>, LxAppError> {
+) -> Result<Option<DisplayLanguageSessionOwner>, lingxia_error::Error> {
     let preference = persisted
         .as_deref()
         .unwrap_or("auto")
         .parse::<DisplayLanguagePreference>()
-        .map_err(LxAppError::InvalidParameter)?;
+        .map_err(lingxia_error::Error::invalid_arg)?;
     // A system locale this process cannot parse must not cost the user the
     // language they chose: only the follow-the-system input falls back.
     let system = LanguageTag::from_system(system).unwrap_or_else(|error| {
@@ -662,9 +661,9 @@ pub fn display_language() -> String {
 /// Persist a host preference, then atomically publish its resulting state.
 pub fn set_display_language_preference(
     preference: DisplayLanguagePreference,
-) -> Result<(), LxAppError> {
+) -> Result<(), lingxia_error::Error> {
     let dir = get_platform()
-        .ok_or_else(|| LxAppError::Runtime("SDK has not been initialized".to_string()))?
+        .ok_or_else(|| lingxia_error::Error::internal("SDK has not been initialized"))?
         .app_data_dir();
     set_display_language_preference_in(&dir, preference)
 }
@@ -673,10 +672,10 @@ pub fn set_display_language_preference(
 pub fn set_display_language_preference_in(
     app_data_dir: &Path,
     preference: DisplayLanguagePreference,
-) -> Result<(), LxAppError> {
+) -> Result<(), lingxia_error::Error> {
     let transition = service().set_preference_persisted(preference, |preference| {
         lingxia_settings::set_display_language(app_data_dir, preference.persisted_tag())
-            .map_err(|error| LxAppError::Runtime(error.to_string()))
+            .map_err(|error| lingxia_error::Error::internal(error.to_string()))
     })?;
     dispatch(transition);
     let state = service().state();
@@ -715,8 +714,8 @@ pub fn clear_active_display_language_session_override() {
 }
 
 /// Refresh the system input after the native host reports a locale change.
-pub fn refresh_display_language_system(system: &str) -> Result<(), LxAppError> {
-    let system = LanguageTag::from_system(system).map_err(LxAppError::InvalidParameter)?;
+pub fn refresh_display_language_system(system: &str) -> Result<(), lingxia_error::Error> {
+    let system = LanguageTag::from_system(system).map_err(lingxia_error::Error::invalid_arg)?;
     dispatch(service().refresh_system(system));
     Ok(())
 }
@@ -992,7 +991,7 @@ mod tests {
         let (states, effective) = counts(&service);
         let before = service.state();
         let result = service.set_preference_persisted("zh-CN".parse().unwrap(), |_| {
-            Err(LxAppError::Runtime("disk full".to_string()))
+            Err(lingxia_error::Error::internal("disk full"))
         });
         assert!(result.is_err());
         assert_eq!(service.state(), before);

@@ -2505,7 +2505,6 @@ async fn open_surface(
         .open_surface_with_chrome(request, chrome)
         .map_err(|err| {
             unregister_closed_sender(&requested_surface_id);
-            let err = lingxia_error::Error::from(err);
             if err.is(lingxia_error::code::NOT_SUPPORTED) {
                 surface_error(SurfaceErrorCode::UnsupportedPlacement, err.message())
             } else {

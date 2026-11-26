@@ -294,6 +294,15 @@ const REQUIRES_RUNTIME_UPGRADE_CODE: u32 = 6002;
 /// Spelled here: the crate also builds without rong.
 const PERMISSION_DENIED_CODE: &str = "E_PERMISSION_DENIED";
 
+/// This host's runtime is below the package's `minRuntime`.
+pub fn requires_runtime_upgrade(detail: impl Into<String>) -> lingxia_error::Error {
+    lingxia_error::Error::business(REQUIRES_RUNTIME_UPGRADE_CODE, detail)
+}
+
+pub fn is_requires_runtime_upgrade(error: &lingxia_error::Error) -> bool {
+    error.reason() == Some("hostUpgradeRequired")
+}
+
 impl LxAppError {
     /// This host's runtime is below the package's `minRuntime`.
     pub fn requires_runtime_upgrade(detail: impl Into<String>) -> Self {
@@ -304,7 +313,7 @@ impl LxAppError {
     }
 
     pub fn is_requires_runtime_upgrade(&self) -> bool {
-        matches!(self, Self::Coded(error) if error.reason() == Some("hostUpgradeRequired"))
+        matches!(self, Self::Coded(error) if is_requires_runtime_upgrade(error))
     }
 
     /// The host refused the call (`E_PERMISSION_DENIED`): the lxapp's policy, not a fault.

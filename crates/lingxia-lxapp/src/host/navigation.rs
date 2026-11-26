@@ -272,7 +272,10 @@ impl super::HostHandler for SetTitle {
                         },
                         ..Default::default()
                     };
-                    invocation.lxapp().commit_navigation_bar(page, patch).await
+                    Ok(invocation
+                        .lxapp()
+                        .commit_navigation_bar(page, patch)
+                        .await?)
                 }
                 Err(error) => Err(error),
             };

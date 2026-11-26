@@ -1,4 +1,3 @@
-use crate::LxAppError;
 use lingxia_webview::{DocumentGeneration, DocumentOutboundGate, WebView, WebViewController};
 use std::{
     future::Future,
@@ -7,7 +6,7 @@ use std::{
 };
 
 pub type GpuViewCreation =
-    Pin<Box<dyn Future<Output = Result<Arc<dyn GpuPageView>, LxAppError>> + Send>>;
+    Pin<Box<dyn Future<Output = Result<Arc<dyn GpuPageView>, lingxia_error::Error>> + Send>>;
 
 /// Installed by the native SDK before opening lxapps. Cancelled creation must release resources.
 /// A created View has already been given its module, so the first connect needs no reload.
@@ -22,10 +21,10 @@ static GPU_FACTORY: OnceLock<Arc<dyn GpuPageViewFactory>> = OnceLock::new();
 
 pub fn register_gpu_page_view_factory(
     factory: Arc<dyn GpuPageViewFactory>,
-) -> Result<(), LxAppError> {
+) -> Result<(), lingxia_error::Error> {
     GPU_FACTORY
         .set(factory)
-        .map_err(|_| LxAppError::Runtime("GPU View factory already registered".into()))
+        .map_err(|_| lingxia_error::Error::internal("GPU View factory already registered"))
 }
 
 pub(crate) fn gpu_factory() -> Option<Arc<dyn GpuPageViewFactory>> {
@@ -304,30 +303,30 @@ pub trait GpuPageView: Send + Sync {
         &self,
         generation: GpuViewGeneration,
         message: GpuViewMessage,
-    ) -> Result<(), LxAppError>;
+    ) -> Result<(), lingxia_error::Error>;
     /// Typed Logic state; like messages, rechecked for this generation at delivery.
     fn write_state(
         &self,
         generation: GpuViewGeneration,
         write: GpuStateWrite,
-    ) -> Result<(), LxAppError>;
+    ) -> Result<(), lingxia_error::Error>;
     /// The View answers with [`GpuViewEvent::Connected`] once it can take this generation.
-    fn connect(&self, generation: GpuViewGeneration) -> Result<(), LxAppError>;
-    fn request_leave(&self, reason: super::LeaveReason) -> Result<(), LxAppError>;
-    fn update_environment(&self, update: PageViewEnvironment) -> Result<(), LxAppError>;
+    fn connect(&self, generation: GpuViewGeneration) -> Result<(), lingxia_error::Error>;
+    fn request_leave(&self, reason: super::LeaveReason) -> Result<(), lingxia_error::Error>;
+    fn update_environment(&self, update: PageViewEnvironment) -> Result<(), lingxia_error::Error>;
     /// Rebuild View state for a fresh Logic connection.
-    fn reload(&self) -> Result<(), LxAppError>;
+    fn reload(&self) -> Result<(), lingxia_error::Error>;
     /// Clear local state and stop presenting until the next entry.
-    fn park(&self) -> Result<(), LxAppError>;
+    fn park(&self) -> Result<(), lingxia_error::Error>;
     /// Covered or left inside the app, not by the app going to the background: the page's
     /// passing layers (a select's sheet, a menu, a popover) close as a tap outside would.
-    fn page_left(&self) -> Result<(), LxAppError> {
+    fn page_left(&self) -> Result<(), lingxia_error::Error> {
         Ok(())
     }
     /// Whether a hidden page keeps its presented surface; see `surface_retention`.
-    fn retain_surface(&self, retained: bool) -> Result<(), LxAppError>;
+    fn retain_surface(&self, retained: bool) -> Result<(), lingxia_error::Error>;
     /// A hidden page that keeps its surface drops the render targets a redraw rebuilds.
-    fn trim_surface(&self) -> Result<(), LxAppError> {
+    fn trim_surface(&self) -> Result<(), lingxia_error::Error> {
         Ok(())
     }
     /// Release the context and native surface; must be idempotent.
@@ -341,7 +340,10 @@ pub(crate) enum PageView {
 }
 
 impl PageView {
-    pub(crate) fn update_environment(&self, update: PageViewEnvironment) -> Result<(), LxAppError> {
+    pub(crate) fn update_environment(
+        &self,
+        update: PageViewEnvironment,
+    ) -> Result<(), lingxia_error::Error> {
         match self {
             Self::Gpu(view) => view.update_environment(update),
             Self::Web(view) => {
@@ -368,7 +370,7 @@ impl PageView {
                     // The web page's text size follows the WebView's own setting.
                     PageViewEnvironment::TextScaleLimit { .. } => return Ok(()),
                 };
-                view.exec_js(&script).map_err(LxAppError::from)
+                view.exec_js(&script).map_err(lingxia_error::Error::from)
             }
         }
     }
@@ -379,11 +381,13 @@ impl PageView {
         }
     }
 
-    pub(crate) fn post_message(&self, message: &str) -> Result<(), LxAppError> {
+    pub(crate) fn post_message(&self, message: &str) -> Result<(), lingxia_error::Error> {
         match self {
-            Self::Web(view) => view.post_message(message).map_err(LxAppError::from),
-            Self::Gpu(_) => Err(LxAppError::Bridge(
-                "a GPU View takes typed messages only".into(),
+            Self::Web(view) => view
+                .post_message(message)
+                .map_err(lingxia_error::Error::from),
+            Self::Gpu(_) => Err(lingxia_error::Error::internal(
+                "a GPU View takes typed messages only",
             )),
         }
     }
@@ -393,13 +397,13 @@ impl PageView {
         generation: DocumentGeneration,
         gate: Arc<dyn DocumentOutboundGate>,
         message: &str,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         match self {
             Self::Web(view) => view
                 .post_message_to_document(generation, gate, message)
-                .map_err(LxAppError::from),
-            Self::Gpu(_) => Err(LxAppError::Bridge(
-                "browser document transport is unavailable for GPU pages".into(),
+                .map_err(lingxia_error::Error::from),
+            Self::Gpu(_) => Err(lingxia_error::Error::internal(
+                "browser document transport is unavailable for GPU pages",
             )),
         }
     }

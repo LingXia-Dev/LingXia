@@ -86,7 +86,8 @@ impl super::HostHandler for Open {
                     let webtag = document.webtag().as_str().to_string();
                     blocked_logs().insert(webtag.clone(), log);
                     Opened { webtag }
-                });
+                })
+                .map_err(Into::into);
             super::serialize_result(result)
         })
     }

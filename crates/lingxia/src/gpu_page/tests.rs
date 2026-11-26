@@ -10,7 +10,7 @@ impl Shell {
 }
 
 impl NativePage for Shell {
-    fn connect(&self, generation: GpuViewGeneration) -> Result<(), LxAppError> {
+    fn connect(&self, generation: GpuViewGeneration) -> Result<(), lingxia_error::Error> {
         self.0
             .lock()
             .unwrap()
@@ -21,7 +21,7 @@ impl NativePage for Shell {
         &self,
         generation: GpuViewGeneration,
         message: GpuViewMessage,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         self.0
             .lock()
             .unwrap()
@@ -32,39 +32,43 @@ impl NativePage for Shell {
         &self,
         generation: GpuViewGeneration,
         write: GpuStateWrite,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         self.0
             .lock()
             .unwrap()
             .push(format!("state {} {write:?}", generation.get()));
         Ok(())
     }
-    fn request_leave(&self, generation: GpuViewGeneration, reason: &str) -> Result<(), LxAppError> {
+    fn request_leave(
+        &self,
+        generation: GpuViewGeneration,
+        reason: &str,
+    ) -> Result<(), lingxia_error::Error> {
         self.0
             .lock()
             .unwrap()
             .push(format!("leave {} {reason}", generation.get()));
         Ok(())
     }
-    fn update_environment(&self, update: &serde_json::Value) -> Result<(), LxAppError> {
+    fn update_environment(&self, update: &serde_json::Value) -> Result<(), lingxia_error::Error> {
         self.0
             .lock()
             .unwrap()
             .push(format!("environment {}", update["kind"]));
         Ok(())
     }
-    fn reload(&self, _: &str) -> Result<(), LxAppError> {
+    fn reload(&self, _: &str) -> Result<(), lingxia_error::Error> {
         Ok(())
     }
-    fn swap_module(&self, source: &str) -> Result<(), LxAppError> {
+    fn swap_module(&self, source: &str) -> Result<(), lingxia_error::Error> {
         self.0.lock().unwrap().push(format!("swap {source}"));
         Ok(())
     }
-    fn park(&self) -> Result<(), LxAppError> {
+    fn park(&self) -> Result<(), lingxia_error::Error> {
         self.0.lock().unwrap().push("park".into());
         Ok(())
     }
-    fn retain_surface(&self, retained: bool) -> Result<(), LxAppError> {
+    fn retain_surface(&self, retained: bool) -> Result<(), lingxia_error::Error> {
         self.0.lock().unwrap().push(format!("retain {retained}"));
         Ok(())
     }
@@ -84,7 +88,7 @@ impl NativePage for Shell {
 struct Factory(Mutex<Vec<Token>>);
 
 impl NativeFactory for Factory {
-    fn create(&self, _: Token, _: &PageInstance, _: Creation) -> Result<(), LxAppError> {
+    fn create(&self, _: Token, _: &PageInstance, _: Creation) -> Result<(), lingxia_error::Error> {
         unreachable!("tests register endpoints directly")
     }
     fn dispose(&self, token: Token) {
@@ -94,7 +98,7 @@ impl NativeFactory for Factory {
 
 /// An lxapp that ships no shared View chunk.
 fn no_chunks() -> GpuChunkReader {
-    Arc::new(|path| Err(LxAppError::ResourceNotFound(path.to_owned())))
+    Arc::new(|path| Err(lingxia_error::Error::not_found(path.to_owned())))
 }
 
 fn endpoint(factory: &Arc<Factory>, page: &str) -> (Arc<Endpoint>, Arc<Shell>, Token) {
@@ -259,28 +263,32 @@ struct Acting {
 
 #[cfg(feature = "automation")]
 impl NativePage for Acting {
-    fn connect(&self, _: GpuViewGeneration) -> Result<(), LxAppError> {
+    fn connect(&self, _: GpuViewGeneration) -> Result<(), lingxia_error::Error> {
         Ok(())
     }
-    fn deliver(&self, _: GpuViewGeneration, _: GpuViewMessage) -> Result<(), LxAppError> {
+    fn deliver(&self, _: GpuViewGeneration, _: GpuViewMessage) -> Result<(), lingxia_error::Error> {
         Ok(())
     }
-    fn write_state(&self, _: GpuViewGeneration, _: GpuStateWrite) -> Result<(), LxAppError> {
+    fn write_state(
+        &self,
+        _: GpuViewGeneration,
+        _: GpuStateWrite,
+    ) -> Result<(), lingxia_error::Error> {
         Ok(())
     }
-    fn request_leave(&self, _: GpuViewGeneration, _: &str) -> Result<(), LxAppError> {
+    fn request_leave(&self, _: GpuViewGeneration, _: &str) -> Result<(), lingxia_error::Error> {
         Ok(())
     }
-    fn update_environment(&self, _: &serde_json::Value) -> Result<(), LxAppError> {
+    fn update_environment(&self, _: &serde_json::Value) -> Result<(), lingxia_error::Error> {
         Ok(())
     }
-    fn reload(&self, _: &str) -> Result<(), LxAppError> {
+    fn reload(&self, _: &str) -> Result<(), lingxia_error::Error> {
         Ok(())
     }
-    fn park(&self) -> Result<(), LxAppError> {
+    fn park(&self) -> Result<(), lingxia_error::Error> {
         Ok(())
     }
-    fn retain_surface(&self, _: bool) -> Result<(), LxAppError> {
+    fn retain_surface(&self, _: bool) -> Result<(), lingxia_error::Error> {
         Ok(())
     }
     fn automation(&self, request: serde_json::Value, reply: AutomationReply) {

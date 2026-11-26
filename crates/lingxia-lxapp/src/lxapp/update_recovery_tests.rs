@@ -274,7 +274,7 @@ fn downloaded_draft_cannot_inherit_control_surface_authority() {
     f.manager.lxapps.insert(f.appid.clone(), surface.clone());
     assert!(matches!(
         f.manager.ensure_lxapp(f.appid.clone(), Channel::Draft),
-        Err(LxAppError::InvalidParameter(_))
+        Err(error) if error.is(lingxia_error::code::INVALID_ARG)
     ));
     assert!(!surface.session.is_retired());
     assert!(Arc::ptr_eq(

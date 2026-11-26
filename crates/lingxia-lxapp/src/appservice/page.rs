@@ -2008,7 +2008,6 @@ impl PageSvc {
         self.page
             .owning_lxapp()
             .leave_page_instance(&self.page.instance_id_string())
-            .map_err(Into::into)
     }
 }
 

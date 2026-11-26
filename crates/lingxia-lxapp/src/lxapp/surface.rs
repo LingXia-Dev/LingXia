@@ -203,7 +203,7 @@ impl WindowSurfaceController {
         instance_key: Option<&str>,
         requested_role: Option<SurfaceRole>,
         requested_edge: Option<&str>,
-    ) -> Result<ManagedNativeSurface, LxAppError> {
+    ) -> Result<ManagedNativeSurface, lingxia_error::Error> {
         let declaration_id = declaration_id.trim();
         let instance_key = instance_key.map(str::trim).filter(|key| !key.is_empty());
         // Provider creation is asynchronous. Serialize the full
@@ -221,7 +221,7 @@ impl WindowSurfaceController {
             .get(declaration_id)
             .cloned()
             .ok_or_else(|| {
-                LxAppError::ResourceNotFound(format!(
+                lingxia_error::Error::not_found(format!(
                     "unknown declared native surface: {declaration_id}"
                 ))
             })?;
@@ -231,7 +231,7 @@ impl WindowSurfaceController {
             .native_identity()
             .map(|(capability, _)| capability.to_string())
             .ok_or_else(|| {
-                LxAppError::InvalidParameter(format!(
+                lingxia_error::Error::invalid_arg(format!(
                     "surface '{declaration_id}' does not use a native provider"
                 ))
             })?;
@@ -251,8 +251,9 @@ impl WindowSurfaceController {
                     if manager.graph().is_root_main(&surface.id)
                         && role != lingxia_surface::Role::Main
                     {
-                        return Err(LxAppError::SurfaceRoleLocked(
-                            "the stable root main surface cannot change role".to_string(),
+                        return Err(lingxia_error::Error::new(
+                            lingxia_error::code::SURFACE_ROLE_LOCKED,
+                            "the stable root main surface cannot change role",
                         ));
                     }
                     surface.role = role;
@@ -281,16 +282,16 @@ impl WindowSurfaceController {
             }
         };
         if requested_edge.is_some() && surface.role != lingxia_surface::Role::Aside {
-            return Err(LxAppError::InvalidParameter(
-                "edge is only valid for an aside surface".to_string(),
+            return Err(lingxia_error::Error::invalid_arg(
+                "edge is only valid for an aside surface",
             ));
         }
         let platform_role = match surface.role {
             lingxia_surface::Role::Main => PlatformSurfaceRole::Main,
             lingxia_surface::Role::Aside => PlatformSurfaceRole::Aside,
             lingxia_surface::Role::Float => {
-                return Err(LxAppError::UnsupportedOperation(
-                    "native float surfaces do not support instances".to_string(),
+                return Err(lingxia_error::Error::not_supported(
+                    "native float surfaces do not support instances",
                 ));
             }
         };
@@ -545,11 +546,11 @@ impl WindowSurfaceController {
         self.manager.lock().unwrap().graph().is_root_main(id)
     }
 
-    fn show_surface(&self, app_id: &str, id: &str) -> Result<(), LxAppError> {
+    fn show_surface(&self, app_id: &str, id: &str) -> Result<(), lingxia_error::Error> {
         {
             let manager = self.manager.lock().unwrap();
             if manager.graph().get(id).is_none() {
-                return Err(LxAppError::InvalidParameter(format!(
+                return Err(lingxia_error::Error::invalid_arg(format!(
                     "unknown surface: {id}"
                 )));
             }
@@ -557,7 +558,7 @@ impl WindowSurfaceController {
         self.runtime.show_surface(app_id, id)?;
         if !self.manager.lock().unwrap().show(id) {
             let _ = self.runtime.hide_surface(app_id, id);
-            return Err(LxAppError::InvalidParameter(format!(
+            return Err(lingxia_error::Error::invalid_arg(format!(
                 "unknown surface: {id}"
             )));
         }
@@ -565,16 +566,16 @@ impl WindowSurfaceController {
         Ok(())
     }
 
-    fn hide_surface(&self, app_id: &str, id: &str) -> Result<(), LxAppError> {
+    fn hide_surface(&self, app_id: &str, id: &str) -> Result<(), lingxia_error::Error> {
         {
             let manager = self.manager.lock().unwrap();
             if manager.graph().role_of(id) == Some(lingxia_surface::Role::Main) {
-                return Err(LxAppError::UnsupportedOperation(
-                    "a main surface cannot be hidden".to_string(),
+                return Err(lingxia_error::Error::not_supported(
+                    "a main surface cannot be hidden",
                 ));
             }
             if manager.graph().get(id).is_none() {
-                return Err(LxAppError::InvalidParameter(format!(
+                return Err(lingxia_error::Error::invalid_arg(format!(
                     "unknown surface: {id}"
                 )));
             }
@@ -592,7 +593,7 @@ impl WindowSurfaceController {
         visible: bool,
         role: Option<SurfaceRole>,
         edge: Option<&str>,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         // Provider creation is asynchronous. Serialize it with close for this
         // concrete surface id so close cannot destroy the provider between the
         // ensure and the graph mutation and leave a mounted dead reference.
@@ -613,16 +614,17 @@ impl WindowSurfaceController {
             )
         };
         if is_root_main && role.is_some_and(|role| role != lingxia_surface::Role::Main) {
-            return Err(LxAppError::SurfaceRoleLocked(
-                "the stable root main surface cannot change role".to_string(),
+            return Err(lingxia_error::Error::new(
+                lingxia_error::code::SURFACE_ROLE_LOCKED,
+                "the stable root main surface cannot change role",
             ));
         }
         let effective_role = role.or(current_role);
         if parsed_edge.is_some()
             && effective_role.is_some_and(|role| role != lingxia_surface::Role::Aside)
         {
-            return Err(LxAppError::InvalidParameter(
-                "edge is only valid for an aside surface".to_string(),
+            return Err(lingxia_error::Error::invalid_arg(
+                "edge is only valid for an aside surface",
             ));
         }
         if visible {
@@ -673,7 +675,7 @@ impl WindowSurfaceController {
         &self,
         id: &str,
         role: Option<SurfaceRole>,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         let lifecycle_lock = self.managed_surface_serializers.lock_for(id, None);
         let _lifecycle_guard = lifecycle_lock.lock().await;
         let (provider, current_role) = {
@@ -693,12 +695,13 @@ impl WindowSurfaceController {
                 self.commit();
             }
             lingxia_surface::CloseOutcome::RejectedRoot { .. } => {
-                return Err(LxAppError::SurfaceRoleLocked(
-                    "the stable root main surface cannot be closed".to_string(),
+                return Err(lingxia_error::Error::new(
+                    lingxia_error::code::SURFACE_ROLE_LOCKED,
+                    "the stable root main surface cannot be closed",
                 ));
             }
             lingxia_surface::CloseOutcome::NotFound => {
-                return Err(LxAppError::InvalidParameter(format!(
+                return Err(lingxia_error::Error::invalid_arg(format!(
                     "unknown surface: {id}"
                 )));
             }
@@ -952,11 +955,11 @@ impl WindowSurfaceController {
     fn replace_host_mains(
         &self,
         registrations: Vec<HostMainSurfaceRegistration>,
-    ) -> Result<lingxia_surface::SurfaceSwitcherSnapshot, LxAppError> {
+    ) -> Result<lingxia_surface::SurfaceSwitcherSnapshot, lingxia_error::Error> {
         let mains = registrations
             .into_iter()
             .map(HostMainSurfaceRegistration::into_surface)
-            .collect::<Result<Vec<_>, LxAppError>>()?;
+            .collect::<Result<Vec<_>, lingxia_error::Error>>()?;
         {
             let mut declarations = self.native_declarations.lock().unwrap();
             for (surface, presentation) in &mains {
@@ -976,7 +979,7 @@ impl WindowSurfaceController {
             .lock()
             .unwrap()
             .replace_mains(mains)
-            .map_err(|error| LxAppError::InvalidParameter(error.to_string()))?;
+            .map_err(|error| lingxia_error::Error::invalid_arg(error.to_string()))?;
         self.commit();
         Ok(snapshot)
     }
@@ -984,7 +987,7 @@ impl WindowSurfaceController {
     fn open_host_main(
         &self,
         registration: HostMainSurfaceRegistration,
-    ) -> Result<lingxia_surface::SurfaceSwitcherSnapshot, LxAppError> {
+    ) -> Result<lingxia_surface::SurfaceSwitcherSnapshot, lingxia_error::Error> {
         let (surface, presentation) = registration.into_surface()?;
         if let Some((_, None)) = surface.content.native_identity() {
             self.native_declarations.lock().unwrap().insert(
@@ -1000,7 +1003,7 @@ impl WindowSurfaceController {
             .lock()
             .unwrap()
             .open_main(surface, presentation)
-            .map_err(|error| LxAppError::InvalidParameter(error.to_string()))?;
+            .map_err(|error| lingxia_error::Error::invalid_arg(error.to_string()))?;
         self.commit();
         Ok(snapshot)
     }
@@ -1691,12 +1694,12 @@ impl HostMainSurfaceRegistration {
             lingxia_surface::Surface,
             lingxia_surface::SurfacePresentation,
         ),
-        LxAppError,
+        lingxia_error::Error,
     > {
         let id = self.id.trim().to_string();
         if id.is_empty() {
-            return Err(LxAppError::InvalidParameter(
-                "host main surface id must not be empty".into(),
+            return Err(lingxia_error::Error::invalid_arg(
+                "host main surface id must not be empty",
             ));
         }
         Ok((
@@ -1814,7 +1817,10 @@ pub(crate) struct SurfaceRecord {
 }
 
 impl LxApp {
-    pub fn open_surface(&self, request: PageSurfaceRequest) -> Result<PageSurface, LxAppError> {
+    pub fn open_surface(
+        &self,
+        request: PageSurfaceRequest,
+    ) -> Result<PageSurface, lingxia_error::Error> {
         self.open_surface_with_chrome(request, WindowChrome::default())
     }
 
@@ -1826,7 +1832,7 @@ impl LxApp {
         &self,
         request: PageSurfaceRequest,
         chrome: WindowChrome,
-    ) -> Result<PageSurface, LxAppError> {
+    ) -> Result<PageSurface, lingxia_error::Error> {
         self.open_surface_with_web_data(request, chrome, false, false, None)
     }
 
@@ -1838,11 +1844,11 @@ impl LxApp {
         &self,
         tab_id: &str,
         url: &str,
-    ) -> Result<PageSurface, LxAppError> {
+    ) -> Result<PageSurface, lingxia_error::Error> {
         let tab_id = tab_id.trim();
         if tab_id.is_empty() {
-            return Err(LxAppError::InvalidParameter(
-                "browser tab id must not be empty".to_string(),
+            return Err(lingxia_error::Error::invalid_arg(
+                "browser tab id must not be empty",
             ));
         }
         let edge = self.side_panel_dock_edge();
@@ -1873,17 +1879,17 @@ impl LxApp {
         ephemeral_web_data: bool,
         url_callback: bool,
         browser_tab_id: Option<String>,
-    ) -> Result<PageSurface, LxAppError> {
+    ) -> Result<PageSurface, lingxia_error::Error> {
         if !self.is_opened() {
-            return Err(LxAppError::UnsupportedOperation(
-                "lxapp is closed; surface suppressed".to_string(),
+            return Err(lingxia_error::Error::not_supported(
+                "lxapp is closed; surface suppressed",
             ));
         }
 
         let id = request.id.trim().to_string();
         if id.is_empty() {
-            return Err(LxAppError::InvalidParameter(
-                "surface id must not be empty".to_string(),
+            return Err(lingxia_error::Error::invalid_arg(
+                "surface id must not be empty",
             ));
         }
 
@@ -2028,7 +2034,7 @@ impl LxApp {
                         url_callback,
                         browser_tab_id,
                     })
-                    .map_err(LxAppError::from)
+                    .map_err(lingxia_error::Error::from)
             });
         if let Err(err) = present_result {
             self.forget_surface(&id);
@@ -2087,7 +2093,7 @@ impl LxApp {
         kind: SurfaceContentKind,
         target: &str,
         page_instance_id: &str,
-    ) -> Result<SurfaceContent, LxAppError> {
+    ) -> Result<SurfaceContent, lingxia_error::Error> {
         match kind {
             SurfaceContentKind::Url => Ok(SurfaceContent::Url {
                 url: target.to_string(),
@@ -2098,7 +2104,7 @@ impl LxApp {
                     webtag: page.webtag().key().to_string(),
                 })
                 .ok_or_else(|| {
-                    LxAppError::ResourceNotFound(format!(
+                    lingxia_error::Error::not_found(format!(
                         "surface page instance is gone: {page_instance_id}"
                     ))
                 }),
@@ -2111,7 +2117,7 @@ impl LxApp {
         request: PageSurfaceRequest,
         interaction: lingxia_surface::SurfaceInteraction,
         chrome: WindowChrome,
-    ) -> Result<PageSurface, LxAppError> {
+    ) -> Result<PageSurface, lingxia_error::Error> {
         let owner_page_instance_id = self.current_page().ok().map(|page| page.instance_id());
         let owner = owner_page_instance_id
             .clone()
@@ -2133,8 +2139,8 @@ impl LxApp {
                 )
             }
             PageSurfaceTarget::Url(_) => {
-                return Err(LxAppError::InvalidParameter(
-                    "a window hosts this lxapp's own page, not external web".to_string(),
+                return Err(lingxia_error::Error::invalid_arg(
+                    "a window hosts this lxapp's own page, not external web",
                 ));
             }
         };
@@ -2208,7 +2214,7 @@ impl LxApp {
                         url_callback: false,
                         browser_tab_id: None,
                     })
-                    .map_err(LxAppError::from)
+                    .map_err(lingxia_error::Error::from)
             });
         if let Err(err) = present_result {
             // Remove only our bookkeeping; there is no graph node to close.
@@ -2233,11 +2239,11 @@ impl LxApp {
         })
     }
 
-    pub fn close_surface(&self, id: &str, reason: &str) -> Result<(), LxAppError> {
+    pub fn close_surface(&self, id: &str, reason: &str) -> Result<(), lingxia_error::Error> {
         let id = id.trim();
         if id.is_empty() {
-            return Err(LxAppError::InvalidParameter(
-                "surface id must not be empty".to_string(),
+            return Err(lingxia_error::Error::invalid_arg(
+                "surface id must not be empty",
             ));
         }
 
@@ -2253,9 +2259,10 @@ impl LxApp {
             return Ok(());
         }
         if controller.is_root_main(id) {
-            return Err(LxAppError::SurfaceRoleLocked(format!(
-                "root main surface '{id}' cannot be closed"
-            )));
+            return Err(lingxia_error::Error::new(
+                lingxia_error::code::SURFACE_ROLE_LOCKED,
+                format!("root main surface '{id}' cannot be closed"),
+            ));
         }
 
         let platform_owner_appid = surface_owner_appid(id).unwrap_or_else(|| self.appid.clone());
@@ -2289,10 +2296,10 @@ impl LxApp {
         &self,
         callback_url: impl Into<String>,
         request: PageSurfaceRequest,
-    ) -> Result<UrlCallbackSurface, LxAppError> {
+    ) -> Result<UrlCallbackSurface, lingxia_error::Error> {
         let PageSurfaceTarget::Url(target_url) = &request.target else {
-            return Err(LxAppError::InvalidParameter(
-                "a URL callback surface requires PageSurfaceTarget::Url".to_string(),
+            return Err(lingxia_error::Error::invalid_arg(
+                "a URL callback surface requires PageSurfaceTarget::Url",
             ));
         };
         validate_url_callback_target(target_url, is_dev_session())?;
@@ -2301,12 +2308,12 @@ impl LxApp {
             && (self.has_surface(surface_id)
                 || window_controller(PRIMARY_WINDOW, &self.runtime).contains(surface_id))
         {
-            return Err(LxAppError::InvalidParameter(format!(
+            return Err(lingxia_error::Error::invalid_arg(format!(
                 "a URL callback surface requires a unique surface id: {surface_id}"
             )));
         }
         let channel = lingxia_webview::url_callback::open_channel(callback_url)
-            .map_err(|err| LxAppError::InvalidParameter(err.to_string()))?;
+            .map_err(|err| lingxia_error::Error::invalid_arg(err.to_string()))?;
         // Handoff flows persist through their callback payload (tokens), never
         // through WebView cookies, so every handoff surface gets an ephemeral
         // web session: logout is real, and a new login can pick a different
@@ -2354,11 +2361,11 @@ impl LxApp {
         surfaces
     }
 
-    pub fn show_surface(&self, id: &str) -> Result<(), LxAppError> {
+    pub fn show_surface(&self, id: &str) -> Result<(), lingxia_error::Error> {
         let id = id.trim();
         if id.is_empty() {
-            return Err(LxAppError::InvalidParameter(
-                "surface id must not be empty".to_string(),
+            return Err(lingxia_error::Error::invalid_arg(
+                "surface id must not be empty",
             ));
         }
         let platform_owner_appid = surface_owner_appid(id).unwrap_or_else(|| self.appid.clone());
@@ -2370,17 +2377,17 @@ impl LxApp {
                 .show_surface(&platform_owner_appid, id)
                 .map_err(Into::into)
         } else {
-            Err(LxAppError::InvalidParameter(format!(
+            Err(lingxia_error::Error::invalid_arg(format!(
                 "unknown surface: {id}"
             )))
         }
     }
 
-    pub fn hide_surface(&self, id: &str) -> Result<(), LxAppError> {
+    pub fn hide_surface(&self, id: &str) -> Result<(), lingxia_error::Error> {
         let id = id.trim();
         if id.is_empty() {
-            return Err(LxAppError::InvalidParameter(
-                "surface id must not be empty".to_string(),
+            return Err(lingxia_error::Error::invalid_arg(
+                "surface id must not be empty",
             ));
         }
         let platform_owner_appid = surface_owner_appid(id).unwrap_or_else(|| self.appid.clone());
@@ -2392,7 +2399,7 @@ impl LxApp {
                 .hide_surface(&platform_owner_appid, id)
                 .map_err(Into::into)
         } else {
-            Err(LxAppError::InvalidParameter(format!(
+            Err(lingxia_error::Error::invalid_arg(format!(
                 "unknown surface: {id}"
             )))
         }
@@ -2408,11 +2415,11 @@ impl LxApp {
         visible: bool,
         role: Option<SurfaceRole>,
         edge: Option<&str>,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         let id = id.trim();
         if id.is_empty() {
-            return Err(LxAppError::InvalidParameter(
-                "shell surface id must not be empty".to_string(),
+            return Err(lingxia_error::Error::invalid_arg(
+                "shell surface id must not be empty",
             ));
         }
         window_controller(PRIMARY_WINDOW, &self.runtime)
@@ -2426,11 +2433,11 @@ impl LxApp {
         &self,
         surface_id: &str,
         role: Option<SurfaceRole>,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         let surface_id = surface_id.trim();
         if surface_id.is_empty() {
-            return Err(LxAppError::InvalidParameter(
-                "surface id must not be empty".to_string(),
+            return Err(lingxia_error::Error::invalid_arg(
+                "surface id must not be empty",
             ));
         }
         window_controller(PRIMARY_WINDOW, &self.runtime)
@@ -2447,17 +2454,17 @@ impl LxApp {
         instance_key: Option<&str>,
         role: Option<SurfaceRole>,
         edge: Option<&str>,
-    ) -> Result<ManagedNativeSurface, LxAppError> {
+    ) -> Result<ManagedNativeSurface, lingxia_error::Error> {
         let declaration_id = declaration_id.trim();
         if declaration_id.is_empty() {
-            return Err(LxAppError::InvalidParameter(
-                "surface declaration id must not be empty".to_string(),
+            return Err(lingxia_error::Error::invalid_arg(
+                "surface declaration id must not be empty",
             ));
         }
         let instance_key = instance_key.map(str::trim);
         if instance_key.is_some_and(|key| key.is_empty() || key.len() > 128) {
-            return Err(LxAppError::InvalidParameter(
-                "instance key must contain 1 to 128 UTF-8 bytes".to_string(),
+            return Err(lingxia_error::Error::invalid_arg(
+                "instance key must contain 1 to 128 UTF-8 bytes",
             ));
         }
         window_controller(PRIMARY_WINDOW, &self.runtime)
@@ -2618,7 +2625,7 @@ impl LxApp {
         &self,
         region: LxAppOpenRegion,
         edge: Option<&str>,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         self.move_to_region_on(self.runtime.lxapp_region_moves(), region, edge)
     }
 
@@ -2627,10 +2634,10 @@ impl LxApp {
         moves: LxAppRegionMoves,
         region: LxAppOpenRegion,
         edge: Option<&str>,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         if moves == LxAppRegionMoves::Unsupported {
-            return Err(LxAppError::UnsupportedOperation(
-                "this host cannot move a live lxapp between main and aside".to_string(),
+            return Err(lingxia_error::Error::not_supported(
+                "this host cannot move a live lxapp between main and aside",
             ));
         }
         // The shell's own move re-enters the drag entry points, which take
@@ -2641,7 +2648,7 @@ impl LxApp {
                 .unwrap_or_else(|err| err.into_inner())
         });
         let current = self.current_open_region().ok_or_else(|| {
-            LxAppError::ResourceNotFound(format!("lxapp is not open: {}", self.appid))
+            lingxia_error::Error::not_found(format!("lxapp is not open: {}", self.appid))
         })?;
         if current == region {
             return Ok(());
@@ -2650,8 +2657,9 @@ impl LxApp {
         match region {
             LxAppOpenRegion::Aside => {
                 if controller.is_root_main(&self.appid) {
-                    return Err(LxAppError::SurfaceRoleLocked(
-                        "the stable root main surface cannot change role".to_string(),
+                    return Err(lingxia_error::Error::new(
+                        lingxia_error::code::SURFACE_ROLE_LOCKED,
+                        "the stable root main surface cannot change role",
                     ));
                 }
                 if controller.managed_surface_role(&self.appid) != Some(SurfaceRole::Main) {
@@ -2659,13 +2667,16 @@ impl LxApp {
                     // inside another surface's app navigation.
                     return Err(
                         if controller.switcher_snapshot().root_surface_id.is_some() {
-                            LxAppError::SurfaceConflict(format!(
-                                "lxapp '{}' is open only inside another surface's app navigation",
-                                self.appid
-                            ))
+                            lingxia_error::Error::new(
+                                lingxia_error::code::SURFACE_CONFLICT,
+                                format!(
+                                    "lxapp '{}' is open only inside another surface's app navigation",
+                                    self.appid
+                                ),
+                            )
                         } else {
-                            LxAppError::UnsupportedOperation(
-                                "this host cannot move a live lxapp out of main".to_string(),
+                            lingxia_error::Error::not_supported(
+                                "this host cannot move a live lxapp out of main",
                             )
                         },
                     );
@@ -2674,8 +2685,8 @@ impl LxApp {
             LxAppOpenRegion::Main => {
                 let panel = self.open_panel_id().unwrap_or_else(|| self.appid.clone());
                 if controller.managed_surface_role(&panel) != Some(SurfaceRole::Aside) {
-                    return Err(LxAppError::UnsupportedOperation(
-                        "this host cannot move a live aside into main".to_string(),
+                    return Err(lingxia_error::Error::not_supported(
+                        "this host cannot move a live aside into main",
                     ));
                 }
             }
@@ -2690,7 +2701,7 @@ impl LxApp {
                 ) {
                     Ok(())
                 } else {
-                    Err(LxAppError::Runtime(format!(
+                    Err(lingxia_error::Error::internal(format!(
                         "the shell could not move lxapp '{}' to {}",
                         self.appid,
                         region.as_str()
@@ -2706,32 +2717,34 @@ impl LxApp {
 
     /// The open guard for a move a UI thread started. It never waits: an open
     /// holding the guard may itself be waiting on that UI thread.
-    fn try_presentation_guard(&self) -> Result<std::sync::MutexGuard<'_, ()>, LxAppError> {
+    fn try_presentation_guard(
+        &self,
+    ) -> Result<std::sync::MutexGuard<'_, ()>, lingxia_error::Error> {
         match self.presentation_open_lock.try_lock() {
             Ok(guard) => Ok(guard),
             Err(std::sync::TryLockError::Poisoned(poisoned)) => Ok(poisoned.into_inner()),
-            Err(std::sync::TryLockError::WouldBlock) => Err(LxAppError::SurfaceConflict(format!(
-                "lxapp '{}' is being opened or moved",
-                self.appid
-            ))),
+            Err(std::sync::TryLockError::WouldBlock) => Err(lingxia_error::Error::new(
+                lingxia_error::code::SURFACE_CONFLICT,
+                format!("lxapp '{}' is being opened or moved", self.appid),
+            )),
         }
     }
 
     /// Move this lxapp's live aside presentation into the main region without
     /// restarting it: Logic, the page stack and every WebView stay as they
     /// are, and the platform re-hosts the current page in the main area.
-    pub fn promote_aside_to_main(&self) -> Result<(), LxAppError> {
+    pub fn promote_aside_to_main(&self) -> Result<(), lingxia_error::Error> {
         let _guard = self.try_presentation_guard()?;
         self.promote_aside_to_main_guarded()
     }
 
-    fn promote_aside_to_main_guarded(&self) -> Result<(), LxAppError> {
+    fn promote_aside_to_main_guarded(&self) -> Result<(), lingxia_error::Error> {
         let controller = window_controller(PRIMARY_WINDOW, &self.runtime);
         let surface_id = self
             .open_panel_id()
             .filter(|id| controller.managed_surface_role(id) == Some(SurfaceRole::Aside))
             .ok_or_else(|| {
-                LxAppError::InvalidParameter(format!(
+                lingxia_error::Error::invalid_arg(format!(
                     "lxapp '{}' is not open as an aside",
                     self.appid
                 ))
@@ -2768,7 +2781,7 @@ impl LxApp {
                 LxAppOpenRegion::Aside,
                 previous_startup,
             );
-            return Err(LxAppError::InvalidParameter(format!(
+            return Err(lingxia_error::Error::invalid_arg(format!(
                 "surface '{surface_id}' is no longer an aside"
             )));
         }
@@ -2792,24 +2805,25 @@ impl LxApp {
     /// stack and every WebView stay as they are, and the platform re-hosts
     /// the current page in the panel. An empty `edge` keeps the panel where
     /// it is. The root main never moves.
-    pub fn demote_main_to_aside(&self, edge: &str) -> Result<(), LxAppError> {
+    pub fn demote_main_to_aside(&self, edge: &str) -> Result<(), lingxia_error::Error> {
         let _guard = self.try_presentation_guard()?;
         self.demote_main_to_aside_guarded(edge)
     }
 
-    fn demote_main_to_aside_guarded(&self, edge: &str) -> Result<(), LxAppError> {
+    fn demote_main_to_aside_guarded(&self, edge: &str) -> Result<(), lingxia_error::Error> {
         let controller = window_controller(PRIMARY_WINDOW, &self.runtime);
         if self.current_open_region() != Some(LxAppOpenRegion::Main)
             || controller.managed_surface_role(&self.appid) != Some(SurfaceRole::Main)
         {
-            return Err(LxAppError::InvalidParameter(format!(
+            return Err(lingxia_error::Error::invalid_arg(format!(
                 "lxapp '{}' is not open as a main",
                 self.appid
             )));
         }
         if controller.is_root_main(&self.appid) {
-            return Err(LxAppError::SurfaceRoleLocked(
-                "the stable root main surface cannot change role".to_string(),
+            return Err(lingxia_error::Error::new(
+                lingxia_error::code::SURFACE_ROLE_LOCKED,
+                "the stable root main surface cannot change role",
             ));
         }
         let previous_startup = {
@@ -2829,7 +2843,7 @@ impl LxApp {
                 LxAppOpenRegion::Main,
                 previous_startup,
             );
-            return Err(LxAppError::InvalidParameter(format!(
+            return Err(lingxia_error::Error::invalid_arg(format!(
                 "surface '{}' is no longer a main",
                 self.appid
             )));
@@ -2876,14 +2890,14 @@ impl LxApp {
     pub fn replace_host_mains(
         &self,
         registrations: Vec<HostMainSurfaceRegistration>,
-    ) -> Result<lingxia_surface::SurfaceSwitcherSnapshot, LxAppError> {
+    ) -> Result<lingxia_surface::SurfaceSwitcherSnapshot, lingxia_error::Error> {
         window_controller(PRIMARY_WINDOW, &self.runtime).replace_host_mains(registrations)
     }
 
     pub fn open_host_main(
         &self,
         registration: HostMainSurfaceRegistration,
-    ) -> Result<lingxia_surface::SurfaceSwitcherSnapshot, LxAppError> {
+    ) -> Result<lingxia_surface::SurfaceSwitcherSnapshot, lingxia_error::Error> {
         window_controller(PRIMARY_WINDOW, &self.runtime).open_host_main(registration)
     }
 
@@ -3842,35 +3856,33 @@ fn lxapp_surface_menu_header(
     header
 }
 
-fn validate_url_callback_target(target: &str, dev_mode: bool) -> Result<(), LxAppError> {
+fn validate_url_callback_target(target: &str, dev_mode: bool) -> Result<(), lingxia_error::Error> {
     let raw_scheme = target
         .split_once(':')
         .map(|(scheme, _)| scheme.to_ascii_lowercase());
     if raw_scheme.as_deref() == Some("file") {
-        return Err(LxAppError::InvalidParameter(
-            "a URL callback surface cannot load file URLs".to_string(),
+        return Err(lingxia_error::Error::invalid_arg(
+            "a URL callback surface cannot load file URLs",
         ));
     }
     let uri = target.parse::<http::Uri>().map_err(|_| {
-        LxAppError::InvalidParameter(
-            "a URL callback surface requires an absolute HTTPS URL".to_string(),
-        )
+        lingxia_error::Error::invalid_arg("a URL callback surface requires an absolute HTTPS URL")
     })?;
     if uri.authority().is_none() {
-        return Err(LxAppError::InvalidParameter(
-            "a URL callback surface requires an absolute HTTPS URL".to_string(),
+        return Err(lingxia_error::Error::invalid_arg(
+            "a URL callback surface requires an absolute HTTPS URL",
         ));
     }
     let scheme = uri.scheme_str().map(str::to_ascii_lowercase);
     match scheme.as_deref() {
         Some("https") => Ok(()),
         Some("http") if dev_mode || uri.host().is_some_and(is_url_callback_loopback_host) => Ok(()),
-        Some("http") => Err(LxAppError::InvalidParameter(
+        Some("http") => Err(lingxia_error::Error::invalid_arg(
             "a URL callback surface requires HTTPS or a loopback HTTP URL outside dev mode"
                 .to_string(),
         )),
-        _ => Err(LxAppError::InvalidParameter(
-            "a URL callback surface requires an absolute HTTPS URL".to_string(),
+        _ => Err(lingxia_error::Error::invalid_arg(
+            "a URL callback surface requires an absolute HTTPS URL",
         )),
     }
 }
@@ -3891,20 +3903,20 @@ fn validate_surface_interaction(
     kind: SurfaceKind,
     url_callback: bool,
     interaction: lingxia_surface::SurfaceInteraction,
-) -> Result<(), LxAppError> {
+) -> Result<(), lingxia_error::Error> {
     if kind == SurfaceKind::Window
         && interaction.dismiss == lingxia_surface::FloatDismiss::TapOutside
     {
-        return Err(LxAppError::InvalidParameter(
-            "tapOutside dismissal requires an overlay surface".to_string(),
+        return Err(lingxia_error::Error::invalid_arg(
+            "tapOutside dismissal requires an overlay surface",
         ));
     }
     if url_callback
         && interaction.dismiss == lingxia_surface::FloatDismiss::Manual
         && !interaction.close_button
     {
-        return Err(LxAppError::InvalidParameter(
-            "a manual URL callback surface requires closeButton".to_string(),
+        return Err(lingxia_error::Error::invalid_arg(
+            "a manual URL callback surface requires closeButton",
         ));
     }
     Ok(())
@@ -3954,13 +3966,13 @@ fn surface_edge_name(edge: lingxia_surface::Edge) -> &'static str {
     }
 }
 
-fn parse_surface_edge(edge: &str) -> Result<lingxia_surface::Edge, LxAppError> {
+fn parse_surface_edge(edge: &str) -> Result<lingxia_surface::Edge, lingxia_error::Error> {
     match edge.trim() {
         "left" | "leading" => Ok(lingxia_surface::Edge::Left),
         "right" | "trailing" => Ok(lingxia_surface::Edge::Right),
         "top" => Ok(lingxia_surface::Edge::Top),
         "bottom" => Ok(lingxia_surface::Edge::Bottom),
-        other => Err(LxAppError::InvalidParameter(format!(
+        other => Err(lingxia_error::Error::invalid_arg(format!(
             "unknown surface edge: {other}"
         ))),
     }
@@ -4453,8 +4465,8 @@ mod tests {
         assert!(validate_url_callback_target("https://auth.example.com/authorize", false).is_ok());
         assert!(matches!(
             validate_url_callback_target("http://192.168.1.20:18080/authorize", false),
-            Err(LxAppError::InvalidParameter(message))
-                if message == "a URL callback surface requires HTTPS or a loopback HTTP URL outside dev mode"
+            Err(error) if error.is(lingxia_error::code::INVALID_ARG)
+                && error.message() == "a URL callback surface requires HTTPS or a loopback HTTP URL outside dev mode"
         ));
     }
 
@@ -4496,8 +4508,8 @@ mod tests {
         for dev_mode in [false, true] {
             assert!(matches!(
                 validate_url_callback_target("file:///tmp/authorize.html", dev_mode),
-                Err(LxAppError::InvalidParameter(message))
-                    if message == "a URL callback surface cannot load file URLs"
+                Err(error) if error.is(lingxia_error::code::INVALID_ARG)
+                    && error.message() == "a URL callback surface cannot load file URLs"
             ));
         }
     }

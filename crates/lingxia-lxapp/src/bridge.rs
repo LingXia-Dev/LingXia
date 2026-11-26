@@ -213,7 +213,7 @@ fn admit_before_host_dispatch<C, T>(
 impl ViewTransport for PageInstance {
     fn post_message_to_view(&self, message_json: String) -> Result<(), lingxia_error::Error> {
         if let Some(view) = self.page_view() {
-            view.post_message(&message_json).map_err(Into::into)
+            view.post_message(&message_json)
         } else {
             Err(lingxia_error::Error::internal("page View not ready"))
         }
@@ -227,7 +227,6 @@ impl ViewTransport for PageInstance {
     ) -> Result<(), lingxia_error::Error> {
         if let Some(view) = self.page_view() {
             view.post_message_to_document(expected_generation, gate, &message_json)
-                .map_err(Into::into)
         } else {
             Err(lingxia_error::Error::internal("page View not ready"))
         }
@@ -420,7 +419,7 @@ impl OutboundContext {
         let endpoint = endpoint
             .upgrade()
             .ok_or_else(|| lingxia_error::Error::internal("GPU endpoint was disposed"))?;
-        Ok(endpoint.write_state(*generation, write)?)
+        endpoint.write_state(*generation, write)
     }
 
     /// Everything else a GPU View takes from Logic, typed.
@@ -437,7 +436,7 @@ impl OutboundContext {
         let endpoint = endpoint
             .upgrade()
             .ok_or_else(|| lingxia_error::Error::internal("GPU endpoint was disposed"))?;
-        Ok(endpoint.deliver(*generation, message)?)
+        endpoint.deliver(*generation, message)
     }
 
     fn post<T: ViewTransport>(
@@ -2875,7 +2874,7 @@ mod tests {
                 &self,
                 generation: crate::GpuViewGeneration,
                 write: crate::GpuStateWrite,
-            ) -> Result<(), crate::LxAppError> {
+            ) -> Result<(), lingxia_error::Error> {
                 self.0
                     .lock()
                     .unwrap()
@@ -2886,32 +2885,32 @@ mod tests {
                 &self,
                 generation: crate::GpuViewGeneration,
                 message: crate::GpuViewMessage,
-            ) -> Result<(), crate::LxAppError> {
+            ) -> Result<(), lingxia_error::Error> {
                 self.0
                     .lock()
                     .unwrap()
                     .push((generation.get(), format!("{message:?}")));
                 Ok(())
             }
-            fn connect(&self, _: crate::GpuViewGeneration) -> Result<(), crate::LxAppError> {
+            fn connect(&self, _: crate::GpuViewGeneration) -> Result<(), lingxia_error::Error> {
                 Ok(())
             }
-            fn request_leave(&self, _: crate::LeaveReason) -> Result<(), crate::LxAppError> {
+            fn request_leave(&self, _: crate::LeaveReason) -> Result<(), lingxia_error::Error> {
                 Ok(())
             }
             fn update_environment(
                 &self,
                 _: crate::PageViewEnvironment,
-            ) -> Result<(), crate::LxAppError> {
+            ) -> Result<(), lingxia_error::Error> {
                 Ok(())
             }
-            fn reload(&self) -> Result<(), crate::LxAppError> {
+            fn reload(&self) -> Result<(), lingxia_error::Error> {
                 Ok(())
             }
-            fn park(&self) -> Result<(), crate::LxAppError> {
+            fn park(&self) -> Result<(), lingxia_error::Error> {
                 Ok(())
             }
-            fn retain_surface(&self, _: bool) -> Result<(), crate::LxAppError> {
+            fn retain_surface(&self, _: bool) -> Result<(), lingxia_error::Error> {
                 Ok(())
             }
             fn dispose(&self) {}

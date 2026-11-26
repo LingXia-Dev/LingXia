@@ -7,7 +7,6 @@
 
 use super::metadata::{self, AppDisplayRecord};
 use super::{LINGXIA_DIR, LXAPPS_DIR, registry, runtime_registry};
-use crate::error::LxAppError;
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use std::collections::{BTreeSet, HashMap};
 use std::fs;
@@ -39,13 +38,13 @@ pub struct AppDisplayPatch {
     pub icon: FieldPatch<PathBuf>,
 }
 
-fn invalid(message: impl Into<String>) -> LxAppError {
-    LxAppError::InvalidParameter(message.into())
+fn invalid(message: impl Into<String>) -> lingxia_error::Error {
+    lingxia_error::Error::invalid_arg(message.into())
 }
 
 /// Trimmed, single line, 1–64 characters. `None` for a blank name, which
 /// clears rather than sets.
-pub fn normalize_name(raw: &str) -> Result<Option<String>, LxAppError> {
+pub fn normalize_name(raw: &str) -> Result<Option<String>, lingxia_error::Error> {
     let name = raw.trim();
     if name.is_empty() {
         return Ok(None);
@@ -125,8 +124,8 @@ pub fn own(appid: &str) -> (Option<String>, bool) {
 
 /// Apply `patch` to `appid`. `Ok(false)` when the result equals what is
 /// stored: nothing is written and nothing repaints.
-pub fn set(appid: &str, patch: AppDisplayPatch) -> Result<bool, LxAppError> {
-    let dir = icon_dir().ok_or_else(|| LxAppError::Runtime("runtime not ready".to_string()))?;
+pub fn set(appid: &str, patch: AppDisplayPatch) -> Result<bool, lingxia_error::Error> {
+    let dir = icon_dir().ok_or_else(|| lingxia_error::Error::internal("runtime not ready"))?;
     let _guard = write_lock().lock().unwrap_or_else(|err| err.into_inner());
     sweep_staging(&dir);
     let stored = metadata::app_display_get(appid)?.unwrap_or_default();
@@ -152,9 +151,9 @@ fn commit_record(
     dir: &Path,
     stored: &AppDisplayRecord,
     next: &AppDisplayRecord,
-    put: impl FnOnce(&AppDisplayRecord) -> Result<(), LxAppError>,
-    referenced: impl FnOnce() -> Result<BTreeSet<String>, LxAppError>,
-) -> Result<(), LxAppError> {
+    put: impl FnOnce(&AppDisplayRecord) -> Result<(), lingxia_error::Error>,
+    referenced: impl FnOnce() -> Result<BTreeSet<String>, lingxia_error::Error>,
+) -> Result<(), lingxia_error::Error> {
     let written = put(next);
     let (kept, dropped) = if written.is_ok() {
         (next, stored)
@@ -226,7 +225,7 @@ fn next_record(
     stored: &AppDisplayRecord,
     patch: AppDisplayPatch,
     dir: &Path,
-) -> Result<Option<AppDisplayRecord>, LxAppError> {
+) -> Result<Option<AppDisplayRecord>, lingxia_error::Error> {
     let name = match patch.name {
         FieldPatch::Keep => stored.name.clone(),
         FieldPatch::Clear => None,
@@ -245,7 +244,7 @@ fn next_record(
 
 /// Validate `source` and copy it into `dir` under its content hash, so the
 /// same image set again names the same file.
-fn store_icon(source: &Path, dir: &Path) -> Result<String, LxAppError> {
+fn store_icon(source: &Path, dir: &Path) -> Result<String, lingxia_error::Error> {
     let (bytes, extension) = read_icon(source)?;
     let digest = ring::digest::digest(&ring::digest::SHA256, &bytes);
     let hex: String = digest
@@ -282,7 +281,7 @@ fn store_icon(source: &Path, dir: &Path) -> Result<String, LxAppError> {
 
 const UNSUPPORTED: &str = "icon must be a PNG, JPEG, WebP or SVG image";
 
-fn read_icon(source: &Path) -> Result<(Vec<u8>, &'static str), LxAppError> {
+fn read_icon(source: &Path) -> Result<(Vec<u8>, &'static str), lingxia_error::Error> {
     let metadata = fs::metadata(source).map_err(|_| invalid("icon file not found"))?;
     if !metadata.is_file() {
         return Err(invalid("icon must be a file"));
@@ -421,9 +420,7 @@ mod tests {
                 .ends_with(".png")
         );
 
-        let reject = |name: &str, bytes: &[u8]| {
-            matches!(check(name, bytes), Err(LxAppError::InvalidParameter(_)))
-        };
+        let reject = |name: &str, bytes: &[u8]| matches!(check(name, bytes), Err(error) if error.is(lingxia_error::code::INVALID_ARG));
         assert!(reject("not-svg.svg", b"<svgx/>"));
         assert!(reject("truncated.png", &png([0, 0, 0, 255])[..24]));
         assert!(reject("logo.gif", b"GIF89a\x01\x00\x01\x00\x00\x00\x00;"));
@@ -447,7 +444,7 @@ mod tests {
         assert!(encode(MAX_ICON_SIDE).is_ok());
         assert!(matches!(
             encode(MAX_ICON_SIDE + 1),
-            Err(LxAppError::InvalidParameter(_))
+            Err(error) if error.is(lingxia_error::code::INVALID_ARG)
         ));
     }
 
@@ -463,7 +460,7 @@ mod tests {
             name: None,
             icon_file: Some(file.clone()),
         };
-        let refuse = |_: &AppDisplayRecord| Err(LxAppError::Runtime("disk full".into()));
+        let refuse = |_: &AppDisplayRecord| Err(lingxia_error::Error::internal("disk full"));
 
         // Another record naming the same content keeps it.
         let shared = BTreeSet::from([file.clone()]);

@@ -426,7 +426,7 @@ impl AppResourceGrants {
                 "expected a native-issued lx://temp resource grant".to_string(),
             ));
         }
-        self.live_owner()?.resolve_accessible_path(resource)
+        Ok(self.live_owner()?.resolve_accessible_path(resource)?)
     }
 
     /// Test a native-issued opaque file reference for this exact app session.
@@ -494,9 +494,10 @@ impl AppScope {
     /// Resolve a path only within this app's native storage namespace or its
     /// native-issued transient grants.
     pub fn resolve_accessible_path(&self, resource: &str) -> Result<PathBuf, LxAppError> {
-        self.resource_grants
+        Ok(self
+            .resource_grants
             .live_owner()?
-            .resolve_accessible_path(resource)
+            .resolve_accessible_path(resource)?)
     }
 
     fn belongs_to(&self, app: &Arc<LxApp>) -> bool {

@@ -1,7 +1,7 @@
 //! Swift marshalling for GPU pages. Rust owns each page's `ViewHost`; Swift
 //! owns its `GpuPageView` and reports measurements to it by token.
 use crate::gpu_page::{self, AutomationReply, Creation, NativeFactory, NativePage, Token};
-use lxapp::{GpuViewGeneration, LxAppError, PageInstance};
+use lxapp::{GpuViewGeneration, PageInstance};
 
 #[swift_bridge::bridge]
 mod bridge {
@@ -1309,7 +1309,7 @@ mod live {
     }
 
     impl NativePage for ApplePage {
-        fn connect(&self, generation: GpuViewGeneration) -> Result<(), LxAppError> {
+        fn connect(&self, generation: GpuViewGeneration) -> Result<(), lingxia_error::Error> {
             on_page(self.token, move |page| {
                 page.host().connect(ConnectionTicket::new(generation.get()))
             });
@@ -1319,7 +1319,7 @@ mod live {
             &self,
             generation: GpuViewGeneration,
             message: lxapp::GpuViewMessage,
-        ) -> Result<(), LxAppError> {
+        ) -> Result<(), lingxia_error::Error> {
             self.port.deliver(
                 ConnectionTicket::new(generation.get()),
                 gpu_page::state::message_to_view(message),
@@ -1330,7 +1330,7 @@ mod live {
             &self,
             generation: GpuViewGeneration,
             write: lxapp::GpuStateWrite,
-        ) -> Result<(), LxAppError> {
+        ) -> Result<(), lingxia_error::Error> {
             self.port.write_state(
                 ConnectionTicket::new(generation.get()),
                 gpu_page::state::to_view(write),
@@ -1341,7 +1341,7 @@ mod live {
             &self,
             generation: GpuViewGeneration,
             reason: &str,
-        ) -> Result<(), LxAppError> {
+        ) -> Result<(), lingxia_error::Error> {
             let reason = reason.to_owned();
             on_page(self.token, move |page| {
                 page.host()
@@ -1349,7 +1349,10 @@ mod live {
             });
             Ok(())
         }
-        fn update_environment(&self, update: &serde_json::Value) -> Result<(), LxAppError> {
+        fn update_environment(
+            &self,
+            update: &serde_json::Value,
+        ) -> Result<(), lingxia_error::Error> {
             let update = update.to_string();
             on_page(self.token, move |page| {
                 if let Err(error) = page.host().update_environment(&update) {
@@ -1358,30 +1361,30 @@ mod live {
             });
             Ok(())
         }
-        fn reload(&self, source: &str) -> Result<(), LxAppError> {
+        fn reload(&self, source: &str) -> Result<(), lingxia_error::Error> {
             self.stale.set();
             let source = source.to_owned();
             on_page(self.token, move |page| page.host().load(source));
             Ok(())
         }
         #[cfg(feature = "devtool")]
-        fn swap_module(&self, source: &str) -> Result<(), LxAppError> {
+        fn swap_module(&self, source: &str) -> Result<(), lingxia_error::Error> {
             let source = source.to_owned();
             on_page(self.token, move |page| page.host().swap_module(source));
             Ok(())
         }
-        fn park(&self) -> Result<(), LxAppError> {
+        fn park(&self) -> Result<(), lingxia_error::Error> {
             self.stale.set();
             on_page(self.token, |page| page.host().park());
             Ok(())
         }
-        fn page_left(&self) -> Result<(), LxAppError> {
+        fn page_left(&self) -> Result<(), lingxia_error::Error> {
             on_page(self.token, |page| page.host().page_left());
             Ok(())
         }
         // A hidden Apple page is already trimmed under its cover; only giving up the layer and
         // the cover is left to do.
-        fn retain_surface(&self, retained: bool) -> Result<(), LxAppError> {
+        fn retain_surface(&self, retained: bool) -> Result<(), lingxia_error::Error> {
             if !retained {
                 let token = self.token;
                 lingxia_view_apple::post_main(Box::new(move || {
@@ -1431,7 +1434,7 @@ mod live {
             token: Token,
             _: &PageInstance,
             request: Creation,
-        ) -> Result<(), LxAppError> {
+        ) -> Result<(), lingxia_error::Error> {
             lingxia_view_apple::post_main(Box::new(move || {
                 let created = Page::new(token, Arc::new(Bridge), &request.worker, request.logic)
                     .map(|page| {

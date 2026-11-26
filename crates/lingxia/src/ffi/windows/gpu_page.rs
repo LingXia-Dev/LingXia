@@ -13,7 +13,7 @@ use lingxia_webview::platform::windows::{
     preferred_color_scheme_for, register_native_content, retire_native_content_parent,
     unregister_native_content,
 };
-use lxapp::{GpuViewGeneration, LxAppError, PageInstance};
+use lxapp::{GpuViewGeneration, PageInstance};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -614,7 +614,7 @@ struct WindowsPage {
 }
 
 impl NativePage for WindowsPage {
-    fn connect(&self, generation: GpuViewGeneration) -> Result<(), LxAppError> {
+    fn connect(&self, generation: GpuViewGeneration) -> Result<(), lingxia_error::Error> {
         on_page(self.token, move |page| {
             page.host().connect(ConnectionTicket::new(generation.get()))
         });
@@ -624,7 +624,7 @@ impl NativePage for WindowsPage {
         &self,
         generation: GpuViewGeneration,
         message: lxapp::GpuViewMessage,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         self.port.deliver(
             ConnectionTicket::new(generation.get()),
             gpu_page::state::message_to_view(message),
@@ -635,14 +635,18 @@ impl NativePage for WindowsPage {
         &self,
         generation: GpuViewGeneration,
         write: lxapp::GpuStateWrite,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         self.port.write_state(
             ConnectionTicket::new(generation.get()),
             gpu_page::state::to_view(write),
         );
         Ok(())
     }
-    fn request_leave(&self, generation: GpuViewGeneration, reason: &str) -> Result<(), LxAppError> {
+    fn request_leave(
+        &self,
+        generation: GpuViewGeneration,
+        reason: &str,
+    ) -> Result<(), lingxia_error::Error> {
         let reason = reason.to_owned();
         on_page(self.token, move |page| {
             page.host()
@@ -650,7 +654,7 @@ impl NativePage for WindowsPage {
         });
         Ok(())
     }
-    fn update_environment(&self, update: &serde_json::Value) -> Result<(), LxAppError> {
+    fn update_environment(&self, update: &serde_json::Value) -> Result<(), lingxia_error::Error> {
         let update = update.to_string();
         on_page(self.token, move |page| {
             if let Err(error) = page.host().update_environment(&update) {
@@ -659,7 +663,7 @@ impl NativePage for WindowsPage {
         });
         Ok(())
     }
-    fn reload(&self, source: &str) -> Result<(), LxAppError> {
+    fn reload(&self, source: &str) -> Result<(), lingxia_error::Error> {
         // Marked before the post: a frame presented meanwhile is of the old document.
         self.stale.set();
         let source = source.to_owned();
@@ -667,21 +671,21 @@ impl NativePage for WindowsPage {
         Ok(())
     }
     #[cfg(feature = "devtool")]
-    fn swap_module(&self, source: &str) -> Result<(), LxAppError> {
+    fn swap_module(&self, source: &str) -> Result<(), lingxia_error::Error> {
         let source = source.to_owned();
         on_page(self.token, move |page| page.host().swap_module(source));
         Ok(())
     }
-    fn park(&self) -> Result<(), LxAppError> {
+    fn park(&self) -> Result<(), lingxia_error::Error> {
         self.stale.set();
         on_page(self.token, |page| page.host().park());
         Ok(())
     }
-    fn page_left(&self) -> Result<(), LxAppError> {
+    fn page_left(&self) -> Result<(), lingxia_error::Error> {
         on_page(self.token, |page| page.host().page_left());
         Ok(())
     }
-    fn retain_surface(&self, _: bool) -> Result<(), LxAppError> {
+    fn retain_surface(&self, _: bool) -> Result<(), lingxia_error::Error> {
         Ok(())
     }
     fn automation(&self, request: serde_json::Value, reply: AutomationReply) {
@@ -722,7 +726,7 @@ impl NativeFactory for Factory {
         token: Token,
         page: &PageInstance,
         request: Creation,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         let webtag = page.webtag();
         threads().insert(token, Slot::default());
         std::thread::Builder::new()
@@ -731,7 +735,7 @@ impl NativeFactory for Factory {
             .map(|_| ())
             .map_err(|error| {
                 threads().remove(&token);
-                LxAppError::Runtime(format!("GPU page thread: {error}"))
+                lingxia_error::Error::internal(format!("GPU page thread: {error}"))
             })
     }
 

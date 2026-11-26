@@ -66,10 +66,10 @@ impl TestHost {
         page.finish_webview_setup(result);
     }
 
-    pub(crate) fn load_html(&self) -> Result<(), LxAppError> {
+    pub(crate) fn load_html(&self) -> Result<(), lingxia_error::Error> {
         self.html_loads.fetch_add(1, Ordering::SeqCst);
         match self.html_error.lock().unwrap().clone() {
-            Some(error) => Err(LxAppError::Runtime(error)),
+            Some(error) => Err(lingxia_error::Error::internal(error)),
             None => Ok(()),
         }
     }

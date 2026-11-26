@@ -17,7 +17,6 @@ use lingxia_webview::{
 };
 
 use super::PageInstance;
-use crate::error::LxAppError;
 use crate::lxapp::LxApp;
 
 const MAX_SOURCE_BYTES: usize = 8192;
@@ -262,7 +261,7 @@ impl EmbeddedDocument {
         &self.webview
     }
 
-    pub fn exit_fullscreen(&self) -> Result<(), LxAppError> {
+    pub fn exit_fullscreen(&self) -> Result<(), lingxia_error::Error> {
         self.webview.exit_fullscreen().map_err(Into::into)
     }
 
@@ -455,7 +454,7 @@ fn resolve_embedded_source(
     hosts: Option<&[String]>,
     dev_session: bool,
     domain_allowed: impl Fn(&str) -> bool,
-    resolve_file: impl Fn(&str) -> Result<PathBuf, LxAppError>,
+    resolve_file: impl Fn(&str) -> Result<PathBuf, lingxia_error::Error>,
 ) -> Result<ResolvedEmbeddedSource, EmbeddedSourceError> {
     let src = raw_src.trim();
     if src.is_empty() || src.len() > MAX_SOURCE_BYTES || src.bytes().any(|b| b < 0x20 || b == 0x7f)
@@ -834,11 +833,11 @@ impl PageInstance {
         node_id: &str,
         url: &str,
         options: EmbeddedDocumentOptions,
-    ) -> Result<EmbeddedDocument, LxAppError> {
+    ) -> Result<EmbeddedDocument, lingxia_error::Error> {
         self.open_embedded_document_typed(node_id, url, options)
             .await
             .map_err(|err| match err {
-                OpenEmbeddedError::Source(source) => LxAppError::InvalidParameter(format!(
+                OpenEmbeddedError::Source(source) => lingxia_error::Error::invalid_arg(format!(
                     "{}: {}",
                     source.code.as_str(),
                     source.message
@@ -856,7 +855,7 @@ impl PageInstance {
         options: EmbeddedDocumentOptions,
     ) -> Result<EmbeddedDocument, OpenEmbeddedError> {
         let webtag = self.webtag().child(node_id).ok_or_else(|| {
-            OpenEmbeddedError::Runtime(LxAppError::InvalidParameter(format!(
+            OpenEmbeddedError::Runtime(lingxia_error::Error::invalid_arg(format!(
                 "invalid embedded document id: {node_id:?}"
             )))
         })?;
@@ -871,9 +870,11 @@ impl PageInstance {
         .map_err(OpenEmbeddedError::Source)?;
 
         if self.embedded_document(node_id).is_some() {
-            return Err(OpenEmbeddedError::Runtime(LxAppError::InvalidParameter(
-                format!("embedded document {node_id:?} is already open"),
-            )));
+            return Err(OpenEmbeddedError::Runtime(
+                lingxia_error::Error::invalid_arg(format!(
+                    "embedded document {node_id:?} is already open"
+                )),
+            ));
         }
 
         let policy = LoadPolicy {
@@ -1046,9 +1047,11 @@ impl PageInstance {
         };
         if raced {
             document.destroy();
-            return Err(OpenEmbeddedError::Runtime(LxAppError::InvalidParameter(
-                format!("embedded document {node_id:?} could not be attached to its page"),
-            )));
+            return Err(OpenEmbeddedError::Runtime(
+                lingxia_error::Error::invalid_arg(format!(
+                    "embedded document {node_id:?} could not be attached to its page"
+                )),
+            ));
         }
 
         let initial_url = document.apply_resolved_target(&lxapp, url, resolved);
@@ -1088,7 +1091,7 @@ impl PageInstance {
 #[derive(Debug)]
 pub enum OpenEmbeddedError {
     Source(EmbeddedSourceError),
-    Runtime(LxAppError),
+    Runtime(lingxia_error::Error),
 }
 
 /// Take down every embedded document of a page that is going away.
@@ -1112,7 +1115,6 @@ mod tests {
         EmbeddedErrorCode, LocalOriginScheme, PinnedLocalFile, ResolvedEmbeddedSource,
         permission_origin_allowed, resolve_embedded_source, top_level_load_allowed,
     };
-    use crate::error::LxAppError;
     use std::path::PathBuf;
 
     fn allowed(url: &str, hosts: Option<&[&str]>, dev_session: bool) -> bool {
@@ -1177,7 +1179,7 @@ mod tests {
                     if path == "pages/pick/map.html" || path == "lx://userdata/map.html" {
                         Ok(tmp.clone())
                     } else {
-                        Err(LxAppError::ResourceNotFound(path.to_string()))
+                        Err(lingxia_error::Error::not_found(path.to_string()))
                     }
                 },
             )

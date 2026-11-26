@@ -117,7 +117,10 @@ async fn do_navigate_to_app(
         .map(str::trim)
         .filter(|v| !v.is_empty());
 
-    await_or_cancel(cancel, crate::ensure_open_allowed(&target_appid)).await?;
+    await_or_cancel(cancel, async {
+        Ok(crate::ensure_open_allowed(&target_appid).await?)
+    })
+    .await?;
 
     if let Some(target_version) = target_version {
         await_or_cancel(
@@ -138,10 +141,9 @@ async fn do_navigate_to_app(
         .await?;
     }
 
-    let target_app = await_or_cancel(
-        cancel,
-        crate::ensure_lxapp_ready(&target_appid, release_type),
-    )
+    let target_app = await_or_cancel(cancel, async {
+        Ok(crate::ensure_lxapp_ready(&target_appid, release_type).await?)
+    })
     .await?;
     let (startup_options, _) = build_startup_options(&target_app, &options)?;
     let release_type = startup_options.release_type;

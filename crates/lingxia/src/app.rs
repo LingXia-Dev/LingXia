@@ -215,7 +215,7 @@ pub fn display_language_preference() -> DisplayLanguagePreference {
 
 /// Persist the product's display language and publish it after the write succeeds.
 pub fn set_display_language_preference(preference: DisplayLanguagePreference) -> crate::Result<()> {
-    lxapp::set_display_language_preference_in(&data_dir()?, preference).map_err(Into::into)
+    lxapp::set_display_language_preference_in(&data_dir()?, preference)
 }
 
 /// Follow the choice, not what it resolves to: a system locale change under
@@ -281,9 +281,7 @@ pub fn appearance_preference() -> AppearancePreference {
 /// bar, navigation bar, status bar) and every lxapp that has not pinned its
 /// own scheme in its manifest follow it.
 pub fn set_appearance_preference(preference: AppearancePreference) -> crate::Result<()> {
-    lxapp::set_host_appearance_preference(preference)
-        .map(|_| ())
-        .map_err(Into::into)
+    lxapp::set_host_appearance_preference(preference).map(|_| ())
 }
 
 /// Follow [`appearance_preference`]; see [the module docs](self#observable-values).

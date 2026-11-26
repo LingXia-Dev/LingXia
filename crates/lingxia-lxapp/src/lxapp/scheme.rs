@@ -9,7 +9,6 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 use crate::error;
-use crate::error::LxAppError;
 use crate::lxapp::LxApp;
 use crate::page::PageInstance;
 
@@ -226,7 +225,7 @@ impl LxApp {
         &self,
         page: &PageInstance,
         uri: &Uri,
-    ) -> Result<ResolvedLxAsset, LxAppError> {
+    ) -> Result<ResolvedLxAsset, lingxia_error::Error> {
         match uri.host() {
             Some(lx_uri::HOST_LXAPP) => {
                 if self.synced_dev_root().is_some() {
@@ -249,7 +248,7 @@ impl LxApp {
             Some(lx_uri::HOST_TEMP) => self
                 .resolve_lx_path_uri(
                     &lx_uri::LxUri::from_str(&uri.to_string())
-                        .map_err(|_| LxAppError::ResourceNotFound(uri.to_string()))?,
+                        .map_err(|_| lingxia_error::Error::not_found(uri.to_string()))?,
                 )
                 .map(ResolvedLxAsset::FilePath),
             Some(lx_uri::HOST_USER_CACHE) => self
@@ -258,7 +257,7 @@ impl LxApp {
             Some(lx_uri::HOST_USER_DATA) => self
                 .resolve_user_dir_uri(uri, &self.user_data_dir)
                 .map(ResolvedLxAsset::FilePath),
-            _ => Err(LxAppError::ResourceNotFound(uri.to_string())),
+            _ => Err(lingxia_error::Error::not_found(uri.to_string())),
         }
     }
 
@@ -338,7 +337,11 @@ impl LxApp {
         Some((parts, body).into())
     }
 
-    fn resolve_user_dir_uri(&self, uri: &Uri, base_dir: &Path) -> Result<PathBuf, LxAppError> {
+    fn resolve_user_dir_uri(
+        &self,
+        uri: &Uri,
+        base_dir: &Path,
+    ) -> Result<PathBuf, lingxia_error::Error> {
         let decoded_path = lx_uri::decode_lx_path(uri.path());
         let rel = decoded_path.trim_matches('/');
         if rel.is_empty()
@@ -346,7 +349,7 @@ impl LxApp {
             || rel.contains(':')
             || rel.contains('\\')
         {
-            return Err(LxAppError::ResourceNotFound(uri.to_string()));
+            return Err(lingxia_error::Error::not_found(uri.to_string()));
         }
 
         let absolute = base_dir.join(rel);
@@ -354,7 +357,11 @@ impl LxApp {
         self.resolve_accessible_path(absolute_str.as_ref())
     }
 
-    fn resolve_lxapp_uri(&self, page: &PageInstance, uri: &Uri) -> Result<PathBuf, LxAppError> {
+    fn resolve_lxapp_uri(
+        &self,
+        page: &PageInstance,
+        uri: &Uri,
+    ) -> Result<PathBuf, lingxia_error::Error> {
         let relative = self.resolve_lxapp_relative_path(page, uri)?;
         if let Ok(local_path) = self.resolve_accessible_path(&relative) {
             return Ok(local_path);
@@ -365,14 +372,14 @@ impl LxApp {
             return Ok(local_path);
         }
 
-        Err(LxAppError::ResourceNotFound(uri.to_string()))
+        Err(lingxia_error::Error::not_found(uri.to_string()))
     }
 
     fn resolve_lxapp_relative_path(
         &self,
         _page: &PageInstance,
         uri: &Uri,
-    ) -> Result<String, LxAppError> {
+    ) -> Result<String, lingxia_error::Error> {
         let decoded_path = lx_uri::decode_lx_path(uri.path());
         if Path::new(&decoded_path).is_absolute()
             && let Ok(local_path) = self.resolve_accessible_path(&decoded_path)
@@ -397,29 +404,33 @@ impl LxApp {
             raw_path.trim_matches('/')
         };
         if normalized.is_empty() {
-            return Err(LxAppError::ResourceNotFound(uri.to_string()));
+            return Err(lingxia_error::Error::not_found(uri.to_string()));
         }
         if lx_uri::has_invalid_segment(normalized) {
-            return Err(LxAppError::ResourceNotFound(uri.to_string()));
+            return Err(lingxia_error::Error::not_found(uri.to_string()));
         }
         let normalized = normalized.to_string();
 
         Ok(normalized)
     }
 
-    fn resolve_plugin_uri(&self, _page: &PageInstance, uri: &Uri) -> Result<PathBuf, LxAppError> {
+    fn resolve_plugin_uri(
+        &self,
+        _page: &PageInstance,
+        uri: &Uri,
+    ) -> Result<PathBuf, lingxia_error::Error> {
         let decoded_path = lx_uri::decode_lx_path(uri.path());
         let raw_path = decoded_path.trim_start_matches('/');
         let (plugin_name, rest) = raw_path
             .split_once('/')
-            .ok_or_else(|| LxAppError::ResourceNotFound(uri.to_string()))?;
+            .ok_or_else(|| lingxia_error::Error::not_found(uri.to_string()))?;
 
         let normalized = rest.trim_matches('/');
         if normalized.is_empty() {
-            return Err(LxAppError::ResourceNotFound(uri.to_string()));
+            return Err(lingxia_error::Error::not_found(uri.to_string()));
         }
         if lx_uri::has_invalid_segment(normalized) {
-            return Err(LxAppError::ResourceNotFound(uri.to_string()));
+            return Err(lingxia_error::Error::not_found(uri.to_string()));
         }
 
         let plugins = self.config().plugins.clone();
@@ -433,7 +444,7 @@ impl LxApp {
             Err(e) => e,
         };
 
-        Err(last_err)
+        Err(last_err.into())
     }
 
     /// Text resources carry `charset=utf-8`.

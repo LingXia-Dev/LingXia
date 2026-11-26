@@ -522,10 +522,7 @@ fn swap_one(appid: &str, path: &str) -> Result<usize, String> {
         test
     ))]
     // The dev terminal prints this beside the page path: say what happened, not its category.
-    return crate::gpu_page::hot_swap(appid, path).map_err(|err| match err {
-        lxapp::LxAppError::Runtime(message) => message,
-        err => err.to_string(),
-    });
+    return crate::gpu_page::hot_swap(appid, path).map_err(|err| err.message().to_string());
     #[cfg(not(any(
         target_os = "android",
         target_os = "ios",

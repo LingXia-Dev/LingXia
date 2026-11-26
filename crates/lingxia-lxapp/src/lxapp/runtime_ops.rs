@@ -2,16 +2,22 @@
 
 use super::*;
 
-pub fn ensure_lxapp(appid: &str, release_type: Channel) -> Result<Arc<LxApp>, LxAppError> {
+pub fn ensure_lxapp(
+    appid: &str,
+    release_type: Channel,
+) -> Result<Arc<LxApp>, lingxia_error::Error> {
     let manager = super::runtime_registry::get_lxapps_manager()
-        .ok_or_else(|| LxAppError::Runtime("LxApps manager not initialized".to_string()))?;
+        .ok_or_else(|| lingxia_error::Error::internal("LxApps manager not initialized"))?;
     manager.ensure_lxapp(appid.to_string(), release_type)
 }
 
 /// Prepare a channel replacement, including release of the old Logic worker.
-pub async fn ensure_lxapp_ready(appid: &str, channel: Channel) -> Result<Arc<LxApp>, LxAppError> {
+pub async fn ensure_lxapp_ready(
+    appid: &str,
+    channel: Channel,
+) -> Result<Arc<LxApp>, lingxia_error::Error> {
     let manager = super::runtime_registry::get_lxapps_manager()
-        .ok_or_else(|| LxAppError::Runtime("LxApps manager not initialized".into()))?;
+        .ok_or_else(|| lingxia_error::Error::internal("LxApps manager not initialized"))?;
     manager.prepare_channel_switch(appid, channel).await?;
     manager.ensure_lxapp(appid.to_string(), channel)
 }
@@ -23,14 +29,14 @@ pub fn ensure_control_lxapp(
     authority: &crate::NativeControlPlaneAuthority,
     appid: &str,
     release_type: Channel,
-) -> Result<Arc<LxApp>, LxAppError> {
+) -> Result<Arc<LxApp>, lingxia_error::Error> {
     if !authority.validate() {
-        return Err(LxAppError::UnsupportedOperation(
-            "control app bootstrap requires the live native host authority".to_string(),
+        return Err(lingxia_error::Error::not_supported(
+            "control app bootstrap requires the live native host authority",
         ));
     }
     let manager = super::runtime_registry::get_lxapps_manager()
-        .ok_or_else(|| LxAppError::Runtime("LxApps manager not initialized".to_string()))?;
+        .ok_or_else(|| lingxia_error::Error::internal("LxApps manager not initialized"))?;
     manager.ensure_lxapp_for_native_control(appid.to_string(), release_type)
 }
 
@@ -41,27 +47,27 @@ pub fn ensure_control_surface_lxapp(
     authority: &crate::NativeControlPlaneAuthority,
     appid: &str,
     release_type: Channel,
-) -> Result<Arc<LxApp>, LxAppError> {
+) -> Result<Arc<LxApp>, lingxia_error::Error> {
     if !authority.validate() {
-        return Err(LxAppError::UnsupportedOperation(
-            "control surface bootstrap requires the live native host authority".to_string(),
+        return Err(lingxia_error::Error::not_supported(
+            "control surface bootstrap requires the live native host authority",
         ));
     }
     let manager = super::runtime_registry::get_lxapps_manager()
-        .ok_or_else(|| LxAppError::Runtime("LxApps manager not initialized".to_string()))?;
+        .ok_or_else(|| lingxia_error::Error::internal("LxApps manager not initialized"))?;
     manager.ensure_lxapp_for_control_surface(appid.to_string(), release_type)
 }
 
-pub fn ensure_builtin_lxapp(appid: &str) -> Result<Arc<LxApp>, LxAppError> {
+pub fn ensure_builtin_lxapp(appid: &str) -> Result<Arc<LxApp>, lingxia_error::Error> {
     let manager = super::runtime_registry::get_lxapps_manager()
-        .ok_or_else(|| LxAppError::Runtime("LxApps manager not initialized".to_string()))?;
+        .ok_or_else(|| lingxia_error::Error::internal("LxApps manager not initialized"))?;
     manager.ensure_builtin_lxapp(appid)
 }
 
 /// Ensure the SDK's content-less desktop surface owner exists. It provides a
 /// runtime/session identity for the shared surface graph and managed providers;
 /// it is not a product lxapp and never opens a page or Logic worker.
-pub fn ensure_host_surface_owner() -> Result<Arc<LxApp>, LxAppError> {
+pub fn ensure_host_surface_owner() -> Result<Arc<LxApp>, lingxia_error::Error> {
     register_synthetic_lxapp(HOST_SURFACE_OWNER_APP_ID);
     ensure_builtin_lxapp(HOST_SURFACE_OWNER_APP_ID)
 }
@@ -76,7 +82,7 @@ pub fn open_lxapp_in_region(
     region: LxAppOpenRegion,
     edge: Option<&str>,
     mut options: LxAppStartupOptions,
-) -> Result<Arc<LxApp>, LxAppError> {
+) -> Result<Arc<LxApp>, lingxia_error::Error> {
     match region {
         LxAppOpenRegion::Main => {
             let app = open_lxapp(appid, options)?;
@@ -85,7 +91,7 @@ pub fn open_lxapp_in_region(
         }
         LxAppOpenRegion::Aside => {
             let shell = shell.ok_or_else(|| {
-                LxAppError::UnsupportedOperation(format!(
+                lingxia_error::Error::not_supported(format!(
                     "opening {appid} as an aside needs the window's shell lxapp"
                 ))
             })?;
@@ -106,9 +112,9 @@ pub async fn show_lxapp_in_region(
     appid: &str,
     region: LxAppOpenRegion,
     edge: Option<&str>,
-) -> Result<Arc<LxApp>, LxAppError> {
+) -> Result<Arc<LxApp>, lingxia_error::Error> {
     let app = super::runtime_registry::try_get(appid)
-        .ok_or_else(|| LxAppError::ResourceNotFound(format!("lxapp is not active: {appid}")))?;
+        .ok_or_else(|| lingxia_error::Error::not_found(format!("lxapp is not active: {appid}")))?;
     match region {
         LxAppOpenRegion::Main => {
             app.activate_main();
@@ -131,9 +137,12 @@ pub async fn show_lxapp_in_region(
     }
 }
 
-pub fn open_lxapp(appid: &str, options: LxAppStartupOptions) -> Result<Arc<LxApp>, LxAppError> {
+pub fn open_lxapp(
+    appid: &str,
+    options: LxAppStartupOptions,
+) -> Result<Arc<LxApp>, lingxia_error::Error> {
     let manager = super::runtime_registry::get_lxapps_manager()
-        .ok_or_else(|| LxAppError::Runtime("LxApps manager not initialized".to_string()))?;
+        .ok_or_else(|| lingxia_error::Error::internal("LxApps manager not initialized"))?;
 
     let app = manager.ensure_lxapp(appid.to_string(), options.release_type)?;
     app.open(options)?;
@@ -149,32 +158,31 @@ pub fn open_control_lxapp_page(
     authority: &crate::NativeControlPlaneAuthority,
     appid: &str,
     options: LxAppStartupOptions,
-) -> Result<Arc<LxApp>, LxAppError> {
+) -> Result<Arc<LxApp>, lingxia_error::Error> {
     if !authority.validate() {
-        return Err(LxAppError::UnsupportedOperation(
-            "control app bootstrap requires the live native host authority".to_string(),
+        return Err(lingxia_error::Error::not_supported(
+            "control app bootstrap requires the live native host authority",
         ));
     }
-    let expected = lingxia_app_context::home_app_id().ok_or_else(|| {
-        LxAppError::Runtime("control app identity is not initialized".to_string())
-    })?;
+    let expected = lingxia_app_context::home_app_id()
+        .ok_or_else(|| lingxia_error::Error::internal("control app identity is not initialized"))?;
     if appid != expected {
-        return Err(LxAppError::InvalidParameter(format!(
+        return Err(lingxia_error::Error::invalid_arg(format!(
             "control app identity mismatch: expected {expected}, got {appid}"
         )));
     }
     let app = ensure_control_lxapp(authority, appid, options.release_type)?;
     if !app.is_control_app() {
-        return Err(LxAppError::Runtime(format!(
+        return Err(lingxia_error::Error::internal(format!(
             "current app session is not ControlApp: {appid}"
         )));
     }
     app.open(options)?;
     let current = super::runtime_registry::try_get(appid).ok_or_else(|| {
-        LxAppError::ResourceNotFound(format!("current control app session not found: {appid}"))
+        lingxia_error::Error::not_found(format!("current control app session not found: {appid}"))
     })?;
     if !current.is_control_app() {
-        return Err(LxAppError::Runtime(format!(
+        return Err(lingxia_error::Error::internal(format!(
             "current app session is not ControlApp: {appid}"
         )));
     }
@@ -225,13 +233,13 @@ pub fn refresh_auto_appearances() {
     }
 }
 
-pub fn close_lxapp(appid: &str) -> Result<(), LxAppError> {
+pub fn close_lxapp(appid: &str) -> Result<(), lingxia_error::Error> {
     let app = super::runtime_registry::try_get(appid)
-        .ok_or_else(|| LxAppError::ResourceNotFound(appid.to_string()))?;
+        .ok_or_else(|| lingxia_error::Error::not_found(appid.to_string()))?;
     // Every host keeps its home lxapp: closing it would leave an empty host behind.
     if app.is_home_lxapp {
-        return Err(LxAppError::UnsupportedOperation(
-            "the stable root main surface cannot be closed".to_string(),
+        return Err(lingxia_error::Error::not_supported(
+            "the stable root main surface cannot be closed",
         ));
     }
     let session_id = app.session_id();
@@ -255,10 +263,12 @@ pub fn close_lxapp(appid: &str) -> Result<(), LxAppError> {
 /// Unlike capsule close, the next open creates a fresh instance and session id.
 pub fn terminate_lxapp(
     appid: &str,
-) -> Result<impl std::future::Future<Output = Result<(), LxAppError>> + Send + 'static, LxAppError>
-{
+) -> Result<
+    impl std::future::Future<Output = Result<(), lingxia_error::Error>> + Send + 'static,
+    lingxia_error::Error,
+> {
     let manager = super::runtime_registry::get_lxapps_manager()
-        .ok_or_else(|| LxAppError::ResourceNotFound(appid.to_string()))?;
+        .ok_or_else(|| lingxia_error::Error::not_found(appid.to_string()))?;
     let app = manager.retire_lxapp(appid)?;
     Ok(async move {
         let mut stopped = app.logic_contexts.subscribe();
@@ -267,9 +277,11 @@ pub fn terminate_lxapp(
             stopped.wait_for(|count| *count == 0),
         )
         .await
-        .map_err(|_| LxAppError::Runtime(format!("Timed out terminating Logic for {}", app.appid)))?
         .map_err(|_| {
-            LxAppError::Runtime(format!(
+            lingxia_error::Error::internal(format!("Timed out terminating Logic for {}", app.appid))
+        })?
+        .map_err(|_| {
+            lingxia_error::Error::internal(format!(
                 "Logic termination channel closed for {}",
                 app.appid
             ))
@@ -278,15 +290,15 @@ pub fn terminate_lxapp(
     })
 }
 
-pub fn restart_lxapp(appid: &str) -> Result<(), LxAppError> {
+pub fn restart_lxapp(appid: &str) -> Result<(), lingxia_error::Error> {
     let app = super::runtime_registry::try_get(appid)
-        .ok_or_else(|| LxAppError::ResourceNotFound(appid.to_string()))?;
+        .ok_or_else(|| lingxia_error::Error::not_found(appid.to_string()))?;
     app.restart()
 }
 
-pub fn uninstall_lxapp(appid: &str) -> Result<(), LxAppError> {
+pub fn uninstall_lxapp(appid: &str) -> Result<(), lingxia_error::Error> {
     let manager = super::runtime_registry::get_lxapps_manager()
-        .ok_or_else(|| LxAppError::Runtime("LxApps manager not initialized".to_string()))?;
+        .ok_or_else(|| lingxia_error::Error::internal("LxApps manager not initialized"))?;
     let app = if let Some(app) = super::runtime_registry::try_get(appid) {
         manager.destroy_lxapp_with_options(appid, true);
         app
@@ -296,10 +308,10 @@ pub fn uninstall_lxapp(appid: &str) -> Result<(), LxAppError> {
             .iter()
             .next()
             .map(|entry| entry.value().clone())
-            .ok_or_else(|| LxAppError::Runtime("No LxApp runtime available".to_string()))?
+            .ok_or_else(|| lingxia_error::Error::internal("No LxApp runtime available"))?
     };
     let updater = UpdateManager::new(app);
-    updater.uninstall_all(appid)
+    Ok(updater.uninstall_all(appid)?)
 }
 
 pub fn installed_lxapp_path(appid: &str, release_type: Channel) -> Option<String> {
@@ -311,42 +323,49 @@ pub fn installed_lxapp_path(appid: &str, release_type: Channel) -> Option<String
 
 pub fn create_page_instance(
     req: CreatePageInstanceRequest,
-) -> Result<CreatedPageInstance, LxAppError> {
+) -> Result<CreatedPageInstance, lingxia_error::Error> {
     let app = super::runtime_registry::try_get(&req.appid)
-        .ok_or_else(|| LxAppError::ResourceNotFound(req.appid.clone()))?;
+        .ok_or_else(|| lingxia_error::Error::not_found(req.appid.clone()))?;
     app.create_page_instance(req.owner, req.target, req.query, req.surface)
 }
 
 pub fn notify_page_instance(
     id: &PageInstanceId,
     event: PageInstanceEvent,
-) -> Result<(), LxAppError> {
+) -> Result<(), lingxia_error::Error> {
     let page = super::runtime_registry::find_page_by_instance_id(id.as_str())
-        .ok_or_else(|| LxAppError::ResourceNotFound(format!("page instance id: {}", id)))?;
+        .ok_or_else(|| lingxia_error::Error::not_found(format!("page instance id: {}", id)))?;
     let app = super::runtime_registry::try_get(&page.appid())
-        .ok_or_else(|| LxAppError::ResourceNotFound(page.appid()))?;
+        .ok_or_else(|| lingxia_error::Error::not_found(page.appid()))?;
     app.notify_page_instance(id, event)
 }
 
-pub fn notify_page_instance_by_id(id: &str, event: PageInstanceEvent) -> Result<(), LxAppError> {
-    let id = PageInstanceId::parse(id.to_string()).ok_or_else(|| {
-        LxAppError::InvalidParameter("page instance id must not be empty".to_string())
-    })?;
+pub fn notify_page_instance_by_id(
+    id: &str,
+    event: PageInstanceEvent,
+) -> Result<(), lingxia_error::Error> {
+    let id = PageInstanceId::parse(id.to_string())
+        .ok_or_else(|| lingxia_error::Error::invalid_arg("page instance id must not be empty"))?;
     notify_page_instance(&id, event)
 }
 
-pub fn dispose_page_instance(id: &PageInstanceId, reason: CloseReason) -> Result<(), LxAppError> {
+pub fn dispose_page_instance(
+    id: &PageInstanceId,
+    reason: CloseReason,
+) -> Result<(), lingxia_error::Error> {
     let page = super::runtime_registry::find_page_by_instance_id(id.as_str())
-        .ok_or_else(|| LxAppError::ResourceNotFound(format!("page instance id: {}", id)))?;
+        .ok_or_else(|| lingxia_error::Error::not_found(format!("page instance id: {}", id)))?;
     let app = super::runtime_registry::try_get(&page.appid())
-        .ok_or_else(|| LxAppError::ResourceNotFound(page.appid()))?;
+        .ok_or_else(|| lingxia_error::Error::not_found(page.appid()))?;
     app.dispose_page_instance(id, reason)
 }
 
-pub fn dispose_page_instance_by_id(id: &str, reason: CloseReason) -> Result<(), LxAppError> {
-    let id = PageInstanceId::parse(id.to_string()).ok_or_else(|| {
-        LxAppError::InvalidParameter("page instance id must not be empty".to_string())
-    })?;
+pub fn dispose_page_instance_by_id(
+    id: &str,
+    reason: CloseReason,
+) -> Result<(), lingxia_error::Error> {
+    let id = PageInstanceId::parse(id.to_string())
+        .ok_or_else(|| lingxia_error::Error::invalid_arg("page instance id must not be empty"))?;
     dispose_page_instance(&id, reason)
 }
 
@@ -402,7 +421,10 @@ pub fn mark_lxapp_active(appid: &str) -> bool {
     true
 }
 
-pub fn notify_lxapp_host_visibility(appid: &str, visible: bool) -> Result<(), LxAppError> {
+pub fn notify_lxapp_host_visibility(
+    appid: &str,
+    visible: bool,
+) -> Result<(), lingxia_error::Error> {
     notify_lxapp_host_visibility_for_session(appid, None, visible)
 }
 
@@ -411,7 +433,7 @@ pub fn notify_lxapp_host_visibility_by_session(
     appid: &str,
     session: u64,
     visible: bool,
-) -> Result<(), LxAppError> {
+) -> Result<(), lingxia_error::Error> {
     notify_lxapp_host_visibility_for_session(appid, Some(session), visible)
 }
 
@@ -419,9 +441,9 @@ fn notify_lxapp_host_visibility_for_session(
     appid: &str,
     session: Option<u64>,
     visible: bool,
-) -> Result<(), LxAppError> {
+) -> Result<(), lingxia_error::Error> {
     let app = super::runtime_registry::try_get(appid)
-        .ok_or_else(|| LxAppError::ResourceNotFound(appid.to_string()))?;
+        .ok_or_else(|| lingxia_error::Error::not_found(appid.to_string()))?;
     if session.is_some_and(|session| session != app.session_id()) {
         return Ok(());
     }
@@ -459,7 +481,7 @@ pub fn notify_page_host_visibility(
     appid: &str,
     path: &str,
     visible: bool,
-) -> Result<bool, LxAppError> {
+) -> Result<bool, lingxia_error::Error> {
     notify_selected_page_host_visibility(appid, visible, |app| app.require_page(path))
 }
 
@@ -470,20 +492,20 @@ pub fn notify_page_host_visibility_by_webtag(
     appid: &str,
     webtag: &str,
     visible: bool,
-) -> Result<bool, LxAppError> {
+) -> Result<bool, lingxia_error::Error> {
     notify_selected_page_host_visibility(appid, visible, |app| {
         app.get_page_by_webtag(webtag)
-            .ok_or_else(|| LxAppError::ResourceNotFound(webtag.to_string()))
+            .ok_or_else(|| lingxia_error::Error::not_found(webtag.to_string()))
     })
 }
 
 fn notify_selected_page_host_visibility(
     appid: &str,
     visible: bool,
-    select: impl FnOnce(&LxApp) -> Result<PageInstance, LxAppError>,
-) -> Result<bool, LxAppError> {
+    select: impl FnOnce(&LxApp) -> Result<PageInstance, lingxia_error::Error>,
+) -> Result<bool, lingxia_error::Error> {
     let app = super::runtime_registry::try_get(appid)
-        .ok_or_else(|| LxAppError::ResourceNotFound(appid.to_string()))?;
+        .ok_or_else(|| lingxia_error::Error::not_found(appid.to_string()))?;
     if matches!(
         app.status(),
         LxAppSessionStatus::Closing | LxAppSessionStatus::Closed
@@ -534,26 +556,26 @@ pub fn open_control_surface_lxapp_page(
     authority: &crate::NativeControlPlaneAuthority,
     appid: &str,
     options: LxAppStartupOptions,
-) -> Result<Arc<LxApp>, LxAppError> {
+) -> Result<Arc<LxApp>, lingxia_error::Error> {
     if !authority.validate() {
-        return Err(LxAppError::UnsupportedOperation(
-            "control surface bootstrap requires the live native host authority".to_string(),
+        return Err(lingxia_error::Error::not_supported(
+            "control surface bootstrap requires the live native host authority",
         ));
     }
     let app = ensure_control_surface_lxapp(authority, appid, options.release_type)?;
     if app.app_session_class() != AppSessionClass::ControlSurface {
-        return Err(LxAppError::Runtime(format!(
+        return Err(lingxia_error::Error::internal(format!(
             "current app session is not ControlSurface: {appid}"
         )));
     }
     app.open(options)?;
     let current = super::runtime_registry::try_get(appid).ok_or_else(|| {
-        LxAppError::Runtime(format!(
+        lingxia_error::Error::internal(format!(
             "control surface session disappeared after open: {appid}"
         ))
     })?;
     if current.app_session_class() != AppSessionClass::ControlSurface {
-        return Err(LxAppError::Runtime(format!(
+        return Err(lingxia_error::Error::internal(format!(
             "current app session is not ControlSurface after open: {appid}"
         )));
     }

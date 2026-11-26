@@ -1,4 +1,4 @@
-use super::{LxAppError, LxApps};
+use super::LxApps;
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 use tokio::sync::watch;
@@ -35,14 +35,17 @@ impl Drop for Permit {
 }
 
 impl Admission {
-    pub(super) fn enter(self: &Arc<Self>, appid: &str) -> Result<Option<Permit>, LxAppError> {
+    pub(super) fn enter(
+        self: &Arc<Self>,
+        appid: &str,
+    ) -> Result<Option<Permit>, lingxia_error::Error> {
         let mut state = self.state.lock().unwrap();
         if let Some(preserved) = &state.preserved {
             if preserved.contains(appid) {
                 return Ok(None);
             }
-            return Err(LxAppError::Runtime(
-                "LxApp shutdown in progress; opening is blocked".into(),
+            return Err(lingxia_error::Error::internal(
+                "LxApp shutdown in progress; opening is blocked",
             ));
         }
         state.active += 1;
@@ -50,15 +53,15 @@ impl Admission {
         Ok(Some(Permit(self.clone())))
     }
 
-    fn block(&self, preserved: HashSet<String>) -> Result<(), LxAppError> {
+    fn block(&self, preserved: HashSet<String>) -> Result<(), lingxia_error::Error> {
         let mut state = self.state.lock().unwrap();
         if state
             .preserved
             .as_ref()
             .is_some_and(|existing| existing != &preserved)
         {
-            return Err(LxAppError::Runtime(
-                "A different LxApp shutdown is already in progress".into(),
+            return Err(lingxia_error::Error::internal(
+                "A different LxApp shutdown is already in progress",
             ));
         }
         if state.preserved.is_none() {
@@ -68,11 +71,11 @@ impl Admission {
         Ok(())
     }
 
-    fn resume(&self) -> Result<(), LxAppError> {
+    fn resume(&self) -> Result<(), lingxia_error::Error> {
         let mut state = self.state.lock().unwrap();
         if state.preserved.is_some() && !state.completed {
-            return Err(LxAppError::Runtime(
-                "LxApp shutdown has not completed".into(),
+            return Err(lingxia_error::Error::internal(
+                "LxApp shutdown has not completed",
             ));
         }
         state.preserved = None;
@@ -81,12 +84,12 @@ impl Admission {
 }
 
 impl LxApps {
-    async fn drain_apps(&self) -> Result<(), LxAppError> {
+    async fn drain_apps(&self) -> Result<(), lingxia_error::Error> {
         let mut active = self.admission.active.subscribe();
         active
             .wait_for(|count| *count == 0)
             .await
-            .map_err(|_| LxAppError::Runtime("LxApp admission channel closed".into()))?;
+            .map_err(|_| lingxia_error::Error::internal("LxApp admission channel closed"))?;
         // Creation/open permits acquired before block() have now finished. No
         // new instance can escape this snapshot, including a retained recall Arc.
         let preserved = self
@@ -96,7 +99,7 @@ impl LxApps {
             .unwrap()
             .preserved
             .clone()
-            .ok_or_else(|| LxAppError::Runtime("LxApp shutdown barrier is not held".into()))?;
+            .ok_or_else(|| lingxia_error::Error::internal("LxApp shutdown barrier is not held"))?;
         let apps: Vec<_> = self
             .instances
             .lock()
@@ -114,7 +117,7 @@ impl LxApps {
             stopped
                 .wait_for(|count| *count == 0)
                 .await
-                .map_err(|_| LxAppError::Runtime("Logic termination channel closed".into()))?;
+                .map_err(|_| lingxia_error::Error::internal("Logic termination channel closed"))?;
         }
         self.instances
             .lock()
@@ -124,12 +127,15 @@ impl LxApps {
         Ok(())
     }
 
-    async fn wait_shutdown(&self, timeout: std::time::Duration) -> Result<(), LxAppError> {
+    async fn wait_shutdown(
+        &self,
+        timeout: std::time::Duration,
+    ) -> Result<(), lingxia_error::Error> {
         tokio::time::timeout(timeout, self.drain_apps())
             .await
             .map_err(|_| {
-                LxAppError::Runtime(
-                    "Timed out shutting down LxApps; admission remains blocked".into(),
+                lingxia_error::Error::internal(
+                    "Timed out shutting down LxApps; admission remains blocked",
                 )
             })?
     }
@@ -140,16 +146,18 @@ impl LxApps {
 /// and instances tracked. The caller serializes shutdown and explicit resumption.
 pub fn shutdown_lxapps_except(
     preserved_app_ids: Vec<String>,
-) -> Result<impl std::future::Future<Output = Result<(), LxAppError>> + Send + 'static, LxAppError>
-{
+) -> Result<
+    impl std::future::Future<Output = Result<(), lingxia_error::Error>> + Send + 'static,
+    lingxia_error::Error,
+> {
     block_lxapp_admission(preserved_app_ids)?;
     drain_lxapps()
 }
 
 /// Synchronously close admission without creating or dropping an async operation.
-pub fn block_lxapp_admission(preserved_app_ids: Vec<String>) -> Result<(), LxAppError> {
+pub fn block_lxapp_admission(preserved_app_ids: Vec<String>) -> Result<(), lingxia_error::Error> {
     let manager = super::runtime_registry::get_lxapps_manager()
-        .ok_or_else(|| LxAppError::Runtime("LxApps manager not initialized".into()))?;
+        .ok_or_else(|| lingxia_error::Error::internal("LxApps manager not initialized"))?;
     manager
         .admission
         .block(preserved_app_ids.into_iter().collect())
@@ -157,10 +165,12 @@ pub fn block_lxapp_admission(preserved_app_ids: Vec<String>) -> Result<(), LxApp
 
 /// Drain the instances covered by an existing admission barrier. Dropping this
 /// future keeps the barrier closed; the next drain resumes tracked shutdowns.
-pub fn drain_lxapps()
--> Result<impl std::future::Future<Output = Result<(), LxAppError>> + Send + 'static, LxAppError> {
+pub fn drain_lxapps() -> Result<
+    impl std::future::Future<Output = Result<(), lingxia_error::Error>> + Send + 'static,
+    lingxia_error::Error,
+> {
     let manager = super::runtime_registry::get_lxapps_manager()
-        .ok_or_else(|| LxAppError::Runtime("LxApps manager not initialized".into()))?;
+        .ok_or_else(|| lingxia_error::Error::internal("LxApps manager not initialized"))?;
     Ok(async move {
         manager
             .wait_shutdown(std::time::Duration::from_secs(5))
@@ -169,9 +179,9 @@ pub fn drain_lxapps()
 }
 
 /// Release the startup barrier after the caller has completed its operation.
-pub fn resume_lxapp_admission() -> Result<(), LxAppError> {
+pub fn resume_lxapp_admission() -> Result<(), lingxia_error::Error> {
     let manager = super::runtime_registry::get_lxapps_manager()
-        .ok_or_else(|| LxAppError::Runtime("LxApps manager not initialized".into()))?;
+        .ok_or_else(|| lingxia_error::Error::internal("LxApps manager not initialized"))?;
     manager.admission.resume()
 }
 

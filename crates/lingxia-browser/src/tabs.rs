@@ -488,13 +488,13 @@ pub(crate) fn ensure_browser_lxapp() -> Result<Arc<LxApp>, lingxia_error::Error>
                 "browser native control authority is not installed".to_string(),
             )
         })?;
-        return Ok(lxapp::ensure_control_surface_lxapp(
+        return lxapp::ensure_control_surface_lxapp(
             authority,
             BUILTIN_BROWSER_APPID,
             lxapp::Channel::Release,
-        )?);
+        );
     }
-    Ok(lxapp::ensure_builtin_lxapp(BUILTIN_BROWSER_APPID)?)
+    lxapp::ensure_builtin_lxapp(BUILTIN_BROWSER_APPID)
 }
 
 pub(crate) fn browser_create_token_for_path(path: &str, session_id: u64) -> Option<u64> {

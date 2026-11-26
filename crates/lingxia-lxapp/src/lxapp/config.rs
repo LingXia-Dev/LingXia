@@ -121,12 +121,12 @@ impl LxAppConfig {
         &self,
         appid: &str,
         runtime_version: &str,
-    ) -> Result<(), crate::error::LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         let Some(required) = self.minRuntime.as_deref() else {
             return Ok(());
         };
         lingxia_update::ensure_runtime_satisfies(required, runtime_version, appid, &self.version)
-            .map_err(|error| crate::error::LxAppError::requires_runtime_upgrade(error.to_string()))
+            .map_err(|error| crate::error::requires_runtime_upgrade(error.to_string()))
     }
 
     /// Create AppConfig from serde_json::Value
@@ -616,7 +616,7 @@ mod tests {
         let error = config(Some("0.18.0"))
             .ensure_runtime_satisfies("demo", "0.17.2")
             .unwrap_err();
-        assert!(error.is_requires_runtime_upgrade(), "{error}");
+        assert!(crate::error::is_requires_runtime_upgrade(&error), "{error}");
     }
 
     #[test]

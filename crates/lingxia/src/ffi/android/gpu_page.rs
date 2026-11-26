@@ -3,7 +3,7 @@ use super::with_env;
 use crate::gpu_page::{self, AutomationReply, Creation, NativeFactory, NativePage, Token};
 use jni::objects::{Global, JClass, JObject, JString};
 use jni::{Env, EnvUnowned, errors::ThrowRuntimeExAndDefault, jni_sig, jni_str};
-use lxapp::{GpuViewGeneration, LxAppError, PageInstance};
+use lxapp::{GpuViewGeneration, PageInstance};
 use std::collections::HashMap;
 use std::sync::{
     Arc, LazyLock, Mutex, OnceLock,
@@ -68,12 +68,15 @@ fn class() -> &'static Global<JClass<'static>> {
     CLASS.get().expect("GPU factory initialized")
 }
 
-fn runtime(error: jni::errors::Error) -> LxAppError {
-    LxAppError::Runtime(error.to_string())
+fn runtime(error: jni::errors::Error) -> lingxia_error::Error {
+    lingxia_error::Error::internal(error.to_string())
 }
 
 /// `GpuPage.<name>(token)`.
-fn operation(token: Token, name: &'static jni::strings::JNIStr) -> Result<(), LxAppError> {
+fn operation(
+    token: Token,
+    name: &'static jni::strings::JNIStr,
+) -> Result<(), lingxia_error::Error> {
     with_env(|env| {
         env.call_static_method(class(), name, jni_sig!("(J)V"), &[token.into()])?;
         Ok::<_, jni::errors::Error>(())
@@ -87,7 +90,7 @@ fn bridge_operation(
     generation: GpuViewGeneration,
     value: &str,
     name: &'static jni::strings::JNIStr,
-) -> Result<(), LxAppError> {
+) -> Result<(), lingxia_error::Error> {
     with_env(|env| {
         let value = env.new_string(value)?;
         env.call_static_method(
@@ -110,7 +113,7 @@ fn value_operation(
     token: Token,
     value: &str,
     name: &'static jni::strings::JNIStr,
-) -> Result<(), LxAppError> {
+) -> Result<(), lingxia_error::Error> {
     with_env(|env| {
         let value = env.new_string(value)?;
         env.call_static_method(
@@ -130,7 +133,7 @@ struct AndroidPage {
 }
 
 impl NativePage for AndroidPage {
-    fn connect(&self, generation: GpuViewGeneration) -> Result<(), LxAppError> {
+    fn connect(&self, generation: GpuViewGeneration) -> Result<(), lingxia_error::Error> {
         with_env(|env| {
             env.call_static_method(
                 class(),
@@ -146,7 +149,7 @@ impl NativePage for AndroidPage {
         &self,
         generation: GpuViewGeneration,
         message: lxapp::GpuViewMessage,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         lingxia_view_android::deliver(
             self.token,
             generation.get(),
@@ -158,7 +161,7 @@ impl NativePage for AndroidPage {
         &self,
         generation: GpuViewGeneration,
         write: lxapp::GpuStateWrite,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         lingxia_view_android::write_state(
             self.token,
             generation.get(),
@@ -166,32 +169,36 @@ impl NativePage for AndroidPage {
         );
         Ok(())
     }
-    fn request_leave(&self, generation: GpuViewGeneration, reason: &str) -> Result<(), LxAppError> {
+    fn request_leave(
+        &self,
+        generation: GpuViewGeneration,
+        reason: &str,
+    ) -> Result<(), lingxia_error::Error> {
         bridge_operation(self.token, generation, reason, jni_str!("requestLeave"))
     }
-    fn update_environment(&self, update: &serde_json::Value) -> Result<(), LxAppError> {
+    fn update_environment(&self, update: &serde_json::Value) -> Result<(), lingxia_error::Error> {
         value_operation(
             self.token,
             &update.to_string(),
             jni_str!("updateEnvironment"),
         )
     }
-    fn reload(&self, source: &str) -> Result<(), LxAppError> {
+    fn reload(&self, source: &str) -> Result<(), lingxia_error::Error> {
         lingxia_view_android::mark_stale(self.token);
         value_operation(self.token, source, jni_str!("reload"))
     }
-    fn swap_module(&self, source: &str) -> Result<(), LxAppError> {
+    fn swap_module(&self, source: &str) -> Result<(), lingxia_error::Error> {
         value_operation(self.token, source, jni_str!("swapModule"))
     }
-    fn park(&self) -> Result<(), LxAppError> {
+    fn park(&self) -> Result<(), lingxia_error::Error> {
         lingxia_view_android::mark_stale(self.token);
         operation(self.token, jni_str!("park"))
     }
-    fn page_left(&self) -> Result<(), LxAppError> {
+    fn page_left(&self) -> Result<(), lingxia_error::Error> {
         lingxia_view_android::page_left(self.token);
         Ok(())
     }
-    fn retain_surface(&self, retained: bool) -> Result<(), LxAppError> {
+    fn retain_surface(&self, retained: bool) -> Result<(), lingxia_error::Error> {
         let token = self.token;
         with_env(|env| {
             env.call_static_method(
@@ -362,7 +369,7 @@ impl NativeFactory for Factory {
         token: Token,
         page: &PageInstance,
         request: Creation,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         with_env(|env| {
             let appid = env.new_string(page.appid())?;
             let worker = env.new_string(&request.worker)?;

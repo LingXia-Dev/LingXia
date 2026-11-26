@@ -26,7 +26,6 @@ use self::page_chrome::{
     TabBarVisibilityPreference, VisibilityPreference,
 };
 use crate::appservice::{LxAppWorkers, WorkerTermination};
-use crate::error::LxAppError;
 use crate::page::config::{OrientationConfig, PageConfig, resolve_orientation};
 use crate::page::{PageInstance, PageInstanceId, ViewCallOptions};
 use crate::startup::{LxAppStartupOptions, Scene};
@@ -173,9 +172,12 @@ enum TransientPathKind {
     Directory,
 }
 
-fn normalize_transient_path(path: &Path, kind: TransientPathKind) -> Result<PathBuf, LxAppError> {
+fn normalize_transient_path(
+    path: &Path,
+    kind: TransientPathKind,
+) -> Result<PathBuf, lingxia_error::Error> {
     let normalized = std::fs::canonicalize(path).map_err(|e| {
-        LxAppError::ResourceNotFound(format!("transient path {}: {}", path.display(), e))
+        lingxia_error::Error::not_found(format!("transient path {}: {}", path.display(), e))
     })?;
     let metadata = std::fs::metadata(&normalized)?;
     let valid = match kind {
@@ -183,7 +185,7 @@ fn normalize_transient_path(path: &Path, kind: TransientPathKind) -> Result<Path
         TransientPathKind::Directory => metadata.is_dir(),
     };
     if !valid {
-        return Err(LxAppError::InvalidParameter(format!(
+        return Err(lingxia_error::Error::invalid_arg(format!(
             "invalid transient path kind: {}",
             normalized.display()
         )));
@@ -194,8 +196,11 @@ fn normalize_transient_path(path: &Path, kind: TransientPathKind) -> Result<Path
 /// Resolve `<relative>` under a picked directory's canonical `root`. Only the
 /// canonical target is returned, so a symlink or junction inside the directory
 /// cannot lead outside it.
-fn resolve_transient_directory_child(root: &Path, relative: &str) -> Result<PathBuf, LxAppError> {
-    let not_found = || LxAppError::ResourceNotFound(format!("temporary grant path: {relative}"));
+fn resolve_transient_directory_child(
+    root: &Path,
+    relative: &str,
+) -> Result<PathBuf, lingxia_error::Error> {
+    let not_found = || lingxia_error::Error::not_found(format!("temporary grant path: {relative}"));
     if Path::new(relative).is_absolute()
         || relative
             .split('/')
@@ -210,7 +215,7 @@ fn resolve_transient_directory_child(root: &Path, relative: &str) -> Result<Path
     Ok(canonical)
 }
 
-fn normalize_transient_file_reference(reference: &str) -> Result<String, LxAppError> {
+fn normalize_transient_file_reference(reference: &str) -> Result<String, lingxia_error::Error> {
     let normalized = reference.trim();
     let scheme = normalized
         .split_once(':')
@@ -219,8 +224,8 @@ fn normalize_transient_file_reference(reference: &str) -> Result<String, LxAppEr
         || normalized.chars().any(char::is_control)
         || !matches!(scheme.as_deref(), Some("content" | "datashare" | "file"))
     {
-        return Err(LxAppError::InvalidParameter(
-            "invalid transient file reference".to_string(),
+        return Err(lingxia_error::Error::invalid_arg(
+            "invalid transient file reference",
         ));
     }
     Ok(normalized.to_string())
@@ -535,7 +540,7 @@ impl LxApps {
         &self,
         appid: String,
         release_type: Channel,
-    ) -> Result<Arc<LxApp>, LxAppError> {
+    ) -> Result<Arc<LxApp>, lingxia_error::Error> {
         let _admission = self.admission.enter(&appid)?;
         let transition_appid = appid.clone();
         self.with_session_transition(&transition_appid, move || {
@@ -548,7 +553,7 @@ impl LxApps {
         &self,
         appid: &str,
         channel: Channel,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         let channel = resolve_open_channel(appid, Some(channel));
         // A concurrent switch may land on yet another channel; re-check until
         // the live session matches or nothing is pending.
@@ -571,8 +576,8 @@ impl LxApps {
                     return Ok(None);
                 }
                 if app.app_session_class() == AppSessionClass::ControlSurface {
-                    return Err(LxAppError::InvalidParameter(
-                        "host control surfaces cannot select a downloaded draft".into(),
+                    return Err(lingxia_error::Error::invalid_arg(
+                        "host control surfaces cannot select a downloaded draft",
                     ));
                 }
                 let completion = self.retire_locked_with_completion(&app)?;
@@ -597,8 +602,9 @@ impl LxApps {
                 warn!("Switching channel without the previous worker: {}", error).with_appid(appid);
             }
         }
-        Err(LxAppError::ResourceExhausted(
-            "channel switch keeps being pre-empted by other switches".into(),
+        Err(lingxia_error::Error::new(
+            lingxia_error::code::QUOTA,
+            "channel switch keeps being pre-empted by other switches",
         ))
     }
 
@@ -630,12 +636,12 @@ impl LxApps {
         &self,
         appid: String,
         release_type: Channel,
-    ) -> Result<Arc<LxApp>, LxAppError> {
+    ) -> Result<Arc<LxApp>, lingxia_error::Error> {
         let _admission = self.admission.enter(&appid)?;
         let transition_appid = appid.clone();
         self.with_session_transition(&transition_appid, move || {
             if lingxia_app_context::home_app_id() != Some(appid.as_str()) {
-                return Err(LxAppError::InvalidParameter(format!(
+                return Err(lingxia_error::Error::invalid_arg(format!(
                     "control app identity mismatch: {appid} is not the native-sealed home app"
                 )));
             }
@@ -661,17 +667,17 @@ impl LxApps {
         &self,
         appid: String,
         release_type: Channel,
-    ) -> Result<Arc<LxApp>, LxAppError> {
+    ) -> Result<Arc<LxApp>, lingxia_error::Error> {
         let _admission = self.admission.enter(&appid)?;
         let transition_appid = appid.clone();
         self.with_session_transition(&transition_appid, move || {
             if lingxia_app_context::home_app_id() == Some(appid.as_str()) {
-                return Err(LxAppError::InvalidParameter(format!(
+                return Err(lingxia_error::Error::invalid_arg(format!(
                     "control surface identity mismatch: {appid} is the home app"
                 )));
             }
             if !control_surface_bundle_source_allowed(lxapp_bundle_source_for(&appid).as_ref()) {
-                return Err(LxAppError::InvalidParameter(format!(
+                return Err(lingxia_error::Error::invalid_arg(format!(
                     "control surface must be a host-bundled lxapp: {appid}"
                 )));
             }
@@ -695,7 +701,7 @@ impl LxApps {
         })
     }
 
-    fn ensure_builtin_lxapp(&self, appid: &str) -> Result<Arc<LxApp>, LxAppError> {
+    fn ensure_builtin_lxapp(&self, appid: &str) -> Result<Arc<LxApp>, lingxia_error::Error> {
         let _admission = self.admission.enter(appid)?;
         self.with_session_transition(appid, || {
             if let Some(app) = self.lxapps.get(appid) {
@@ -705,7 +711,7 @@ impl LxApps {
                 lxapp_bundle_source_for(appid),
                 Some(LxAppBundleSource::BuiltinAssets | LxAppBundleSource::Synthetic)
             ) {
-                return Err(LxAppError::ResourceNotFound(format!(
+                return Err(lingxia_error::Error::not_found(format!(
                     "builtin lxapp source not registered: {appid}"
                 )));
             }
@@ -723,7 +729,7 @@ impl LxApps {
         })
     }
 
-    fn initialize_home_lxapp(&self, appid: String) -> Result<Arc<LxApp>, LxAppError> {
+    fn initialize_home_lxapp(&self, appid: String) -> Result<Arc<LxApp>, lingxia_error::Error> {
         let _admission = self.admission.enter(&appid)?;
         let transition_appid = appid.clone();
         self.with_session_transition(&transition_appid, move || {
@@ -754,22 +760,23 @@ impl LxApps {
         appid: String,
         release_type: Channel,
         session_class: AppSessionClass,
-    ) -> Result<Arc<LxApp>, LxAppError> {
+    ) -> Result<Arc<LxApp>, lingxia_error::Error> {
         prepare_dev_bundle_source(&appid);
         let release_type = resolve_open_channel(&appid, Some(release_type));
         if session_class == AppSessionClass::ControlSurface
             && release_type == Channel::Draft
             && !is_dev_bundle_appid(&appid)
         {
-            return Err(LxAppError::InvalidParameter(
-                "host control surfaces cannot select a downloaded draft".into(),
+            return Err(lingxia_error::Error::invalid_arg(
+                "host control surfaces cannot select a downloaded draft",
             ));
         }
         if let Some(pending) = self.channel_switches.get(&appid)
             && !pending.is_complete()
         {
-            return Err(LxAppError::ResourceExhausted(
-                "channel switch is waiting for the previous Logic worker".into(),
+            return Err(lingxia_error::Error::new(
+                lingxia_error::code::QUOTA,
+                "channel switch is waiting for the previous Logic worker",
             ));
         }
         self.channel_switches
@@ -791,8 +798,9 @@ impl LxApps {
             && app.release_type() != release_type
         {
             if app.logic_enabled() {
-                return Err(LxAppError::ResourceExhausted(
-                    "a live Logic channel switch requires ensure_lxapp_ready".into(),
+                return Err(lingxia_error::Error::new(
+                    lingxia_error::code::QUOTA,
+                    "a live Logic channel switch requires ensure_lxapp_ready",
                 ));
             }
             self.retire_locked(&app)?;
@@ -847,8 +855,8 @@ impl LxApps {
             AppSessionClass::ControlSurface => {
                 if !control_surface_bundle_source_allowed(lxapp_bundle_source_for(&appid).as_ref())
                 {
-                    return Err(LxAppError::InvalidParameter(
-                        "control surface replacement must remain host-bundled".into(),
+                    return Err(lingxia_error::Error::invalid_arg(
+                        "control surface replacement must remain host-bundled",
                     ));
                 }
                 LxApp::new_control_surface(
@@ -898,7 +906,7 @@ impl LxApps {
     }
 
     /// Full shutdown must also retire capsule-closed and previously removed instances.
-    pub(crate) fn retire_lxapp(&self, appid: &str) -> Result<Arc<LxApp>, LxAppError> {
+    pub(crate) fn retire_lxapp(&self, appid: &str) -> Result<Arc<LxApp>, lingxia_error::Error> {
         // Resolve under the transition lock so a concurrent recreate cannot swap
         // in a replacement that outlives this termination.
         self.with_session_transition(appid, || {
@@ -906,24 +914,24 @@ impl LxApps {
                 .lxapps
                 .get(appid)
                 .map(|entry| entry.value().clone())
-                .ok_or_else(|| LxAppError::ResourceNotFound(appid.to_string()))?;
+                .ok_or_else(|| lingxia_error::Error::not_found(appid.to_string()))?;
             self.retire_locked(&app)?;
             Ok(app)
         })
     }
 
-    fn retire_instance(&self, app: &Arc<LxApp>) -> Result<(), LxAppError> {
+    fn retire_instance(&self, app: &Arc<LxApp>) -> Result<(), lingxia_error::Error> {
         self.with_session_transition(&app.appid, || self.retire_locked(app))
     }
 
-    fn retire_locked(&self, app: &Arc<LxApp>) -> Result<(), LxAppError> {
+    fn retire_locked(&self, app: &Arc<LxApp>) -> Result<(), lingxia_error::Error> {
         self.retire_locked_with_completion(app).map(|_| ())
     }
 
     fn retire_locked_with_completion(
         &self,
         app: &Arc<LxApp>,
-    ) -> Result<WorkerTermination, LxAppError> {
+    ) -> Result<WorkerTermination, lingxia_error::Error> {
         let _open = app
             .presentation_open_lock
             .lock()
@@ -971,7 +979,7 @@ impl LxApps {
         appid: String,
         release_type: Channel,
         from_session: u64,
-    ) -> Result<Arc<LxApp>, LxAppError> {
+    ) -> Result<Arc<LxApp>, lingxia_error::Error> {
         let admission = self.admission.enter(&appid)?;
         let (session_class, termination) = self.with_session_transition(&appid, || {
             let old_app = self
@@ -980,7 +988,7 @@ impl LxApps {
                 .map(|entry| entry.value().clone())
                 .filter(|app| app.session_id() == from_session)
                 .ok_or_else(|| {
-                    LxAppError::Runtime("Restart session is no longer current".into())
+                    lingxia_error::Error::internal("Restart session is no longer current")
                 })?;
             let session_class = self.session_class_for(&appid);
             let _open = old_app
@@ -992,7 +1000,7 @@ impl LxApps {
             self.cancel_delayed_destroy(&appid);
             // The restart state machine already ran the close handshake; skip a second hide.
             let termination = old_app.shutdown_with_completion(true);
-            Ok::<_, LxAppError>((session_class, termination))
+            Ok::<_, lingxia_error::Error>((session_class, termination))
         })?;
 
         // UI close and a zero Logic context count can both precede worker release.
@@ -1001,7 +1009,7 @@ impl LxApps {
         drop(admission);
         let terminated = match termination {
             Ok(completion) => completion.wait().await,
-            Err(error) => Err(error.into()),
+            Err(error) => Err(error),
         };
         if let Err(error) = terminated {
             // A hung Logic is the usual reason to restart. Its worker stays
@@ -1625,11 +1633,17 @@ impl LxApp {
         }
     }
 
-    pub fn grant_transient_file_access(&self, path: &Path) -> Result<uri::LxUri, LxAppError> {
+    pub fn grant_transient_file_access(
+        &self,
+        path: &Path,
+    ) -> Result<uri::LxUri, lingxia_error::Error> {
         self.grant_transient_path_access(path, TransientPathKind::File)
     }
 
-    pub fn grant_transient_file_reference(&self, reference: &str) -> Result<String, LxAppError> {
+    pub fn grant_transient_file_reference(
+        &self,
+        reference: &str,
+    ) -> Result<String, lingxia_error::Error> {
         let normalized = normalize_transient_file_reference(reference)?;
         TRANSIENT_FILE_REFERENCE_GRANTS
             .get_or_init(DashMap::new)
@@ -1649,7 +1663,7 @@ impl LxApp {
             .contains_key(&(self.appid.clone(), self.session_id(), normalized))
     }
 
-    pub fn register_temp_file(&self, path: &Path) -> Result<uri::LxUri, LxAppError> {
+    pub fn register_temp_file(&self, path: &Path) -> Result<uri::LxUri, lingxia_error::Error> {
         self.cleanup_temp_size(Some(path))?;
         let uri = self.grant_transient_file_access(path)?;
         Ok(uri)
@@ -1659,7 +1673,7 @@ impl LxApp {
         &self,
         category: &str,
         ext: Option<&str>,
-    ) -> Result<PathBuf, LxAppError> {
+    ) -> Result<PathBuf, lingxia_error::Error> {
         let category = category
             .chars()
             .map(|ch| match ch {
@@ -1669,7 +1683,7 @@ impl LxApp {
             .collect::<String>();
         let dir = self.temp_dir.join(category);
         std::fs::create_dir_all(&dir).map_err(|e| {
-            LxAppError::IoError(format!("Failed to create temp output directory: {}", e))
+            lingxia_error::Error::io(format!("Failed to create temp output directory: {}", e))
         })?;
         let mut name = Uuid::new_v4().simple().to_string();
         if let Some(ext) = ext
@@ -1683,7 +1697,10 @@ impl LxApp {
         Ok(dir.join(name))
     }
 
-    pub fn grant_transient_directory_access(&self, path: &Path) -> Result<uri::LxUri, LxAppError> {
+    pub fn grant_transient_directory_access(
+        &self,
+        path: &Path,
+    ) -> Result<uri::LxUri, lingxia_error::Error> {
         self.grant_transient_path_access(path, TransientPathKind::Directory)
     }
 
@@ -1691,7 +1708,7 @@ impl LxApp {
         &self,
         path: &Path,
         kind: TransientPathKind,
-    ) -> Result<uri::LxUri, LxAppError> {
+    ) -> Result<uri::LxUri, lingxia_error::Error> {
         let normalized = normalize_transient_path(path, kind)?;
         let token = Uuid::new_v4().simple().to_string();
         TRANSIENT_FILE_GRANTS.get_or_init(DashMap::new).insert(
@@ -1704,7 +1721,7 @@ impl LxApp {
             uri::HOST_TEMP,
             token
         ))
-        .map_err(LxAppError::InvalidParameter)
+        .map_err(lingxia_error::Error::invalid_arg)
     }
 
     fn resolve_transient_grant(&self, token: &str) -> Option<(PathBuf, TransientPathKind)> {
@@ -1728,7 +1745,7 @@ impl LxApp {
         }
     }
 
-    fn cleanup_temp_size(&self, keep: Option<&Path>) -> Result<(), LxAppError> {
+    fn cleanup_temp_size(&self, keep: Option<&Path>) -> Result<(), lingxia_error::Error> {
         if self.temp_dir.as_os_str().is_empty() {
             return Ok(());
         }
@@ -1737,7 +1754,7 @@ impl LxApp {
         };
         let incoming = lingxia_service::storage::path_size(keep);
         lingxia_service::storage::ensure_temp_quota(&self.temp_dir, keep, incoming)
-            .map_err(|err| LxAppError::ResourceExhausted(err.detail().to_string()))
+            .map_err(|err| lingxia_error::Error::new(lingxia_error::code::QUOTA, err.detail()))
     }
 
     fn status_name(&self) -> &'static str {
@@ -2303,11 +2320,14 @@ impl LxApp {
     /// 4) Destroy platform WebViews
     /// 5) Clear page stack and surfaces
     /// 6) Send TerminateAppSvc (receiver handles teardown)
-    pub fn shutdown_with_options(&self, skip_hide: bool) -> Result<(), LxAppError> {
+    pub fn shutdown_with_options(&self, skip_hide: bool) -> Result<(), lingxia_error::Error> {
         self.shutdown_with_completion(skip_hide).map(|_| ())
     }
 
-    fn shutdown_with_completion(&self, skip_hide: bool) -> Result<WorkerTermination, LxAppError> {
+    fn shutdown_with_completion(
+        &self,
+        skip_hide: bool,
+    ) -> Result<WorkerTermination, lingxia_error::Error> {
         self.session.cancel();
         // Mark closing to suppress TerminatePage from PageInstance drops
         self.set_status(LxAppSessionStatus::Closing);
@@ -2322,7 +2342,7 @@ impl LxApp {
             let _ = self
                 .runtime
                 .hide_lxapp(self.appid.clone(), self.session.id)
-                .map_err(LxAppError::from);
+                .map_err(lingxia_error::Error::from);
         }
 
         // Collect current pages
@@ -2374,10 +2394,10 @@ impl LxApp {
         self.app_launch_dispatched.store(false, Ordering::SeqCst);
         self.launch_settled.send_replace(false);
         self.clear_open_region();
-        termination.map_err(Into::into)
+        termination
     }
 
-    pub fn shutdown(&self) -> Result<(), LxAppError> {
+    pub fn shutdown(&self) -> Result<(), lingxia_error::Error> {
         self.shutdown_with_options(false)
     }
 
@@ -2452,7 +2472,7 @@ impl LxApp {
         runtime: Arc<Platform>,
         executor: Arc<LxAppWorkers>,
         release_type: Channel,
-    ) -> Result<Self, LxAppError> {
+    ) -> Result<Self, lingxia_error::Error> {
         let mut app = Self::_new(
             appid,
             runtime,
@@ -2472,7 +2492,7 @@ impl LxApp {
         runtime: Arc<Platform>,
         executor: Arc<LxAppWorkers>,
         release_type: Channel,
-    ) -> Result<Self, LxAppError> {
+    ) -> Result<Self, lingxia_error::Error> {
         let mut app = Self::_new(
             appid,
             runtime,
@@ -2499,7 +2519,7 @@ impl LxApp {
         runtime: Arc<Platform>,
         executor: Arc<LxAppWorkers>,
         release_type: Channel,
-    ) -> Result<Self, LxAppError> {
+    ) -> Result<Self, lingxia_error::Error> {
         let mut app = Self::_new(
             appid,
             runtime,
@@ -2519,7 +2539,7 @@ impl LxApp {
         runtime: Arc<Platform>,
         executor: Arc<LxAppWorkers>,
         class: AppSessionClass,
-    ) -> Result<Self, LxAppError> {
+    ) -> Result<Self, lingxia_error::Error> {
         match class {
             AppSessionClass::StandardApp => Self::new(appid, runtime, executor, Channel::Release),
             AppSessionClass::ControlApp => {
@@ -2554,7 +2574,7 @@ impl LxApp {
     }
 
     /// Initialize paths and directories for the lxapp
-    fn initialize_paths(&mut self) -> Result<(), LxAppError> {
+    fn initialize_paths(&mut self) -> Result<(), lingxia_error::Error> {
         // Load metadata if available to determine version and install path
         let meta = metadata::get(&self.appid, self.release_type).ok().flatten();
         self.fingermark = meta
@@ -2641,7 +2661,7 @@ impl LxApp {
         };
         if !self.user_data_dir.exists() {
             std::fs::create_dir_all(&self.user_data_dir).map_err(|e| {
-                LxAppError::IoError(format!("Failed to create user data directory: {}", e))
+                lingxia_error::Error::io(format!("Failed to create user data directory: {}", e))
             })?;
         }
 
@@ -2663,7 +2683,7 @@ impl LxApp {
             .clone()]));
         if !self.user_cache_dir.exists() {
             std::fs::create_dir_all(&self.user_cache_dir).map_err(|e| {
-                LxAppError::IoError(format!("Failed to create cache directory: {}", e))
+                lingxia_error::Error::io(format!("Failed to create cache directory: {}", e))
             })?;
         }
 
@@ -2695,7 +2715,7 @@ impl LxApp {
             Some(crate::cache::protect_from_cleanup([self.temp_dir.clone()]));
         if !self.temp_dir.exists() {
             std::fs::create_dir_all(&self.temp_dir).map_err(|e| {
-                LxAppError::IoError(format!("Failed to create temp directory: {}", e))
+                lingxia_error::Error::io(format!("Failed to create temp directory: {}", e))
             })?;
         }
 
@@ -2703,20 +2723,20 @@ impl LxApp {
     }
 
     /// Load and parse lxapp.json configuration
-    pub fn load_config(&mut self) -> Result<(), LxAppError> {
+    pub fn load_config(&mut self) -> Result<(), lingxia_error::Error> {
         self.apply_lxapp_json(true)
     }
 
     /// Re-read `lxapp.json` from the live bundle. Dev reload uses this so
     /// `pages` / `tabBar` edits apply without a new `lingxia dev` session.
-    pub(crate) fn reload_manifest(&self) -> Result<(), LxAppError> {
+    pub(crate) fn reload_manifest(&self) -> Result<(), lingxia_error::Error> {
         if matches!(self.bundle_source, LxAppBundleSource::Synthetic) {
             return Ok(());
         }
         self.apply_lxapp_json(false)
     }
 
-    fn apply_lxapp_json(&self, first_load: bool) -> Result<(), LxAppError> {
+    fn apply_lxapp_json(&self, first_load: bool) -> Result<(), lingxia_error::Error> {
         let bundle_dir = self
             .synced_dev_root()
             .unwrap_or_else(|| self.lxapp_dir.clone());
@@ -2729,13 +2749,13 @@ impl LxApp {
 
         let app_json = self.read_json("lxapp.json")?;
         let config = LxAppConfig::from_value(app_json)
-            .map_err(|e| LxAppError::InvalidJsonFile(format!("lxapp.json: {}", e)))?;
+            .map_err(|e| lingxia_error::Error::invalid_data(format!("lxapp.json: {}", e)))?;
 
         // An absent `appId` is not a claim to be another app, and failing
         // the load would leave an installed package with no way back: the
         // instance never comes up, so the update that replaces it never runs.
         if !config.appId.is_empty() && config.appId != self.appid {
-            return Err(LxAppError::InvalidJsonFile(format!(
+            return Err(lingxia_error::Error::invalid_data(format!(
                 "lxapp.json appId '{}' does not match the host-selected application '{}'",
                 config.appId, self.appid
             )));
@@ -2816,7 +2836,7 @@ impl LxApp {
     }
 
     /// Initialize paths and load configuration
-    fn setup(&mut self) -> Result<(), LxAppError> {
+    fn setup(&mut self) -> Result<(), lingxia_error::Error> {
         self.initialize_paths()?;
         if matches!(self.bundle_source, LxAppBundleSource::Synthetic) {
             // No `lxapp.json` to read. The default `LxAppConfig.logic = None` resolves to
@@ -2928,36 +2948,36 @@ impl LxApp {
         )
     }
 
-    pub(crate) fn read_gpu_module(&self, path: &str) -> Result<String, LxAppError> {
+    pub(crate) fn read_gpu_module(&self, path: &str) -> Result<String, lingxia_error::Error> {
         // A GPU lxapp's catalog routes are the only modules that render natively.
         let config = self.config();
         let listed = config.renderer == crate::PageRenderer::Gpu
             && config.pages.iter().any(|entry| entry.path == path);
         drop(config);
         if !listed {
-            return Err(LxAppError::ResourceNotFound(format!(
+            return Err(lingxia_error::Error::not_found(format!(
                 "GPU module is not in the page catalog: {path}"
             )));
         }
         String::from_utf8(self.read_bytes(path)?)
-            .map_err(|_| LxAppError::Runtime(format!("GPU module is not UTF-8: {path}")))
+            .map_err(|_| lingxia_error::Error::internal(format!("GPU module is not UTF-8: {path}")))
     }
 
     /// Reads a shared View chunk or per-language catalogue (`_view/<id>.js` or `_view/<id>/<lang>.js`)
     /// through the same managed/integrity-verified resource source as page modules.
-    pub(crate) fn read_gpu_chunk(&self, path: &str) -> Result<String, LxAppError> {
+    pub(crate) fn read_gpu_chunk(&self, path: &str) -> Result<String, lingxia_error::Error> {
         if !path.starts_with("_view/")
             || !path.ends_with(".js")
             || path.contains("..")
             || path.contains('\\')
             || path.contains('\0')
         {
-            return Err(LxAppError::InvalidParameter(format!(
+            return Err(lingxia_error::Error::invalid_arg(format!(
                 "invalid GPU chunk path: {path}"
             )));
         }
         String::from_utf8(self.read_bytes(path)?)
-            .map_err(|_| LxAppError::Runtime(format!("GPU chunk is not UTF-8: {path}")))
+            .map_err(|_| lingxia_error::Error::internal(format!("GPU chunk is not UTF-8: {path}")))
     }
 
     /// The theme the lxapp bundles (`theme.json`, completed by `lingxia build`).
@@ -2972,7 +2992,7 @@ impl LxApp {
         String::from_utf8(bytes).ok()
     }
 
-    pub(crate) fn read_gpu_image(&self, source: &str) -> Result<Vec<u8>, LxAppError> {
+    pub(crate) fn read_gpu_image(&self, source: &str) -> Result<Vec<u8>, lingxia_error::Error> {
         const LIMIT: u64 = crate::page::view_limits::IMAGE_BYTES as u64;
         if source.is_empty()
             || source.len() > crate::page::view_limits::SOURCE_BYTES
@@ -2982,8 +3002,8 @@ impl LxApp {
                     || source.contains(':')
                     || uri::has_invalid_segment(source)))
         {
-            return Err(LxAppError::InvalidParameter(
-                "image source must be a package path or managed lx:// URI".into(),
+            return Err(lingxia_error::Error::invalid_arg(
+                "image source must be a package path or managed lx:// URI",
             ));
         }
         let reader: Box<dyn Read> = if !source.starts_with("lx://")
@@ -2992,29 +3012,31 @@ impl LxApp {
             Box::new(
                 self.runtime
                     .read_asset(&format!("{}/{}", self.appid, source))
-                    .map_err(|e| LxAppError::ResourceNotFound(e.to_string()))?,
+                    .map_err(|e| lingxia_error::Error::not_found(e.to_string()))?,
             )
         } else {
             let path = self.resolve_accessible_path(source)?;
-            Box::new(fs::File::open(path).map_err(|e| LxAppError::ResourceNotFound(e.to_string()))?)
+            Box::new(
+                fs::File::open(path).map_err(|e| lingxia_error::Error::not_found(e.to_string()))?,
+            )
         };
         let mut bytes = Vec::new();
         reader
             .take(LIMIT + 1)
             .read_to_end(&mut bytes)
-            .map_err(|e| LxAppError::ResourceNotFound(e.to_string()))?;
+            .map_err(|e| lingxia_error::Error::not_found(e.to_string()))?;
         if bytes.len() as u64 > LIMIT {
-            return Err(LxAppError::InvalidParameter(
-                "image resource exceeds 8 MiB".into(),
+            return Err(lingxia_error::Error::invalid_arg(
+                "image resource exceeds 8 MiB",
             ));
         }
         Ok(bytes)
     }
 
     // Reads binary data from the specified relative path
-    fn read_bytes(&self, relative_path: &str) -> Result<Vec<u8>, LxAppError> {
+    fn read_bytes(&self, relative_path: &str) -> Result<Vec<u8>, lingxia_error::Error> {
         if matches!(self.bundle_source, LxAppBundleSource::Synthetic) {
-            return Err(LxAppError::ResourceNotFound(format!(
+            return Err(lingxia_error::Error::not_found(format!(
                 "{relative_path}: synthetic lxapp host {} has no on-disk content",
                 self.appid
             )));
@@ -3030,7 +3052,7 @@ impl LxApp {
                 if let Some(root) = self.synced_dev_root() {
                     let file_path = root.join(relative_path);
                     return fs::read(&file_path).map_err(|e| {
-                        LxAppError::ResourceNotFound(format!(
+                        lingxia_error::Error::not_found(format!(
                             "{}:{} (resolved: {})",
                             relative_path,
                             e,
@@ -3045,13 +3067,13 @@ impl LxApp {
                         relative_path.trim_start_matches('/')
                     );
                     let mut reader = self.runtime.read_asset(&asset_path).map_err(|e| {
-                        LxAppError::ResourceNotFound(format!(
+                        lingxia_error::Error::not_found(format!(
                             "{relative_path}:{e} (asset: {asset_path})"
                         ))
                     })?;
                     let mut data = Vec::new();
                     reader.read_to_end(&mut data).map_err(|e| {
-                        LxAppError::ResourceNotFound(format!(
+                        lingxia_error::Error::not_found(format!(
                             "{relative_path}:{e} (asset: {asset_path})"
                         ))
                     })?;
@@ -3063,7 +3085,7 @@ impl LxApp {
 
         // Try to read from the filesystem
         fs::read(&file_path).map_err(|e| {
-            LxAppError::ResourceNotFound(format!(
+            lingxia_error::Error::not_found(format!(
                 "{}:{} (resolved: {})",
                 relative_path,
                 e,
@@ -3076,16 +3098,16 @@ impl LxApp {
     ///
     /// Installed resources use logical mapping and prefix validation. Built-in package
     /// resources are materialized into the app cache for native filesystem consumers.
-    pub fn resolve_accessible_path(&self, path: &str) -> Result<PathBuf, LxAppError> {
+    pub fn resolve_accessible_path(&self, path: &str) -> Result<PathBuf, lingxia_error::Error> {
         let path = path.trim();
         if path.is_empty() {
-            return Err(LxAppError::ResourceNotFound("empty path".to_string()));
+            return Err(lingxia_error::Error::not_found("empty path"));
         }
 
         // 1. Handle lx:// URIs (Internal helper already does logical joining and ".." check)
         if path.starts_with("lx://") {
             let lx_uri = uri::LxUri::from_str(path)
-                .map_err(|e| LxAppError::InvalidParameter(format!("invalid lx uri: {}", e)))?;
+                .map_err(|e| lingxia_error::Error::invalid_arg(format!("invalid lx uri: {}", e)))?;
             return self.resolve_lx_path_uri(&lx_uri);
         }
 
@@ -3097,7 +3119,7 @@ impl LxApp {
         // bug that is not there. Native chrome cannot fetch, so the remedy is
         // always the same and belongs in the message.
         if let Some(scheme) = uri::network_scheme(path) {
-            return Err(LxAppError::InvalidParameter(format!(
+            return Err(lingxia_error::Error::invalid_arg(format!(
                 "{scheme} URLs are not supported here: download the file first \
                  (for example with lx.network.download) and pass the returned lx:// path"
             )));
@@ -3110,8 +3132,8 @@ impl LxApp {
             .any(|component| matches!(component, std::path::Component::ParentDir))
             || (!path_ref.is_absolute() && uri::has_invalid_segment(path))
         {
-            return Err(LxAppError::ResourceNotFound(
-                "directory traversal not allowed".to_string(),
+            return Err(lingxia_error::Error::not_found(
+                "directory traversal not allowed",
             ));
         }
 
@@ -3179,26 +3201,29 @@ impl LxApp {
             }
         }
 
-        Err(LxAppError::ResourceNotFound(format!(
+        Err(lingxia_error::Error::not_found(format!(
             "Access denied: {}",
             path
         )))
     }
 
-    fn materialize_builtin_resource(&self, relative: &str) -> Result<PathBuf, LxAppError> {
+    fn materialize_builtin_resource(
+        &self,
+        relative: &str,
+    ) -> Result<PathBuf, lingxia_error::Error> {
         let data = self.read_bytes(relative)?;
         let destination = self.user_cache_dir.join("native-resources").join(relative);
         let parent = destination.parent().ok_or_else(|| {
-            LxAppError::InvalidParameter(format!(
+            lingxia_error::Error::invalid_arg(format!(
                 "native resource has no parent: {}",
                 destination.display()
             ))
         })?;
         fs::create_dir_all(parent).map_err(|err| {
-            LxAppError::IoError(format!("failed to create {}: {err}", parent.display()))
+            lingxia_error::Error::io(format!("failed to create {}: {err}", parent.display()))
         })?;
         fs::write(&destination, data).map_err(|err| {
-            LxAppError::IoError(format!("failed to write {}: {err}", destination.display()))
+            lingxia_error::Error::io(format!("failed to write {}: {err}", destination.display()))
         })?;
         Ok(destination)
     }
@@ -3210,20 +3235,18 @@ impl LxApp {
         uri::try_convert_path_to_uri(path, self)
     }
 
-    fn resolve_lx_path_uri(&self, lx_uri: &uri::LxUri) -> Result<PathBuf, LxAppError> {
+    fn resolve_lx_path_uri(&self, lx_uri: &uri::LxUri) -> Result<PathBuf, lingxia_error::Error> {
         let uri = HttpUri::from_str(lx_uri.as_str())
-            .map_err(|_| LxAppError::InvalidParameter("invalid lx uri".to_string()))?;
+            .map_err(|_| lingxia_error::Error::invalid_arg("invalid lx uri"))?;
 
         if uri.scheme_str() != Some(uri::LX_SCHEME) {
-            return Err(LxAppError::InvalidParameter(
-                "invalid lx uri scheme".to_string(),
-            ));
+            return Err(lingxia_error::Error::invalid_arg("invalid lx uri scheme"));
         }
 
         match uri.host() {
             Some(uri::HOST_TEMP) => {
                 if uri.query().is_some() {
-                    return Err(LxAppError::ResourceNotFound(lx_uri.as_str().to_string()));
+                    return Err(lingxia_error::Error::not_found(lx_uri.as_str().to_string()));
                 }
                 let raw = uri.path().trim_matches('/');
                 let (token, relative) = match raw.split_once('/') {
@@ -3231,10 +3254,10 @@ impl LxApp {
                     None => (raw, None),
                 };
                 if token.is_empty() || token.contains('\\') {
-                    return Err(LxAppError::ResourceNotFound(lx_uri.as_str().to_string()));
+                    return Err(lingxia_error::Error::not_found(lx_uri.as_str().to_string()));
                 }
                 let (root, kind) = self.resolve_transient_grant(token).ok_or_else(|| {
-                    LxAppError::ResourceNotFound(format!(
+                    lingxia_error::Error::not_found(format!(
                         "temporary file grant not found: {}",
                         lx_uri.as_str()
                     ))
@@ -3246,7 +3269,7 @@ impl LxApp {
                         resolve_transient_directory_child(&root, &uri::decode_lx_path(relative))
                     }
                     (Some(_), TransientPathKind::File) => {
-                        Err(LxAppError::ResourceNotFound(lx_uri.as_str().to_string()))
+                        Err(lingxia_error::Error::not_found(lx_uri.as_str().to_string()))
                     }
                 }
             }
@@ -3263,7 +3286,7 @@ impl LxApp {
                     return Ok(base_dir.clone());
                 }
                 if uri::has_invalid_segment(rel) || rel.contains(':') || rel.contains('\\') {
-                    return Err(LxAppError::ResourceNotFound(lx_uri.as_str().to_string()));
+                    return Err(lingxia_error::Error::not_found(lx_uri.as_str().to_string()));
                 }
 
                 Ok(base_dir.join(rel))
@@ -3273,17 +3296,17 @@ impl LxApp {
                 let raw = decoded_path.trim_start_matches('/');
                 let (appid, rest) = raw
                     .split_once('/')
-                    .ok_or_else(|| LxAppError::ResourceNotFound(lx_uri.as_str().to_string()))?;
+                    .ok_or_else(|| lingxia_error::Error::not_found(lx_uri.as_str().to_string()))?;
                 if appid != self.appid.as_str() {
-                    return Err(LxAppError::ResourceNotFound(lx_uri.as_str().to_string()));
+                    return Err(lingxia_error::Error::not_found(lx_uri.as_str().to_string()));
                 }
 
                 let rel = rest.trim_matches('/');
                 if rel.is_empty() {
-                    return Err(LxAppError::ResourceNotFound(lx_uri.as_str().to_string()));
+                    return Err(lingxia_error::Error::not_found(lx_uri.as_str().to_string()));
                 }
                 if uri::has_invalid_segment(rel) || rel.contains(':') || rel.contains('\\') {
-                    return Err(LxAppError::ResourceNotFound(lx_uri.as_str().to_string()));
+                    return Err(lingxia_error::Error::not_found(lx_uri.as_str().to_string()));
                 }
 
                 if let Some(root) = self.synced_dev_root() {
@@ -3294,7 +3317,7 @@ impl LxApp {
                     Ok(self.lxapp_dir.join(rel))
                 }
             }
-            _ => Err(LxAppError::ResourceNotFound(format!(
+            _ => Err(lingxia_error::Error::not_found(format!(
                 "unsupported lx uri host: {}",
                 lx_uri.as_str()
             ))),
@@ -3302,16 +3325,19 @@ impl LxApp {
     }
 
     /// Reads text content from the specified relative path
-    fn read_text(&self, relative_path: &str) -> Result<String, LxAppError> {
+    fn read_text(&self, relative_path: &str) -> Result<String, lingxia_error::Error> {
         self.read_bytes(relative_path)
             .map(|content| String::from_utf8_lossy(&content).to_string())
     }
 
     /// Reads and parses JSON content from the specified relative path
-    pub(crate) fn read_json(&self, relative_path: &str) -> Result<serde_json::Value, LxAppError> {
+    pub(crate) fn read_json(
+        &self,
+        relative_path: &str,
+    ) -> Result<serde_json::Value, lingxia_error::Error> {
         self.read_text(relative_path).and_then(|content| {
             serde_json::from_str(&content)
-                .map_err(|_| LxAppError::InvalidJsonFile(relative_path.to_string()))
+                .map_err(|_| lingxia_error::Error::invalid_data(relative_path.to_string()))
         })
     }
 
@@ -3548,14 +3574,14 @@ impl LxApp {
     }
 
     /// Ensure the JS app service worker is running for this app.
-    pub fn ensure_app_service_running(&self) -> Result<(), LxAppError> {
-        Ok(self.executor.create_app_svc(self.clone_arc())?)
+    pub fn ensure_app_service_running(&self) -> Result<(), lingxia_error::Error> {
+        self.executor.create_app_svc(self.clone_arc())
     }
 
     /// Dispatch `App.onLaunch` once for the current worker-backed app instance.
     /// The worker creation and event messages share one FIFO queue, so callers
     /// may invoke this immediately after `ensure_app_service_running`.
-    pub fn ensure_app_launch_dispatched(&self) -> Result<(), LxAppError> {
+    pub fn ensure_app_launch_dispatched(&self) -> Result<(), lingxia_error::Error> {
         if self
             .app_launch_dispatched
             .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
@@ -3584,7 +3610,7 @@ impl LxApp {
     /// Restart the app service without closing the host surface or recreating
     /// the LxApp instance. Dev runners use this for a cold lxapp restart:
     /// logic is recreated, while the existing window/frame stays put.
-    pub fn cold_restart_app_service(&self) -> Result<(), LxAppError> {
+    pub fn cold_restart_app_service(&self) -> Result<(), lingxia_error::Error> {
         // A closed instance has no surface to keep, and a full restart already
         // replaces this instance; booting Logic there runs App hooks for an app
         // nobody is looking at.
@@ -3593,7 +3619,7 @@ impl LxApp {
             status,
             LxAppSessionStatus::Opened | LxAppSessionStatus::Opening
         ) {
-            return Err(LxAppError::Runtime(format!(
+            return Err(lingxia_error::Error::internal(format!(
                 "cannot cold restart lxapp while {status:?}"
             )));
         }
@@ -3606,7 +3632,7 @@ impl LxApp {
     /// Run `App` hooks for a fresh Logic context on a retained surface. No
     /// native open callback follows, so replay the show a cold open sends. An
     /// open still in flight sends its own; replaying then would double it.
-    fn relaunch_logic(&self) -> Result<(), LxAppError> {
+    fn relaunch_logic(&self) -> Result<(), lingxia_error::Error> {
         self.app_launch_dispatched.store(false, Ordering::SeqCst);
         self.launch_settled.send_replace(false);
         self.ensure_app_launch_dispatched()?;
@@ -3628,12 +3654,12 @@ impl LxApp {
     /// Reload the current page's WebView in place (without recreating the host
     /// window), so a dev "restart" reloads the page rather than flashing the
     /// screen. Errors when the page stack is empty or its WebView is not ready.
-    pub fn reload_current_page(&self) -> Result<(), LxAppError> {
+    pub fn reload_current_page(&self) -> Result<(), lingxia_error::Error> {
         self.current_page()?
             .webview()
-            .ok_or_else(|| LxAppError::WebView("page WebView is not ready".to_string()))?
+            .ok_or_else(|| lingxia_error::Error::internal("page WebView is not ready"))?
             .reload()
-            .map_err(LxAppError::from)
+            .map_err(lingxia_error::Error::from)
     }
 
     /// Cold restart: recreate the JS app service, rebuild the live page
@@ -3644,7 +3670,7 @@ impl LxApp {
     /// page services drops the page's bridge messages ("page service not
     /// loaded"). Reloading waits for every new PageSvc acknowledgement so a
     /// fast WebView cannot send its ready handshake before the service exists.
-    pub fn cold_restart(&self) -> Result<(), LxAppError> {
+    pub fn cold_restart(&self) -> Result<(), lingxia_error::Error> {
         let pending = self.begin_cold_restart()?;
         let appid = self.appid.clone();
         std::mem::drop(crate::executor::spawn(async move {
@@ -3657,12 +3683,12 @@ impl LxApp {
 
     /// Awaitable form used by devtools, which must not report success before
     /// the retained page has completed the new document load.
-    pub async fn cold_restart_and_wait(&self) -> Result<(), LxAppError> {
+    pub async fn cold_restart_and_wait(&self) -> Result<(), lingxia_error::Error> {
         let pending = self.begin_cold_restart()?;
         Self::finish_cold_restart(pending).await
     }
 
-    fn begin_cold_restart(&self) -> Result<Vec<PendingPageServiceRestart>, LxAppError> {
+    fn begin_cold_restart(&self) -> Result<Vec<PendingPageServiceRestart>, lingxia_error::Error> {
         self.cold_restart_app_service()?;
         self.reload_manifest()?;
         self.refresh_live_page_config();
@@ -3673,16 +3699,16 @@ impl LxApp {
     fn recreate_retained_page_services(
         &self,
         include_isolated: bool,
-    ) -> Result<Vec<PendingPageServiceRestart>, LxAppError> {
+    ) -> Result<Vec<PendingPageServiceRestart>, lingxia_error::Error> {
         let pages: Vec<PageInstance> = {
             let state = self
                 .state
                 .lock()
-                .map_err(|_| LxAppError::Runtime("lxapp state lock poisoned".to_string()))?;
+                .map_err(|_| lingxia_error::Error::internal("lxapp state lock poisoned"))?;
             let pages_by_id = state
                 .pages_by_id
                 .lock()
-                .map_err(|_| LxAppError::Runtime("page registry lock poisoned".to_string()))?;
+                .map_err(|_| lingxia_error::Error::internal("page registry lock poisoned"))?;
             pages_by_id.values().cloned().collect()
         };
         let mut pending = Vec::with_capacity(pages.len());
@@ -3708,7 +3734,7 @@ impl LxApp {
 
     async fn finish_cold_restart(
         pending: Vec<PendingPageServiceRestart>,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         let mut pages = Vec::with_capacity(pending.len());
         for (page, ack_rx) in pending {
             let result = ack_rx.await;
@@ -3721,8 +3747,8 @@ impl LxApp {
                 continue;
             }
             result
-                .map_err(|_| LxAppError::Runtime("page service restart cancelled".to_string()))?
-                .map_err(LxAppError::Runtime)?;
+                .map_err(|_| lingxia_error::Error::internal("page service restart cancelled"))?
+                .map_err(lingxia_error::Error::internal)?;
             pages.push(page);
         }
         for page in pages {
@@ -3744,24 +3770,23 @@ impl LxApp {
     }
 
     /// Drain the old worker before the Runner publishes a different capability environment.
-    pub(crate) async fn quiesce_for_device_change(&self) -> Result<(), LxAppError> {
+    pub(crate) async fn quiesce_for_device_change(&self) -> Result<(), lingxia_error::Error> {
         let mut contexts = self.logic_contexts.subscribe();
         self.executor.terminate_app_svc(self.clone_arc())?;
         tokio::time::timeout(Duration::from_secs(10), async {
             while *contexts.borrow_and_update() != 0 {
-                contexts
-                    .changed()
-                    .await
-                    .map_err(|_| LxAppError::Runtime("Logic shutdown observer closed".into()))?;
+                contexts.changed().await.map_err(|_| {
+                    lingxia_error::Error::internal("Logic shutdown observer closed")
+                })?;
             }
-            Ok::<_, LxAppError>(())
+            Ok::<_, lingxia_error::Error>(())
         })
         .await
-        .map_err(|_| LxAppError::Runtime("timed out draining Logic for device change".into()))?
+        .map_err(|_| lingxia_error::Error::internal("timed out draining Logic for device change"))?
     }
 
     /// Recreate every retained PageSvc, including isolated surface pages.
-    pub(crate) async fn resume_after_device_change(&self) -> Result<(), LxAppError> {
+    pub(crate) async fn resume_after_device_change(&self) -> Result<(), lingxia_error::Error> {
         if self.session.is_cancelled() {
             return Ok(());
         }
@@ -3797,7 +3822,7 @@ impl LxApp {
                     }
                     let state = page.automation_state();
                     if let Some(error) = state.webview_error {
-                        return Err(LxAppError::Runtime(error));
+                        return Err(lingxia_error::Error::internal(error));
                     }
                     ready &= restored(&state, page.is_visible(), page.renderer());
                 }
@@ -3808,23 +3833,25 @@ impl LxApp {
             }
         })
         .await
-        .map_err(|_| LxAppError::Runtime("timed out restoring pages after device change".into()))?
+        .map_err(|_| {
+            lingxia_error::Error::internal("timed out restoring pages after device change")
+        })?
     }
 
     /// Clears this lxapp's user cache directory, recreating it empty. Dev
     /// runners and the shell "clean cache" action use this before an in-place
     /// restart.
-    pub fn clear_user_cache(&self) -> Result<(), LxAppError> {
+    pub fn clear_user_cache(&self) -> Result<(), lingxia_error::Error> {
         if self.user_cache_dir.exists() {
             std::fs::remove_dir_all(&self.user_cache_dir).map_err(|err| {
-                LxAppError::IoError(format!(
+                lingxia_error::Error::io(format!(
                     "failed to remove {}: {err}",
                     self.user_cache_dir.display()
                 ))
             })?;
         }
         std::fs::create_dir_all(&self.user_cache_dir).map_err(|err| {
-            LxAppError::IoError(format!(
+            lingxia_error::Error::io(format!(
                 "failed to recreate {}: {err}",
                 self.user_cache_dir.display()
             ))
@@ -3873,7 +3900,10 @@ impl LxApp {
         removed
     }
 
-    pub fn ensure_headless_page_service(&self, path: &str) -> Result<PageInstance, LxAppError> {
+    pub fn ensure_headless_page_service(
+        &self,
+        path: &str,
+    ) -> Result<PageInstance, lingxia_error::Error> {
         if let Some(page) = self.get_page(path) {
             return Ok(page);
         }
@@ -3904,7 +3934,7 @@ impl LxApp {
             ack_tx,
         ) {
             page.finish_webview_setup(Err(err.to_string()));
-            return Err(err.into());
+            return Err(err);
         }
 
         let page_clone = page.clone();
@@ -3951,7 +3981,7 @@ impl LxApp {
         state
     }
 
-    pub(crate) fn open(&self, options: LxAppStartupOptions) -> Result<(), LxAppError> {
+    pub(crate) fn open(&self, options: LxAppStartupOptions) -> Result<(), lingxia_error::Error> {
         let _admission = self
             .admission
             .get()
@@ -3962,8 +3992,8 @@ impl LxApp {
             .lock()
             .unwrap_or_else(|err| err.into_inner());
         if self.session.is_retired() {
-            return Err(LxAppError::Runtime(
-                "LxApp instance has been terminated".into(),
+            return Err(lingxia_error::Error::internal(
+                "LxApp instance has been terminated",
             ));
         }
         // A reused session (close then navigateToApp before delayed destroy)
@@ -4003,7 +4033,7 @@ impl LxApp {
         result
     }
 
-    fn reenter_from_link(&self, options: LxAppStartupOptions) -> Result<(), LxAppError> {
+    fn reenter_from_link(&self, options: LxAppStartupOptions) -> Result<(), lingxia_error::Error> {
         let current_path = self
             .peek_current_page_path()
             .unwrap_or_else(|| self.initial_route());
@@ -4087,9 +4117,9 @@ impl LxApp {
     ///
     /// `options.page` names the page asked for; without it, `options.path`,
     /// else the current page. Rejects when the lxapp holds no open region.
-    pub fn deliver_reopen(&self, options: LxAppStartupOptions) -> Result<(), LxAppError> {
+    pub fn deliver_reopen(&self, options: LxAppStartupOptions) -> Result<(), lingxia_error::Error> {
         if self.current_open_region().is_none() {
-            return Err(LxAppError::Runtime(format!(
+            return Err(lingxia_error::Error::internal(format!(
                 "lxapp {} is not open; open it instead",
                 self.appid
             )));
@@ -4100,11 +4130,14 @@ impl LxApp {
     }
 
     /// The startup options a reopen leaves behind (what App `onShow` reads).
-    fn store_reopen_options(&self, options: LxAppStartupOptions) -> Result<(), LxAppError> {
+    fn store_reopen_options(
+        &self,
+        options: LxAppStartupOptions,
+    ) -> Result<(), lingxia_error::Error> {
         let path = match options.page.as_deref().map(str::trim) {
             Some(page) => self
                 .find_page_path_by_name(page)
-                .ok_or_else(|| LxAppError::ResourceNotFound(format!("page name: {page}")))?,
+                .ok_or_else(|| lingxia_error::Error::not_found(format!("page name: {page}")))?,
             None if options.path.is_empty() => self
                 .peek_current_page_path()
                 .unwrap_or_else(|| self.initial_route()),
@@ -4157,10 +4190,10 @@ impl LxApp {
         }
     }
 
-    fn open_claimed(&self, options: LxAppStartupOptions) -> Result<(), LxAppError> {
+    fn open_claimed(&self, options: LxAppStartupOptions) -> Result<(), lingxia_error::Error> {
         if self.logic_enabled() && !crate::js_appservice_supported() {
-            return Err(LxAppError::UnsupportedOperation(
-                "this host app was built without JS AppService runtime".to_string(),
+            return Err(lingxia_error::Error::not_supported(
+                "this host app was built without JS AppService runtime",
             ));
         }
 
@@ -4260,7 +4293,7 @@ impl LxApp {
 
     /// Claim the app's one live shell region. Returning `true` means this call
     /// created the claim and therefore owns rollback if platform open fails.
-    fn claim_open_region(&self, requested: LxAppOpenRegion) -> Result<bool, LxAppError> {
+    fn claim_open_region(&self, requested: LxAppOpenRegion) -> Result<bool, lingxia_error::Error> {
         let mut state = self.state.lock().unwrap_or_else(|err| err.into_inner());
         match state.open_region {
             None => {
@@ -4268,12 +4301,15 @@ impl LxApp {
                 Ok(true)
             }
             Some(current) if current == requested => Ok(false),
-            Some(current) => Err(LxAppError::SurfaceConflict(format!(
-                "lxapp '{}' is already open as {}; close it before opening as {}",
-                self.appid,
-                current.as_str(),
-                requested.as_str()
-            ))),
+            Some(current) => Err(lingxia_error::Error::new(
+                lingxia_error::code::SURFACE_CONFLICT,
+                format!(
+                    "lxapp '{}' is already open as {}; close it before opening as {}",
+                    self.appid,
+                    current.as_str(),
+                    requested.as_str()
+                ),
+            )),
         }
     }
 
@@ -4323,7 +4359,7 @@ impl LxApp {
         &self,
         appid: String,
         options: LxAppStartupOptions,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         if let Some(manager) = get_lxapps_manager() {
             // Cancel any pending destroy for the target app since it is about to be opened.
             manager.cancel_delayed_destroy(&appid);
@@ -4344,7 +4380,7 @@ impl LxApp {
     }
 
     /// Navigates back to the previous LxApp in the history stack.
-    pub fn navigate_back(&self) -> Result<(), LxAppError> {
+    pub fn navigate_back(&self) -> Result<(), lingxia_error::Error> {
         // The on_lxapp_closed delegate will then handle removing it from the navigation stack.
         // The underlying UI framework should detect the app closure and automatically display the new app at the top of the stack.
         self.runtime
@@ -4354,7 +4390,7 @@ impl LxApp {
 
     /// Restarts the current LxApp with cleanup + reopen.
     /// This offloads the sequence to the service executor to avoid blocking JS worker.
-    pub fn restart(&self) -> Result<(), LxAppError> {
+    pub fn restart(&self) -> Result<(), lingxia_error::Error> {
         let _admission = self
             .admission
             .get()
@@ -4930,7 +4966,7 @@ mod delayed_destroy_tests {
         unknown.page = Some("nowhere".into());
         assert!(matches!(
             app.deliver_reopen(unknown),
-            Err(LxAppError::ResourceNotFound(_))
+            Err(error) if error.is(lingxia_error::code::NOT_FOUND)
         ));
         let launch = app
             .state
@@ -4961,7 +4997,7 @@ mod delayed_destroy_tests {
         for region in [LxAppOpenRegion::Aside, LxAppOpenRegion::Main] {
             assert!(matches!(
                 app.move_to_region_on(LxAppRegionMoves::Unsupported, region, Some("left")),
-                Err(LxAppError::UnsupportedOperation(_))
+                Err(error) if error.is(lingxia_error::code::NOT_SUPPORTED)
             ));
         }
         assert_eq!(app.current_open_region(), Some(LxAppOpenRegion::Main));
@@ -4973,7 +5009,7 @@ mod delayed_destroy_tests {
             let _open = app.presentation_open_lock.lock().unwrap();
             assert!(matches!(
                 app.demote_main_to_aside(""),
-                Err(LxAppError::SurfaceConflict(_))
+                Err(error) if error.is(lingxia_error::code::SURFACE_CONFLICT)
             ));
         }
         assert_eq!(app.current_open_region(), Some(LxAppOpenRegion::Main));
@@ -5450,7 +5486,7 @@ mod manifest_reload_tests {
             &self,
             generation: crate::GpuViewGeneration,
             message: crate::GpuViewMessage,
-        ) -> Result<(), LxAppError> {
+        ) -> Result<(), lingxia_error::Error> {
             self.1
                 .lock()
                 .unwrap()
@@ -5461,34 +5497,40 @@ mod manifest_reload_tests {
             &self,
             generation: crate::GpuViewGeneration,
             write: crate::GpuStateWrite,
-        ) -> Result<(), LxAppError> {
+        ) -> Result<(), lingxia_error::Error> {
             self.1
                 .lock()
                 .unwrap()
                 .push((generation, format!("{write:?}")));
             Ok(())
         }
-        fn update_environment(&self, _: crate::PageViewEnvironment) -> Result<(), LxAppError> {
+        fn update_environment(
+            &self,
+            _: crate::PageViewEnvironment,
+        ) -> Result<(), lingxia_error::Error> {
             Ok(())
         }
-        fn reload(&self) -> Result<(), LxAppError> {
+        fn reload(&self) -> Result<(), lingxia_error::Error> {
             self.2.lock().unwrap().push("reload".into());
             Ok(())
         }
-        fn connect(&self, generation: crate::GpuViewGeneration) -> Result<(), LxAppError> {
+        fn connect(
+            &self,
+            generation: crate::GpuViewGeneration,
+        ) -> Result<(), lingxia_error::Error> {
             self.2
                 .lock()
                 .unwrap()
                 .push(format!("connect:{}", generation.get()));
             Ok(())
         }
-        fn request_leave(&self, _: crate::LeaveReason) -> Result<(), LxAppError> {
+        fn request_leave(&self, _: crate::LeaveReason) -> Result<(), lingxia_error::Error> {
             Ok(())
         }
-        fn park(&self) -> Result<(), LxAppError> {
+        fn park(&self) -> Result<(), lingxia_error::Error> {
             Ok(())
         }
-        fn retain_surface(&self, _: bool) -> Result<(), LxAppError> {
+        fn retain_surface(&self, _: bool) -> Result<(), lingxia_error::Error> {
             Ok(())
         }
         fn dispose(&self) {
@@ -5920,38 +5962,38 @@ mod manifest_reload_tests {
                     &self,
                     _: crate::GpuViewGeneration,
                     _: crate::GpuViewMessage,
-                ) -> Result<(), LxAppError> {
+                ) -> Result<(), lingxia_error::Error> {
                     Ok(())
                 }
                 fn write_state(
                     &self,
                     _: crate::GpuViewGeneration,
                     _: crate::GpuStateWrite,
-                ) -> Result<(), LxAppError> {
+                ) -> Result<(), lingxia_error::Error> {
                     Ok(())
                 }
-                fn connect(&self, _: crate::GpuViewGeneration) -> Result<(), LxAppError> {
+                fn connect(&self, _: crate::GpuViewGeneration) -> Result<(), lingxia_error::Error> {
                     Ok(())
                 }
-                fn request_leave(&self, _: crate::LeaveReason) -> Result<(), LxAppError> {
+                fn request_leave(&self, _: crate::LeaveReason) -> Result<(), lingxia_error::Error> {
                     Ok(())
                 }
                 fn update_environment(
                     &self,
                     update: PageViewEnvironment,
-                ) -> Result<(), LxAppError> {
+                ) -> Result<(), lingxia_error::Error> {
                     self.0.lock().unwrap().push(format!("{update:?}"));
                     Ok(())
                 }
-                fn reload(&self) -> Result<(), LxAppError> {
+                fn reload(&self) -> Result<(), lingxia_error::Error> {
                     self.0.lock().unwrap().push("reload".into());
                     Ok(())
                 }
-                fn park(&self) -> Result<(), LxAppError> {
+                fn park(&self) -> Result<(), lingxia_error::Error> {
                     self.0.lock().unwrap().push("park".into());
                     Ok(())
                 }
-                fn retain_surface(&self, retained: bool) -> Result<(), LxAppError> {
+                fn retain_surface(&self, retained: bool) -> Result<(), lingxia_error::Error> {
                     self.0.lock().unwrap().push(format!("retain {retained}"));
                     Ok(())
                 }

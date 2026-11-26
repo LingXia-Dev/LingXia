@@ -2,7 +2,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use super::navbar::NavigationBarPatch;
 use super::tabbar::TabBarPatch;
-use crate::{LxApp, LxAppError, PageInstance, debug, warn};
+use crate::{LxApp, PageInstance, debug, warn};
 use lingxia_platform::PlatformError;
 use lingxia_platform::traits::ui::{Appearance, UIUpdate};
 use lingxia_webview::WebViewController;
@@ -300,7 +300,7 @@ impl LxApp {
         page: &PageInstance,
         revision: u64,
         appearance: ResolvedAppearance,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         let instance_id = page.instance_id_string();
         let layout = {
             let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
@@ -314,7 +314,7 @@ impl LxApp {
         if let Some(webview) = page.webview() {
             webview
                 .exec_js(&publication_script(&layout, appearance))
-                .map_err(LxAppError::from)?;
+                .map_err(lingxia_error::Error::from)?;
         }
         Ok(())
     }
@@ -324,7 +324,7 @@ impl LxApp {
         page: &PageInstance,
         revision: u64,
         appearance: ResolvedAppearance,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         let capsule_rect = if self.get_navbar_state(&page.path()).is_custom_navigation() {
             let measured = match self
                 .runtime
@@ -339,7 +339,7 @@ impl LxApp {
             measured
                 .map(|payload| {
                     serde_json::from_str::<PageChromeRect>(&payload)
-                        .map_err(|error| LxAppError::Runtime(error.to_string()))
+                        .map_err(|error| lingxia_error::Error::internal(error.to_string()))
                 })
                 .transpose()?
         } else {
@@ -391,7 +391,7 @@ impl LxApp {
         page: &PageInstance,
         revision: u64,
         appearance: ResolvedAppearance,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         match self
             .runtime
             .apply_page_chrome_revision(self.appid.clone(), revision)
@@ -409,10 +409,13 @@ impl LxApp {
             .await
     }
 
-    fn current_page_for_chrome(&self) -> Result<PageInstance, LxAppError> {
-        self.current_page().map_err(|error| match error {
-            LxAppError::WebView(_) => LxAppError::ResourceNotFound("active page".to_string()),
-            error => error,
+    fn current_page_for_chrome(&self) -> Result<PageInstance, lingxia_error::Error> {
+        self.current_page().map_err(|error| {
+            if error.is(lingxia_error::code::INTERNAL) {
+                lingxia_error::Error::not_found("active page")
+            } else {
+                error
+            }
         })
     }
 
@@ -420,12 +423,12 @@ impl LxApp {
         &self,
         page: PageInstance,
         patch: NavigationBarPatch,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), lingxia_error::Error> {
         let _guard = self.page_chrome_mutation_lock.lock().await;
         let changed = page
             .get_navbar_state_mut(|state| patch.apply_transactionally(state))
-            .ok_or_else(|| LxAppError::ResourceNotFound("active page".to_string()))?
-            .map_err(LxAppError::InvalidParameter)?;
+            .ok_or_else(|| lingxia_error::Error::not_found("active page"))?
+            .map_err(lingxia_error::Error::invalid_arg)?;
         if !changed {
             return Ok(());
         }
@@ -435,7 +438,7 @@ impl LxApp {
             .await
     }
 
-    pub async fn commit_tabbar(&self, patch: TabBarPatch) -> Result<(), LxAppError> {
+    pub async fn commit_tabbar(&self, patch: TabBarPatch) -> Result<(), lingxia_error::Error> {
         let _guard = self.page_chrome_mutation_lock.lock().await;
         let page = self.current_page_for_chrome()?;
         let changed = self
@@ -443,27 +446,13 @@ impl LxApp {
                 tabbar.apply_patch_transactionally(&patch, |value, path| {
                     self.resolve_accessible_path(value)
                         .map(|path| path.to_string_lossy().into_owned())
-                        // Keep the reason. Collapsing every failure into one
-                        // sentence about packaging hid what actually went
-                        // wrong — a network URL, a missing file, a traversal
-                        // attempt all read identically, and only one of them
-                        // was about packaging.
-                        //
-                        // `detail()`, not `Display`: this sentence already says
-                        // which field failed, and the variant labels would
-                        // stack into "Invalid parameter: iconPath: Invalid
-                        // parameter: …" or "traversal not allowed not found".
-                        .map_err(|error| {
-                            let reason = error
-                                .detail()
-                                .map(str::to_string)
-                                .unwrap_or_else(|| error.to_string());
-                            format!("{path}: {reason}")
-                        })
+                        // Keep the reason: a network URL, a missing file and a
+                        // traversal attempt each fail differently.
+                        .map_err(|error| format!("{path}: {}", error.message()))
                 })
             })
-            .ok_or_else(|| LxAppError::ResourceNotFound("declared tabbar".to_string()))?
-            .map_err(LxAppError::InvalidParameter)?;
+            .ok_or_else(|| lingxia_error::Error::not_found("declared tabbar"))?
+            .map_err(lingxia_error::Error::invalid_arg)?;
         if !changed {
             return Ok(());
         }
@@ -524,7 +513,7 @@ impl LxApp {
     ///
     /// Native apply does not need a live page. Page-chrome paint is
     /// best-effort when one exists.
-    pub async fn refresh_appearance(&self) -> Result<(), LxAppError> {
+    pub async fn refresh_appearance(&self) -> Result<(), lingxia_error::Error> {
         let _guard = self.page_chrome_mutation_lock.lock().await;
         let Some((resolved, revision)) = self.adopt_host_appearance() else {
             return Ok(());

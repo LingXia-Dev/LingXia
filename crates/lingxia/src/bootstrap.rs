@@ -242,7 +242,7 @@ type NativeAuthorityInstaller = dyn FnOnce(
         lxapp::NativeControlPlaneAuthority,
         lxapp::NativeControlPlaneAuthority,
         lxapp::terminal_automation::TerminalAutomationAuthority,
-    ) -> Result<(), lxapp::LxAppError>
+    ) -> Result<(), lingxia_error::Error>
     + 'static;
 
 unsafe extern "Rust" {
@@ -258,7 +258,7 @@ unsafe extern "Rust" {
             lxapp::terminal_automation::TerminalAutomationAuthority,
             lxapp::NativeControlPlaneAuthority,
         ),
-        lxapp::LxAppError,
+        lingxia_error::Error,
     >;
 }
 
@@ -415,10 +415,10 @@ pub(crate) fn init_with_platform(
             Box::new(
                 |settings_authority, logic_authority, browser_authority, terminal_authority| {
                     crate::settings_destination::install_control_authority(settings_authority)
-                        .map_err(lxapp::LxAppError::Runtime)?;
+                        .map_err(lingxia_error::Error::internal)?;
                     #[cfg(feature = "standard")]
                     if !lingxia_logic::__install_native_control_authority(logic_authority) {
-                        return Err(lxapp::LxAppError::Runtime(
+                        return Err(lingxia_error::Error::internal(
                             "Logic native control authority was already installed".to_string(),
                         ));
                     }
@@ -426,21 +426,21 @@ pub(crate) fn init_with_platform(
                     drop(logic_authority);
                     #[cfg(feature = "browser-runtime")]
                     if !lingxia_browser::__install_native_control_authority(browser_authority) {
-                        return Err(lxapp::LxAppError::Runtime(
+                        return Err(lingxia_error::Error::internal(
                             "browser native control authority was already installed".to_string(),
                         ));
                     }
                     #[cfg(not(feature = "browser-runtime"))]
                     drop(browser_authority);
                     if !crate::terminal_automation::install(terminal_authority.clone()) {
-                        return Err(lxapp::LxAppError::Runtime(
+                        return Err(lingxia_error::Error::internal(
                             "native terminal authority was already installed".to_string(),
                         ));
                     }
                     #[cfg(feature = "automation")]
                     if !lingxia_automation::__install_native_terminal_authority(terminal_authority)
                     {
-                        return Err(lxapp::LxAppError::Runtime(
+                        return Err(lingxia_error::Error::internal(
                             "automation terminal authority was already installed".to_string(),
                         ));
                     }

@@ -27,14 +27,13 @@ async fn update(ctx: JSContext, patch: JSObject) -> JSResult<()> {
         .map(|tabbar| tabbar.items.into_iter().map(|item| item.page).collect())
         .unwrap_or_default();
     let patch = indexed_patch(value, &tabs).map_err(js_invalid_parameter_error)?;
-    app.commit_tabbar(patch).await.map_err(|error| {
-        let error = lingxia_error::Error::from(error);
-        match error.code() {
+    app.commit_tabbar(patch)
+        .await
+        .map_err(|error| match error.code() {
             lingxia_error::code::INVALID_ARG => js_invalid_parameter_error(error.message()),
             lingxia_error::code::NOT_FOUND => js_state_error("tabBarNotDeclared", error.message()),
             _ => js_internal_error(error.message()),
-        }
-    })
+        })
 }
 
 /// Map the by-name author shape onto the index-addressed patch the tab bar applies.

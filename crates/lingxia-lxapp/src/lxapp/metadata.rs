@@ -8,7 +8,6 @@ use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
 
 use super::version::Version;
-use crate::LxAppError;
 
 const INSTALLED_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("installed");
 const DOWNLOADED_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("downloaded");
@@ -56,7 +55,7 @@ impl LxAppRecord {
     }
 }
 
-pub(crate) fn init(db_path: PathBuf) -> Result<(), LxAppError> {
+pub(crate) fn init(db_path: PathBuf) -> Result<(), lingxia_error::Error> {
     if DATABASE.get().is_some() {
         return Ok(());
     }
@@ -96,7 +95,10 @@ pub(crate) fn init(db_path: PathBuf) -> Result<(), LxAppError> {
     Ok(())
 }
 
-pub(crate) fn get(lxappid: &str, release_type: Channel) -> Result<Option<LxAppRecord>, LxAppError> {
+pub(crate) fn get(
+    lxappid: &str,
+    release_type: Channel,
+) -> Result<Option<LxAppRecord>, lingxia_error::Error> {
     let key = key_for(lxappid, release_type);
     let db = database()?;
     let txn = db
@@ -116,7 +118,7 @@ pub(crate) fn get(lxappid: &str, release_type: Channel) -> Result<Option<LxAppRe
     }
 }
 
-pub(crate) fn upsert(record: &LxAppRecord) -> Result<(), LxAppError> {
+pub(crate) fn upsert(record: &LxAppRecord) -> Result<(), lingxia_error::Error> {
     let key = key_for(&record.lxappid, record.release_type);
     let db = database()?;
     let txn = db
@@ -138,12 +140,12 @@ pub(crate) fn upsert(record: &LxAppRecord) -> Result<(), LxAppError> {
 
 /// Drop every channel's record of `lxappid` under the running service env;
 /// another env's records still back that env's installs and data.
-pub(crate) fn remove_all(lxappid: &str) -> Result<(), LxAppError> {
+pub(crate) fn remove_all(lxappid: &str) -> Result<(), lingxia_error::Error> {
     remove(lxappid, Channel::Release)?;
     remove(lxappid, Channel::Draft)
 }
 
-pub(crate) fn remove(lxappid: &str, release_type: Channel) -> Result<(), LxAppError> {
+pub(crate) fn remove(lxappid: &str, release_type: Channel) -> Result<(), lingxia_error::Error> {
     let key = key_for(lxappid, release_type);
     let db = database()?;
     let txn = db
@@ -178,15 +180,15 @@ fn registry_key(appid: &str) -> String {
     format!("{appid}::{}", super::service_env_scope().as_str())
 }
 
-pub(crate) fn database() -> Result<Arc<Database>, LxAppError> {
+pub(crate) fn database() -> Result<Arc<Database>, lingxia_error::Error> {
     DATABASE
         .get()
         .cloned()
-        .ok_or_else(|| LxAppError::Runtime("metadata database not initialized".to_string()))
+        .ok_or_else(|| lingxia_error::Error::internal("metadata database not initialized"))
 }
 
-pub(crate) fn metadata_error(action: &str, err: impl fmt::Display) -> LxAppError {
-    LxAppError::Runtime(format!("metadata database {} failed: {}", action, err))
+pub(crate) fn metadata_error(action: &str, err: impl fmt::Display) -> lingxia_error::Error {
+    lingxia_error::Error::internal(format!("metadata database {} failed: {}", action, err))
 }
 
 // Update last open time for an installed app
@@ -194,7 +196,7 @@ pub(crate) fn touch_last_open(
     lxappid: &str,
     release_type: Channel,
     ts: i64,
-) -> Result<(), LxAppError> {
+) -> Result<(), lingxia_error::Error> {
     if let Some(mut record) = get(lxappid, release_type)? {
         record.last_open_at = ts;
         upsert(&record)?;
@@ -217,7 +219,7 @@ pub(crate) struct PendingUpdateRecord {
 pub(crate) fn downloaded_get(
     lxappid: &str,
     release_type: Channel,
-) -> Result<Option<PendingUpdateRecord>, LxAppError> {
+) -> Result<Option<PendingUpdateRecord>, lingxia_error::Error> {
     let key = key_for(lxappid, release_type);
     let db = database()?;
     let txn = db
@@ -237,7 +239,10 @@ pub(crate) fn downloaded_get(
     }
 }
 
-pub(crate) fn downloaded_remove(lxappid: &str, release_type: Channel) -> Result<(), LxAppError> {
+pub(crate) fn downloaded_remove(
+    lxappid: &str,
+    release_type: Channel,
+) -> Result<(), lingxia_error::Error> {
     // Fetch record for archive path
     let record = downloaded_get(lxappid, release_type)?;
 
@@ -280,9 +285,9 @@ pub(crate) fn downloaded_upsert(
     version: &str,
     zip_path: &std::path::Path,
     checksum_sha256: Option<&str>,
-) -> Result<(), LxAppError> {
+) -> Result<(), lingxia_error::Error> {
     let parsed_version = Version::parse(version).map_err(|_| {
-        LxAppError::InvalidParameter(format!("Invalid semantic version: {}", version))
+        lingxia_error::Error::invalid_arg(format!("Invalid semantic version: {}", version))
     })?;
     let record = PendingUpdateRecord {
         lxappid: lxappid.to_string(),
@@ -361,7 +366,7 @@ pub(crate) struct StoredPermissions {
     pub privileges: Option<Vec<String>>,
 }
 
-pub(crate) fn registry_get(appid: &str) -> Result<Option<RegistryRecord>, LxAppError> {
+pub(crate) fn registry_get(appid: &str) -> Result<Option<RegistryRecord>, lingxia_error::Error> {
     let db = database()?;
     let txn = db
         .begin_read()
@@ -378,7 +383,7 @@ pub(crate) fn registry_get(appid: &str) -> Result<Option<RegistryRecord>, LxAppE
     Ok(Some(serde_json::from_slice(value.value())?))
 }
 
-pub(crate) fn registry_upsert(record: &RegistryRecord) -> Result<(), LxAppError> {
+pub(crate) fn registry_upsert(record: &RegistryRecord) -> Result<(), lingxia_error::Error> {
     let key = registry_key(&record.appid);
     let key = key.as_str();
     let db = database()?;
@@ -401,7 +406,7 @@ pub(crate) fn registry_upsert(record: &RegistryRecord) -> Result<(), LxAppError>
 
 /// Drop this app's record under the running service env, returning the icon
 /// file it referenced so the caller can delete artwork it was the last user of.
-pub(crate) fn registry_remove(appid: &str) -> Result<Option<String>, LxAppError> {
+pub(crate) fn registry_remove(appid: &str) -> Result<Option<String>, lingxia_error::Error> {
     let key = registry_key(appid);
     let db = database()?;
     let txn = db
@@ -424,7 +429,7 @@ pub(crate) fn registry_remove(appid: &str) -> Result<Option<String>, LxAppError>
 
 /// Every icon file still referenced by some app's records — the survivor set
 /// when deciding which artwork an uninstall may delete.
-pub(crate) fn registry_referenced_icon_files() -> Result<BTreeSet<String>, LxAppError> {
+pub(crate) fn registry_referenced_icon_files() -> Result<BTreeSet<String>, lingxia_error::Error> {
     let db = database()?;
     let txn = db
         .begin_read()
@@ -462,7 +467,9 @@ pub(crate) fn app_display_key(appid: &str) -> String {
     registry_key(appid)
 }
 
-pub(crate) fn app_display_get(appid: &str) -> Result<Option<AppDisplayRecord>, LxAppError> {
+pub(crate) fn app_display_get(
+    appid: &str,
+) -> Result<Option<AppDisplayRecord>, lingxia_error::Error> {
     let db = database()?;
     let txn = db
         .begin_read()
@@ -479,7 +486,10 @@ pub(crate) fn app_display_get(appid: &str) -> Result<Option<AppDisplayRecord>, L
     Ok(Some(serde_json::from_slice(value.value())?))
 }
 
-pub(crate) fn app_display_put(appid: &str, record: &AppDisplayRecord) -> Result<(), LxAppError> {
+pub(crate) fn app_display_put(
+    appid: &str,
+    record: &AppDisplayRecord,
+) -> Result<(), lingxia_error::Error> {
     let key = app_display_key(appid);
     let db = database()?;
     let txn = db
@@ -505,7 +515,9 @@ pub(crate) fn app_display_put(appid: &str, record: &AppDisplayRecord) -> Result<
     Ok(())
 }
 
-pub(crate) fn app_display_remove(appid: &str) -> Result<Option<AppDisplayRecord>, LxAppError> {
+pub(crate) fn app_display_remove(
+    appid: &str,
+) -> Result<Option<AppDisplayRecord>, lingxia_error::Error> {
     let key = app_display_key(appid);
     let db = database()?;
     let txn = db
@@ -526,7 +538,8 @@ pub(crate) fn app_display_remove(appid: &str) -> Result<Option<AppDisplayRecord>
 }
 
 /// Every display icon some app's record still names, across service envs.
-pub(crate) fn app_display_referenced_icon_files() -> Result<BTreeSet<String>, LxAppError> {
+pub(crate) fn app_display_referenced_icon_files() -> Result<BTreeSet<String>, lingxia_error::Error>
+{
     let db = database()?;
     let txn = db
         .begin_read()
@@ -553,7 +566,7 @@ pub(crate) fn app_display_referenced_icon_files() -> Result<BTreeSet<String>, Lx
 /// sweeping orphaned installs: an extraction that outlived its record — a
 /// crash between unpack and upsert, or an old version whose best-effort removal
 /// failed — is referenced by nothing and is pure garbage.
-pub(crate) fn installed_paths() -> Result<BTreeSet<String>, LxAppError> {
+pub(crate) fn installed_paths() -> Result<BTreeSet<String>, lingxia_error::Error> {
     let db = database()?;
     let txn = db
         .begin_read()
@@ -576,7 +589,7 @@ pub(crate) fn installed_paths() -> Result<BTreeSet<String>, LxAppError> {
 }
 
 /// Every staged update archive a pending record still points at.
-pub(crate) fn downloaded_archives() -> Result<BTreeSet<String>, LxAppError> {
+pub(crate) fn downloaded_archives() -> Result<BTreeSet<String>, lingxia_error::Error> {
     let db = database()?;
     let txn = db
         .begin_read()

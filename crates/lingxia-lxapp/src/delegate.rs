@@ -552,7 +552,7 @@ impl LxApp {
             .get_page(&path)
             .unwrap_or_else(|| self.get_or_create_page(&path));
         let target_page = self.get_or_create_page(&home_route);
-        page.navigate_to(target_page, navigate_type).map(drop)
+        Ok(page.navigate_to(target_page, navigate_type).map(drop)?)
     }
 
     /// Handle navigation bar button click
@@ -693,7 +693,7 @@ impl LxApp {
         reason: LeaveReason,
     ) -> Result<(), crate::LxAppError> {
         match reason {
-            LeaveReason::Back => page.navigate_back(1),
+            LeaveReason::Back => Ok(page.navigate_back(1)?),
             LeaveReason::Home => self.go_home(),
         }
     }

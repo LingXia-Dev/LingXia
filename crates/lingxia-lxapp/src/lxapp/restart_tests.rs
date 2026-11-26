@@ -188,7 +188,7 @@ async fn channel_switch_waits_for_the_only_logic_worker_and_blocks_early_opens()
     );
     assert!(matches!(
         f.manager.ensure_lxapp(f.old.appid.clone(), Channel::Draft),
-        Err(error) if lingxia_error::Error::from(error.clone()).is(lingxia_error::code::QUOTA)
+        Err(error) if error.is(lingxia_error::code::QUOTA)
     ));
     ack.send(()).unwrap();
     time::timeout(Duration::from_secs(1), switch)

@@ -390,7 +390,7 @@ impl UpdateManager {
                 manifest.version
             )));
         }
-        manifest.ensure_runtime_satisfies(lxappid, crate::SDK_RUNTIME_VERSION)
+        Ok(manifest.ensure_runtime_satisfies(lxappid, crate::SDK_RUNTIME_VERSION)?)
     }
 
     fn validate_installed_lxapp_manifest(install_path: &Path) -> Result<LxAppConfig, LxAppError> {
@@ -570,7 +570,7 @@ impl UpdateManager {
             .filter(|value| !value.is_empty())
             .map(|value| value.to_ascii_lowercase());
 
-        metadata::upsert(&record)
+        Ok(metadata::upsert(&record)?)
     }
 }
 
