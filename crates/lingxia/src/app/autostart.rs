@@ -39,9 +39,7 @@ fn require_support() -> crate::Result<()> {
 /// Unsupported hosts return an error, not a cached or assumed disabled state.
 pub fn is_enabled() -> crate::Result<bool> {
     require_support()?;
-    crate::runtime::platform()?
-        .autostart_is_enabled()
-        .map_err(crate::Error::from)
+    crate::runtime::platform()?.autostart_is_enabled()
 }
 
 /// Register or unregister this host as a per-user startup item. Idempotent.
@@ -49,7 +47,5 @@ pub fn is_enabled() -> crate::Result<bool> {
 /// to display the effective state instead of assuming the requested value.
 pub fn set_enabled(enabled: bool) -> crate::Result<()> {
     require_support()?;
-    crate::runtime::platform()?
-        .autostart_set_enabled(enabled)
-        .map_err(crate::Error::from)
+    crate::runtime::platform()?.autostart_set_enabled(enabled)
 }

@@ -8849,6 +8849,7 @@ mod tests {
         live_browser_tab_limit_for_memory, touch_browser_tab_recency,
     };
     use crate::shell::WindowsShellTabBarPosition;
+    use lingxia_error::Error;
     use lingxia_surface::{Role, SizeClass, Surface, SurfaceManager};
     #[cfg(feature = "browser-runtime")]
     use std::collections::HashSet;
@@ -8905,7 +8906,7 @@ mod tests {
         let cancelled_for_callback = cancelled.clone();
         drop(PresentationCompletion(Some(Box::new(move |result| {
             cancelled_for_callback.store(
-                matches!(result, Err(Error::internal("platform callback dropped"))),
+                matches!(&result, Err(error) if error.message() == "platform callback dropped"),
                 std::sync::atomic::Ordering::Relaxed,
             );
         }))));

@@ -9,7 +9,7 @@ use crate::webview::MAX_WEB_MESSAGE_BYTES;
 
 /// Handler name registered in WebKit's `WKUserContentController` and Android's
 /// `WebViewCompat.addWebMessageListener`.
-#[cfg(any(target_os = "ios", target_os = "macos"))]
+#[cfg(any(target_os = "ios", target_os = "macos", test))]
 pub(crate) const APPLE_EMBED_HANDLER: &str = "LingXiaEmbed";
 #[cfg(test)]
 pub(crate) const ANDROID_EMBED_OBJECT: &str = "__LingXiaEmbedBridge";

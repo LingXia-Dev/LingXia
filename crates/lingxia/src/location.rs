@@ -99,10 +99,7 @@ pub async fn request(options: LocationOptions) -> crate::Result<Location> {
         high_accuracy_expire_time: None,
         include_altitude: options.high_accuracy,
     };
-    let raw = crate::runtime::platform()?
-        .request_location(config)
-        .await
-        .map_err(crate::Error::from)?;
+    let raw = crate::runtime::platform()?.request_location(config).await?;
     let parsed: RawLocation = serde_json::from_str(&raw)
         .map_err(|err| crate::Error::internal(format!("parse location: {err} (raw: {raw})")))?;
     Ok(parsed.into())

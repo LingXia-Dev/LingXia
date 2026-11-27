@@ -2718,8 +2718,7 @@ impl PageInstance {
                 self.appid(),
                 target_page.webtag().key().to_string(),
                 nav_type.to_animation(),
-            )
-            .map_err(lingxia_error::Error::from)?;
+            )?;
 
         lxapp.sync_host_ui();
         lxapp.publish_current_page();

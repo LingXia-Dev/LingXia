@@ -232,6 +232,7 @@ mod test_layer {
         }
         fn dismiss(&self, _: &str) {}
         fn forget(&self, _: &str) {}
+        fn contrast_changed(&self) {}
     }
 }
 

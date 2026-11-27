@@ -35,9 +35,7 @@ pub mod playback {
 /// Presents the host media picker and returns the serialized selection payload.
 pub async fn pick(request: PickMediaRequest) -> crate::Result<String> {
     let runtime = crate::runtime::platform()?;
-    lingxia_service::media::pick_media(&*runtime, request)
-        .await
-        .map_err(Into::into)
+    lingxia_service::media::pick_media(&*runtime, request).await
 }
 
 /// Selection returned by the native media picker, without a JS runtime.
@@ -67,7 +65,7 @@ fn decode_media_selection(result: Result<String, Error>) -> crate::Result<MediaS
         Err(error) if lingxia_platform::error::is_user_dismissed(&error) => {
             return Ok(MediaSelection::Canceled);
         }
-        Err(error) => return Err(error.into()),
+        Err(error) => return Err(error),
         Ok(json) => json,
     };
     let entries: Vec<PickedMedia> = serde_json::from_str(&json)
@@ -94,45 +92,37 @@ pub fn copy_picked_media_to_file(media: &PickedMedia, destination: &Path) -> cra
             return Err(crate::Error::invalid_arg("unsupported picked media type"));
         }
     };
-    crate::runtime::platform()?
-        .copy_album_media_to_file(&media.uri, destination, kind)
-        .map_err(Into::into)
+    crate::runtime::platform()?.copy_album_media_to_file(&media.uri, destination, kind)
 }
 
 /// Opens LingXia's native media preview UI.
 pub fn preview(request: PreviewMediaRequest) -> crate::Result<()> {
     let runtime = crate::runtime::platform()?;
-    lingxia_service::media::preview_media(&*runtime, request).map_err(Into::into)
+    lingxia_service::media::preview_media(&*runtime, request)
 }
 
 /// Cancels an active media preview callback sequence.
 pub fn cancel_preview(callback_id: u64) -> crate::Result<()> {
     let runtime = crate::runtime::platform()?;
-    lingxia_service::media::cancel_preview(&*runtime, callback_id).map_err(Into::into)
+    lingxia_service::media::cancel_preview(&*runtime, callback_id)
 }
 
 /// Opens a scanner flow and returns the serialized scan result payload.
 pub async fn scan(request: ScanCodeRequest) -> crate::Result<String> {
     let runtime = crate::runtime::platform()?;
-    lingxia_service::media::scan_code(&*runtime, request)
-        .await
-        .map_err(Into::into)
+    lingxia_service::media::scan_code(&*runtime, request).await
 }
 
 /// Saves an image into the platform photo library.
 pub async fn save_image_to_photo_library(request: SaveMediaRequest) -> crate::Result<()> {
     let runtime = crate::runtime::platform()?;
-    lingxia_service::media::save_image_to_photos_album(&*runtime, request)
-        .await
-        .map_err(Into::into)
+    lingxia_service::media::save_image_to_photos_album(&*runtime, request).await
 }
 
 /// Saves a video into the platform photo library.
 pub async fn save_video_to_photo_library(request: SaveMediaRequest) -> crate::Result<()> {
     let runtime = crate::runtime::platform()?;
-    lingxia_service::media::save_video_to_photos_album(&*runtime, request)
-        .await
-        .map_err(Into::into)
+    lingxia_service::media::save_video_to_photos_album(&*runtime, request).await
 }
 
 // MediaRuntime processing APIs. Inputs are already-resolved filesystem paths.
@@ -279,9 +269,7 @@ pub struct CompressedVideo {
 
 /// Reads width/height/MIME for an image file.
 pub fn image_info(path: &str) -> crate::Result<ImageInfo> {
-    let info = crate::runtime::platform()?
-        .get_image_info(path)
-        .map_err(crate::Error::from)?;
+    let info = crate::runtime::platform()?.get_image_info(path)?;
     Ok(ImageInfo {
         width: info.width,
         height: info.height,
@@ -298,17 +286,13 @@ pub fn compress_image(input: CompressImage) -> crate::Result<CompressedImage> {
         max_height: input.max_height,
         output_path: PathBuf::from(input.output_path),
     };
-    let path = crate::runtime::platform()?
-        .compress_image(&request)
-        .map_err(crate::Error::from)?;
+    let path = crate::runtime::platform()?.compress_image(&request)?;
     Ok(CompressedImage { path })
 }
 
 /// Reads size, dimensions, duration, and track codec metadata for a video file.
 pub fn video_info(path: &str) -> crate::Result<VideoInfo> {
-    let info = crate::runtime::platform()?
-        .get_video_info(path)
-        .map_err(crate::Error::from)?;
+    let info = crate::runtime::platform()?.get_video_info(path)?;
     Ok(VideoInfo {
         width: info.width,
         height: info.height,
@@ -334,9 +318,7 @@ pub fn extract_video_thumbnail(input: ExtractVideoThumbnail) -> crate::Result<Vi
         time_ms: input.time_ms,
         quality: input.quality,
     };
-    let thumb = crate::runtime::platform()?
-        .extract_video_thumbnail(&request)
-        .map_err(crate::Error::from)?;
+    let thumb = crate::runtime::platform()?.extract_video_thumbnail(&request)?;
     Ok(VideoThumbnail {
         path: thumb.path,
         width: thumb.width,
@@ -383,7 +365,7 @@ pub fn compress_video(input: CompressVideo) -> crate::Result<CompressedVideo> {
     let platform = crate::runtime::platform()?;
     if let Err(err) = platform.compress_video(&request) {
         lingxia_messaging::remove_callback(callback_id);
-        return Err(crate::Error::from(err));
+        return Err(err);
     }
 
     let completion = rx.recv().map_err(|_| {

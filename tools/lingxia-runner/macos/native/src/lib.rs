@@ -91,7 +91,7 @@ impl lingxia::dev::DeviceController for MacRunnerDeviceController {
             lingxia::dev::Contrast::High => 1,
         });
         let appearance = change.appearance.map_or(-1, |appearance| match appearance {
-            lingxia::dev::Appearance::System => 0,
+            lingxia::dev::Appearance::Auto => 0,
             lingxia::dev::Appearance::Light => 1,
             lingxia::dev::Appearance::Dark => 2,
         });

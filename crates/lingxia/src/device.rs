@@ -69,23 +69,19 @@ pub fn screen() -> crate::Result<ScreenInfo> {
 ///
 /// `long` requests a sustained vibration where the host supports it.
 pub fn vibrate(long: bool) -> crate::Result<()> {
-    crate::runtime::platform()?
-        .vibrate(long)
-        .map_err(Into::into)
+    crate::runtime::platform()?.vibrate(long)
 }
 
 /// Places a phone call to `number` via the host platform.
 pub fn make_phone_call(number: &str) -> crate::Result<()> {
-    crate::runtime::platform()?
-        .make_phone_call(number)
-        .map_err(Into::into)
+    crate::runtime::platform()?.make_phone_call(number)
 }
 
 /// Reports coarse Wi-Fi and location system toggles.
 pub fn system_settings() -> crate::Result<SystemSettings> {
     let runtime = crate::runtime::platform()?;
-    let wifi_enabled = runtime.is_wifi_enabled().map_err(crate::Error::from)?;
-    let location_enabled = runtime.is_location_enabled().map_err(crate::Error::from)?;
+    let wifi_enabled = runtime.is_wifi_enabled()?;
+    let location_enabled = runtime.is_location_enabled()?;
     Ok(SystemSettings {
         wifi_enabled,
         location_enabled,

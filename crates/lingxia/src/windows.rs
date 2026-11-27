@@ -3,7 +3,6 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, LazyLock, Mutex};
 
-use lingxia_error::Error;
 use lingxia_platform::traits::app_runtime::{AppRuntime, OpenUrlRequest, OpenUrlTarget};
 use lingxia_platform::traits::ui::SurfaceContent;
 pub use lingxia_platform::{Platform, set_windows_app_exit_handler};

@@ -2035,7 +2035,6 @@ impl LxApp {
                         url_callback,
                         browser_tab_id,
                     })
-                    .map_err(lingxia_error::Error::from)
             });
         if let Err(err) = present_result {
             self.forget_surface(&id);
@@ -2215,7 +2214,6 @@ impl LxApp {
                         url_callback: false,
                         browser_tab_id: None,
                     })
-                    .map_err(lingxia_error::Error::from)
             });
         if let Err(err) = present_result {
             // Remove only our bookkeeping; there is no graph node to close.
@@ -2281,7 +2279,7 @@ impl LxApp {
                 }
                 Ok(())
             }
-            Err(err) => Err(err.into()),
+            Err(err) => Err(err),
         }
     }
 
@@ -2376,7 +2374,6 @@ impl LxApp {
         } else if self.has_surface(id) {
             self.runtime
                 .show_surface(&platform_owner_appid, id)
-                .map_err(Into::into)
         } else {
             Err(lingxia_error::Error::invalid_arg(format!(
                 "unknown surface: {id}"
@@ -2398,7 +2395,6 @@ impl LxApp {
         } else if self.has_surface(id) {
             self.runtime
                 .hide_surface(&platform_owner_appid, id)
-                .map_err(Into::into)
         } else {
             Err(lingxia_error::Error::invalid_arg(format!(
                 "unknown surface: {id}"

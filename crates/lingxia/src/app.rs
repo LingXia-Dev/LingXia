@@ -470,17 +470,13 @@ pub mod notification {
     /// `"granted"`, `"denied"`, or `"default"`. Never prompts.
     pub fn permission() -> crate::Result<String> {
         require_capability()?;
-        crate::runtime::platform()?
-            .notification_permission()
-            .map_err(crate::Error::from)
+        crate::runtime::platform()?.notification_permission()
     }
 
     /// Prompts where the OS has a prompt; otherwise reports the setting.
     pub fn request_permission() -> crate::Result<String> {
         require_capability()?;
-        crate::runtime::platform()?
-            .notification_request_permission()
-            .map_err(crate::Error::from)
+        crate::runtime::platform()?.notification_request_permission()
     }
 
     /// Post or replace. The target is validated before anything is persisted
@@ -519,7 +515,7 @@ pub mod notification {
             }
             Err(error) => {
                 intent::rollback(&staged);
-                Err(crate::Error::from(error))
+                Err(error)
             }
         }
     }
@@ -528,17 +524,13 @@ pub mod notification {
     pub fn cancel(id: &str) -> crate::Result<()> {
         require_capability()?;
         intent::invalidate(id);
-        crate::runtime::platform()?
-            .notification_cancel(id)
-            .map_err(crate::Error::from)
+        crate::runtime::platform()?.notification_cancel(id)
     }
 
     pub fn cancel_all() -> crate::Result<()> {
         require_capability()?;
         intent::invalidate_all();
-        crate::runtime::platform()?
-            .notification_cancel_all()
-            .map_err(crate::Error::from)
+        crate::runtime::platform()?.notification_cancel_all()
     }
 }
 
@@ -552,16 +544,12 @@ pub mod banner {
 
     /// Present a banner and wait until it is answered, dismissed, timed out, or replaced.
     pub fn show(request: DesktopBannerShow) -> crate::Result<DesktopBannerOutcome> {
-        crate::runtime::platform()?
-            .banner_show(&request)
-            .map_err(crate::Error::from)
+        crate::runtime::platform()?.banner_show(&request)
     }
 
     /// Dismiss a visible or queued banner. Unknown ids are fine.
     pub fn dismiss(id: &str) -> crate::Result<()> {
-        crate::runtime::platform()?
-            .banner_dismiss(id)
-            .map_err(crate::Error::from)
+        crate::runtime::platform()?.banner_dismiss(id)
     }
 }
 
@@ -571,9 +559,7 @@ pub mod banner {
 /// does not need to call it.
 #[doc(hidden)]
 pub fn set_control_session_indicator(active: bool) -> crate::Result<()> {
-    crate::runtime::platform()?
-        .set_control_session_indicator(active)
-        .map_err(crate::Error::from)
+    crate::runtime::platform()?.set_control_session_indicator(active)
 }
 
 /// What the indicator's Stop button does. Installed by the control runtime.
@@ -585,9 +571,7 @@ pub fn set_control_session_stop_handler(handler: impl Fn() + Send + Sync + 'stat
 /// Requests host app termination through the active platform runtime.
 pub fn exit() -> crate::Result<()> {
     crate::bootstrap::teardown_runner_display_language_session();
-    crate::runtime::platform()?
-        .exit()
-        .map_err(crate::Error::from)?;
+    crate::runtime::platform()?.exit()?;
     Ok(())
 }
 

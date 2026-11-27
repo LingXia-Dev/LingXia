@@ -11,16 +11,12 @@ pub use lingxia_service::file::{
 
 /// Opens a file for in-app review using the platform's preview UI.
 pub async fn review(app: &crate::LxApp, request: OpenFileRequest) -> crate::Result<()> {
-    lingxia_service::file::review_file(&*app.runtime, request)
-        .await
-        .map_err(crate::Error::from)
+    lingxia_service::file::review_file(&*app.runtime, request).await
 }
 
 /// Opens a file or URL in an external app chosen by the host platform.
 pub async fn open_external(app: &crate::LxApp, request: OpenFileRequest) -> crate::Result<()> {
-    lingxia_service::file::open_external(&*app.runtime, request)
-        .await
-        .map_err(crate::Error::from)
+    lingxia_service::file::open_external(&*app.runtime, request).await
 }
 
 /// Reveals a file or directory in the host platform's file manager.
@@ -28,9 +24,7 @@ pub async fn reveal_in_file_manager(
     app: &crate::LxApp,
     request: RevealInFileManagerRequest,
 ) -> crate::Result<()> {
-    lingxia_service::file::reveal_in_file_manager(&*app.runtime, request)
-        .await
-        .map_err(crate::Error::from)
+    lingxia_service::file::reveal_in_file_manager(&*app.runtime, request).await
 }
 
 /// Presents a file picker and returns the selected entries.
@@ -43,9 +37,7 @@ pub async fn pick_file(
     app: &crate::LxApp,
     request: PickFileRequest,
 ) -> crate::Result<FileDialogResult> {
-    lingxia_service::file::pick_file(&*app.runtime, request)
-        .await
-        .map_err(crate::Error::from)
+    lingxia_service::file::pick_file(&*app.runtime, request).await
 }
 
 /// Presents a directory picker and returns the selected entry. `name` is
@@ -54,9 +46,7 @@ pub async fn pick_directory(
     app: &crate::LxApp,
     request: PickDirectoryRequest,
 ) -> crate::Result<FileDialogResult> {
-    lingxia_service::file::pick_directory(&*app.runtime, request)
-        .await
-        .map_err(crate::Error::from)
+    lingxia_service::file::pick_directory(&*app.runtime, request).await
 }
 
 /// Request builder for [`download`].

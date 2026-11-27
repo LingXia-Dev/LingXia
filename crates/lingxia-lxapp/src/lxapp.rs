@@ -2350,8 +2350,7 @@ impl LxApp {
         if !skip_hide {
             let _ = self
                 .runtime
-                .hide_lxapp(self.appid.clone(), self.session.id)
-                .map_err(lingxia_error::Error::from);
+                .hide_lxapp(self.appid.clone(), self.session.id);
         }
 
         // Collect current pages

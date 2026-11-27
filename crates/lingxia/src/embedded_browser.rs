@@ -115,8 +115,7 @@ pub async fn open_and_present(url: &str, tab_id: Option<&str>) -> crate::Result<
     let tab = open(url, tab_id)?;
     crate::runtime::platform()?
         .activate_browser_tab(tab.clone())
-        .await
-        .map_err(crate::Error::from)?;
+        .await?;
     Ok(tab)
 }
 
@@ -211,8 +210,7 @@ pub async fn download_action(id: &str, action: DownloadAction) -> crate::Result<
                 url: None,
                 files: vec![record.target_path],
             })
-            .await
-            .map_err(crate::Error::from)?;
+            .await?;
         return Ok(());
     }
     let result = match action {

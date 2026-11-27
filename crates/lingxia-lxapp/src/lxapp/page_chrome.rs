@@ -335,7 +335,7 @@ impl LxApp {
                 Err(error) if lingxia_platform::error::is_presenter_unavailable(&error) => {
                     return Ok(());
                 }
-                Err(error) => return Err(error.into()),
+                Err(error) => return Err(error),
             };
             measured
                 .map(|payload| {
@@ -404,7 +404,7 @@ impl LxApp {
                     .with_appid(self.appid.clone());
                 return Ok(());
             }
-            Err(error) => return Err(error.into()),
+            Err(error) => return Err(error),
         }
         self.publish_realized_page_chrome(page, revision, appearance)
             .await

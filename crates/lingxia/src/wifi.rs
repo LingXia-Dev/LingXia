@@ -80,7 +80,7 @@ where
     if let Err(err) = init(callback_id) {
         guard.disarm();
         lingxia_messaging::remove_callback(callback_id);
-        return Err(crate::Error::from(err));
+        return Err(err);
     }
 
     match rx.await {
@@ -90,9 +90,7 @@ where
                 .into_result()
                 .map_err(|code| Error::business(code, "wifi call failed"))
         }
-        Err(_) => Err(crate::Error::from(Error::internal(
-            "platform callback dropped",
-        ))),
+        Err(_) => Err(Error::internal("platform callback dropped")),
     }
 }
 
@@ -247,7 +245,7 @@ where
     });
     if let Err(err) = runtime.add_wifi_state_listener(callback_id) {
         lingxia_messaging::remove_callback(callback_id);
-        return Err(crate::Error::from(err));
+        return Err(err);
     }
     Ok(Subscription {
         callback_id,
