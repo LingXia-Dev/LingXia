@@ -44,7 +44,7 @@ fn has(found: &[(Rule, String)], rule: Rule, test_id: &str) -> bool {
 #[test]
 fn a_page_that_states_every_role_contract_passes() {
     let found = violations(
-        "h('page',{},h('view',{role:'tablist','aria-label':'Sections'},h('button',{role:'tab','aria-selected':false,onClick(){}},'Overview'),h('button',{role:'tab','aria-selected':true,onClick(){}},'Details')),h('view',{role:'tabpanel','aria-label':'Details'},h('text',{},'Body')),h('view',{role:'radiogroup','aria-label':'Size'},h('button',{role:'radio','aria-checked':false,onClick(){}},'S'),h('button',{role:'radio','aria-checked':true,onClick(){}},'M')),h('view',{role:'toolbar','aria-label':'Format'},h('button',{onClick(){}},'Bold'),h('button',{onClick(){}},'Italic')),h('view',{role:'tree','aria-label':'Files'},h('button',{role:'treeitem','aria-level':1,'aria-expanded':true,onClick(){}},'src'),h('button',{role:'treeitem','aria-level':2,onClick(){}},'a.rs')),h('view',{role:'menu','aria-label':'View'},h('button',{role:'menuitemcheckbox','aria-checked':true,onClick(){}},'Wrap'),h('button',{role:'menuitem',onClick(){}},'Zoom')))",
+        "h('page',{},h('view',{role:'tablist','aria-label':'Sections'},h('button',{role:'tab','aria-selected':false,onClick(){}},'Overview'),h('button',{role:'tab','aria-selected':true,onClick(){}},'Details')),h('view',{role:'tabpanel','aria-label':'Details'},h('text',{},'Body')),h('view',{role:'radiogroup','aria-label':'Size'},h('button',{role:'radio','aria-checked':false,onClick(){}},'S'),h('button',{role:'radio','aria-checked':true,onClick(){}},'M')),h('view',{role:'toolbar','aria-label':'Format'},h('button',{onClick(){}},'Bold'),h('button',{onClick(){}},'Italic')),h('view',{role:'tree','aria-label':'Files'},h('button',{role:'treeitem','aria-level':1,'aria-expanded':true,onClick(){}},'src'),h('button',{role:'treeitem','aria-level':2,onClick(){}},'a.rs')),h('view',{id:'view-menu',popover:true,open:true,role:'menu','aria-label':'View'},h('button',{role:'menuitemcheckbox','aria-checked':true,onClick(){}},'Wrap'),h('button',{role:'menuitem',onClick(){}},'Zoom')))",
     );
     assert_eq!(found, vec![]);
 }
@@ -141,4 +141,12 @@ fn a_grid_of_rows_without_cells_is_reported_once() {
     );
     assert!(has(&found, Rule::Items, "table"), "{found:?}");
     assert!(!has(&found, Rule::TabStops, "table"), "{found:?}");
+}
+
+#[test]
+fn a_menu_inside_a_toolbar_keeps_its_stops_to_itself() {
+    let found = violations(
+        "h('view',{},h('view',{role:'toolbar','aria-label':'Edit','data-testid':'bar'},h('button',{onClick(){}},'Undo'),h('view',{id:'more',popover:true,open:true,role:'menu','aria-label':'More'},h('button',{role:'menuitem',onClick(){}},'Cut'),h('button',{role:'menuitem',onClick(){}},'Paste'))))",
+    );
+    assert!(!has(&found, Rule::TabStops, "bar"), "{found:?}");
 }

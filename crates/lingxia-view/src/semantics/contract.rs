@@ -52,18 +52,11 @@ impl Rule {
     }
 }
 
-/// `lingxia dev` builds log each violation once, under the compiler's `UI_A11Y` code, so one
-/// log search finds both. Bounded: a page that keeps minting identities stops logging.
-pub fn warn(projection: &Projection) {
-    static LOGGED: std::sync::Mutex<Option<HashSet<(Rule, String, String)>>> =
-        std::sync::Mutex::new(None);
-    let found = check(projection);
-    if found.is_empty() {
-        return;
-    }
-    let mut logged = LOGGED.lock().unwrap_or_else(|p| p.into_inner());
-    let logged = logged.get_or_insert_with(Default::default);
-    for violation in found {
+/// `lingxia dev` builds log each violation once per page, under the compiler's `UI_A11Y` code,
+/// so one log search finds both. Bounded: a page that keeps minting identities stops logging.
+#[cfg(feature = "dev")]
+pub(crate) fn warn(projection: &Projection, logged: &mut HashSet<(Rule, String, String)>) {
+    for violation in check(projection) {
         if logged.len() >= 512 {
             return;
         }
@@ -128,11 +121,7 @@ pub fn check(projection: &Projection) -> Vec<Violation> {
         }
     }
     distinct(frame, &nodes, &mut found);
-    tab_stops(
-        frame,
-        &composites_of(frame, &composites, &nodes),
-        &mut found,
-    );
+    tab_stops(frame, &composites, &nodes, &mut found);
     found
 }
 
@@ -406,57 +395,50 @@ fn descends(frame: &PresentedFrame, index: usize, ancestor: usize) -> bool {
         && node.as_bytes()[ancestor.len()] == b'/'
 }
 
-/// The published composites that hold items, with their kind. Without items the engine does not
-/// rove there, and menus keep every item a stop, so both are left out.
-fn composites_of<'a>(
-    frame: &PresentedFrame,
-    composites: &Composites,
-    nodes: &'a [SemanticNode],
-) -> Vec<(&'a SemanticNode, Composite)> {
-    nodes
-        .iter()
-        .filter_map(|node| Composite::of(&frame.nodes[node.index]).map(|kind| (node, kind)))
-        .filter(|(_, kind)| *kind != Composite::Menu)
-        .filter(|(container, _)| {
-            nodes.iter().any(|node| {
-                composites
-                    .container_of(node.index)
-                    .is_some_and(|(owner, _)| owner == container.index)
-            })
-        })
-        .collect()
-}
-
-/// Walks Tab once around the page and charges each stop to its nearest composite, so a radio
-/// group inside a toolbar counts toward the group alone.
+/// Charges each Tab stop to its nearest composite, so a radio group inside a toolbar counts
+/// toward the group alone. Menus keep every item a stop and composites without items are not
+/// roved, so neither is reported.
 fn tab_stops(
     frame: &PresentedFrame,
-    composites: &[(&SemanticNode, Composite)],
+    composites: &Composites,
+    nodes: &[SemanticNode],
     found: &mut Vec<Violation>,
 ) {
-    let mut stops = Vec::new();
-    let mut seen = HashSet::new();
-    let mut current = None;
-    while let Some(next) = keyboard::next(frame, current, 1, |_| true, |_| None) {
-        if !seen.insert(next) {
-            break;
-        }
-        stops.push(next);
-        current = Some(next);
+    let containers: Vec<(&SemanticNode, Composite)> = nodes
+        .iter()
+        .filter_map(|node| Composite::of(&frame.nodes[node.index]).map(|kind| (node, kind)))
+        .collect();
+    if containers.is_empty() {
+        return;
     }
-    let mut counts = vec![0usize; composites.len()];
-    for stop in stops {
-        let nearest = composites
+    // The stops a Tab walk visits, found in one pass: radio groups and composites elect one each.
+    let scope = keyboard::active_dialog(frame);
+    let mut counts = vec![0usize; containers.len()];
+    for index in 0..frame.nodes.len() {
+        let stop = scope.is_none_or(|scope| descends(frame, index, scope))
+            && keyboard::candidate(frame, index, |_| true)
+            && keyboard::tab_stop(frame, index, |_| true)
+            && composites.tab_stop(frame, index, |_| None, |_| true);
+        if !stop {
+            continue;
+        }
+        let nearest = containers
             .iter()
             .enumerate()
-            .filter(|(_, (container, _))| descends(frame, stop, container.index))
+            .filter(|(_, (container, _))| descends(frame, index, container.index))
             .max_by_key(|(_, (container, _))| frame.nodes[container.index].identity.len());
         if let Some((slot, _)) = nearest {
             counts[slot] += 1;
         }
     }
-    for ((container, kind), count) in composites.iter().zip(counts) {
-        if count > 1 {
+    for ((container, kind), count) in containers.iter().zip(counts) {
+        let roved = *kind != Composite::Menu
+            && nodes.iter().any(|node| {
+                composites
+                    .container_of(node.index)
+                    .is_some_and(|(owner, _)| owner == container.index)
+            });
+        if count > 1 && roved {
             found.push(violation(
                 frame,
                 container,

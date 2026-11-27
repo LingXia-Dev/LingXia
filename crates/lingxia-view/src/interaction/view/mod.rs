@@ -153,6 +153,9 @@ pub struct ViewInteraction {
     scrub: Option<scrub::Scrub>,
     /// The `onPointer` element the fine pointer is over, and where.
     hovering: Option<(String, [f32; 2])>,
+    /// Role-contract violations this page already logged.
+    #[cfg(feature = "dev")]
+    contract_logged: std::collections::HashSet<(crate::semantics::contract::Rule, String, String)>,
 }
 
 /// What a presentation produced besides pixels.
@@ -719,8 +722,12 @@ impl ViewInteraction {
         }
         self.frame = Some(next);
         #[cfg(feature = "dev")]
-        if new_commit && let Some(semantics) = self.semantics() {
-            crate::semantics::contract::warn(&semantics);
+        if new_commit {
+            let mut logged = std::mem::take(&mut self.contract_logged);
+            if let Some(semantics) = self.semantics() {
+                crate::semantics::contract::warn(&semantics, &mut logged);
+            }
+            self.contract_logged = logged;
         }
         if let Some(point) = self.exploring {
             let target = self
