@@ -1,4 +1,4 @@
-import { createContext, cx, useContext, useId, useLocal, useView, type Child, type Local } from '@lingxia/view';
+import { createContext, cx, errorText, useContext, useId, useLocal, useView, type Child, type Local } from '@lingxia/view';
 import { liuliText } from '../i18n/text';
 import type { BannerTone } from '../Banner/Banner';
 import { Button } from '../Button/Button';
@@ -34,9 +34,17 @@ export interface ToastOptions {
   duration?: number;
 }
 
+/** A failure's toast: the message is its `errorText` words. */
+export type ErrorToastOptions = Omit<ToastOptions, 'message'> & {
+  /** The page's own words when the failure's code has none: "Couldn't save the note". */
+  fallback?: string;
+};
+
 export interface Toaster {
   /** Queues a toast, or replaces the one with the same `id`; returns its id. */
   show(options: ToastOptions): string;
+  /** Queues a failure as its `errorText` words, `danger` unless `tone` says otherwise; a cancel (`E_ABORT`) shows nothing and returns `null`. */
+  show(error: unknown, options?: ErrorToastOptions): string | null;
   /** Closes the toast with this id, shown or queued; without one, the toast showing. */
   dismiss(id?: string): void;
 }
@@ -114,7 +122,7 @@ interface Entry {
 }
 
 const outside: Toaster = {
-  show() { throw Error('Liuli: useToast() needs a ToastRegion above it'); },
+  show(): never { throw Error('Liuli: useToast() needs a ToastRegion above it'); },
   dismiss() {},
 };
 const ToastContext = createContext<Toaster>(outside);
@@ -131,27 +139,33 @@ function regionFor(queue: Local<Entry[]>, seq: Local<number>, slot: Local<number
     if (list[0]?.seq !== queue.value[0]?.seq) slot.set(1 - slot.value);
     queue.set(list);
   };
+  const add = (options: ToastOptions) => {
+    const next = seq.value + 1;
+    seq.set(next);
+    const id = options.id ?? `toast-${next}`;
+    const entry: Entry = {
+      id,
+      seq: next,
+      message: options.message,
+      tone: options.tone ?? 'neutral',
+      action: options.action?.label ?? null,
+      isBusy: options.isBusy ?? false,
+      duration: options.duration ?? null,
+    };
+    if (options.action) actions.set(id, options.action.onClick);
+    else actions.delete(id);
+    const list = queue.value;
+    const at = list.findIndex(item => item.id === id);
+    update(at < 0 ? [...list, entry] : list.map((item, index) => (index === at ? entry : item)));
+    return id;
+  };
   const toaster: Toaster = {
-    show(options) {
-      const next = seq.value + 1;
-      seq.set(next);
-      const id = options.id ?? `toast-${next}`;
-      const entry: Entry = {
-        id,
-        seq: next,
-        message: options.message,
-        tone: options.tone ?? 'neutral',
-        action: options.action?.label ?? null,
-        isBusy: options.isBusy ?? false,
-        duration: options.duration ?? null,
-      };
-      if (options.action) actions.set(id, options.action.onClick);
-      else actions.delete(id);
-      const list = queue.value;
-      const at = list.findIndex(item => item.id === id);
-      update(at < 0 ? [...list, entry] : list.map((item, index) => (index === at ? entry : item)));
-      return id;
-    },
+    show: ((subject: unknown, options?: ErrorToastOptions) => {
+      if (isToastOptions(subject)) return add(subject);
+      const { fallback, ...rest } = options ?? {};
+      const message = errorText(subject as { readonly code?: string } | null | undefined, fallback);
+      return message === null ? null : add({ tone: 'danger', ...rest, message });
+    }) as Toaster['show'],
     dismiss(id) {
       const list = queue.value;
       const target = id ?? list[0]?.id;
@@ -163,6 +177,13 @@ function regionFor(queue: Local<Entry[]>, seq: Local<number>, slot: Local<number
   const made = { toaster, actions };
   regions.set(queue, made);
   return made;
+}
+
+// A failure is an `Error` or carries a string `code`; the options form carries only `message`.
+function isToastOptions(value: unknown): value is ToastOptions {
+  if (value === null || typeof value !== 'object' || value instanceof Error) return false;
+  const { code, message } = value as { code?: unknown; message?: unknown };
+  return typeof code !== 'string' && typeof message === 'string';
 }
 
 /** The nearest `ToastRegion`'s toaster. */

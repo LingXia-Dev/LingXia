@@ -130,8 +130,17 @@ fn error_word(code: &str) -> Option<&'static str> {
 
 #[derive(rong::FromJSObject, Default)]
 #[ts_skip]
-struct ErrorTextOptions {
-    fallback: Option<String>,
+pub(crate) struct ErrorTextOptions {
+    pub(crate) fallback: Option<String>,
+}
+
+/// A thrown `Error`, or an object carrying a string `code` such as an event's failure.
+pub(crate) fn is_failure(value: &rong::JSValue) -> bool {
+    value.is_error()
+        || value
+            .clone()
+            .into_object()
+            .is_some_and(|object| object.get_opt::<_, String>("code").ok().flatten().is_some())
 }
 
 /// A failure as text for the person, by its `code`, in the lxapp's language: what a View's
@@ -142,6 +151,15 @@ fn error_text(
     error: rong::JSValue,
     options: rong::function::Optional<ErrorTextOptions>,
 ) -> JSResult<Option<String>> {
+    error_words(&ctx, error, options.0.and_then(|options| options.fallback))
+}
+
+/// `errorText`'s words for `error`; `None` for a cancel.
+pub(crate) fn error_words(
+    ctx: &JSContext,
+    error: rong::JSValue,
+    fallback: Option<String>,
+) -> JSResult<Option<String>> {
     let code = error
         .into_object()
         .and_then(|object| object.get_opt::<_, String>("code").ok().flatten());
@@ -150,12 +168,12 @@ fn error_text(
     }
     let specific = code.as_deref().and_then(error_word);
     if specific.is_none()
-        && let Some(fallback) = options.0.and_then(|options| options.fallback)
+        && let Some(fallback) = fallback
     {
         return Ok(Some(fallback));
     }
     let word = specific.unwrap_or("failed");
-    let lxapp = LxApp::from_ctx(&ctx)?;
+    let lxapp = LxApp::from_ctx(ctx)?;
     let language = lxapp.content_language(&::lxapp::display_language());
     let key = format!("@view.error.{word}");
     if let Some(own) = lxapp.message_in(&key, &language, &serde_json::Value::Null) {
@@ -171,6 +189,19 @@ fn error_text(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_failure_is_an_error_or_carries_a_code() {
+        use rong::{JSEngine, Source};
+        let runtime = <rong::RongJS as JSEngine>::runtime();
+        let ctx = runtime.context();
+        let failure = |js: &str| super::is_failure(&ctx.eval(Source::from_bytes(js)).unwrap());
+        assert!(failure("new Error('x')"));
+        assert!(failure("({ code: 'E_NETWORK' })"));
+        assert!(!failure("({ title: 'Saved' })"));
+        assert!(!failure("'Saved'"));
+        assert!(!failure("({ code: 1 })"));
+    }
+
     #[test]
     fn error_words_match_the_view() {
         let view = include_str!("../../../packages/lingxia-view/src/runtime/words.js");

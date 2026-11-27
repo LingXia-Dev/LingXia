@@ -3,7 +3,7 @@ use crate::i18n::{
 };
 use lxapp::LxApp;
 use lxapp::dialogs::{DialogDecision, ModalShown};
-use rong::{FromJSObject, JSContext, JSObject, JSResult, JSValue, RongJSError};
+use rong::{FromJSObject, JSContext, JSObject, JSResult, JSValue, RongJSError, function::Optional};
 use std::sync::Arc;
 
 /// `lx.ui.alert` / `lx.ui.confirm` options; a bare string is the title.
@@ -130,7 +130,21 @@ fn watched_modal(appid: &str, options: &JSModalOptions) -> DialogDecision<bool> 
 /// @throws {E_ABORT} `signal` aborted; the dialog is closed.
 /// @throws {E_INVALID_STATE} No page can show a dialog now; `reason` is `'appClosed'` when the app is not open.
 /// @throws {E_INTERNAL} The dialog could not be shown.
-async fn alert(ctx: JSContext, options: JSValue) -> JSResult<()> {
+async fn alert(
+    ctx: JSContext,
+    options: JSValue,
+    words: Optional<crate::lxapp::ErrorTextOptions>,
+) -> JSResult<()> {
+    let options = if crate::lxapp::is_failure(&options) {
+        // A failure is titled with its `errorText` words; a cancel resolves with no dialog.
+        let fallback = words.0.and_then(|words| words.fallback);
+        match crate::lxapp::error_words(&ctx, options, fallback)? {
+            Some(title) => JSValue::from_rust(&ctx, title),
+            None => return Ok(()),
+        }
+    } else {
+        options
+    };
     show_modal(ctx, dialog_options(options, false)?).await?;
     Ok(())
 }

@@ -148,6 +148,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Do: Say what happened in a few words: "Note archived", not "Success".
 - Do: Offer Undo for an action that is easy to regret.
 - Do: Give a running message an `id`, so each update replaces it; while the work runs make it busy, and end with the result.
+- Do: Show a failure with `toast.show(e)` in its `catch`: it reads as the `errorText` words, `danger`, and a cancel shows nothing.
 - Do: Where a page keeps a control or bar at the bottom end, move the toasts with `position` or keep that edge clear with `inset`; they show in the bottom end corner, up to 400 pt wide.
 - Don't: Put something people must read or act on in a toast; use a Banner or a Dialog.
 - Don't: Show a toast for the result people can already see where they pressed.

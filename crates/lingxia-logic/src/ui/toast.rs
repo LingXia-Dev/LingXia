@@ -2,7 +2,8 @@ use crate::i18n::{js_internal_error, js_invalid_parameter_error, js_state_error}
 use lxapp::LxApp;
 use lxapp::dialogs::ToastShown;
 use rong::{
-    FromJSObject, JSContext, JSContextService, JSFunc, JSObject, JSResult, function::Optional,
+    FromJSObject, JSContext, JSContextService, JSFunc, JSObject, JSResult, JSValue,
+    function::Optional,
 };
 use std::cell::Cell;
 use std::rc::Rc;
@@ -117,14 +118,38 @@ enum ToastPhase {
 /// busy.dismiss();
 /// ```
 /// @throws {E_INVALID_STATE} The app is not open; `reason` is `'appClosed'`.
-fn show_toast(
-    ctx: JSContext,
-    message: String,
-    options: Optional<JSToastOptions>,
-) -> JSResult<JSObject> {
-    let mut options = options.0.unwrap_or_default();
+fn show_toast(ctx: JSContext, message: JSValue, options: Optional<JSValue>) -> JSResult<JSObject> {
+    // Read by hand: an error's `fallback` belongs to the error form's type, not `ToastOptions`.
+    let raw = options.0.filter(|value| !value.is_undefined());
+    let mut options = match &raw {
+        Some(value) => value
+            .clone()
+            .to_rust::<JSToastOptions>()
+            .map_err(|error| error.at_argument(2))?,
+        None => JSToastOptions::default(),
+    };
     let signal = options.signal.take();
     crate::task_object::validate_abort_signal(signal.as_ref())?;
+    let message = if message.is_string() {
+        message.to_rust::<String>()?
+    } else if message.is_undefined() {
+        return Err(js_invalid_parameter_error("toast needs a message or an error").at_argument(1));
+    } else {
+        // A failure reads as `errorText` words, `danger` unless told otherwise; a cancel shows nothing.
+        let fallback = raw
+            .and_then(|value| value.into_object())
+            .map(|object| object.get_opt::<_, String>("fallback"))
+            .transpose()
+            .map_err(|error| error.at_argument(2))?
+            .flatten();
+        match crate::lxapp::error_words(&ctx, message, fallback)? {
+            Some(words) => {
+                options.tone.get_or_insert_with(|| "danger".into());
+                words
+            }
+            None => return inert_handle(&ctx),
+        }
+    };
     let request = ToastRequest::parse(message, options)?;
     let lxapp = LxApp::from_ctx(&ctx)?;
     if !lxapp.is_opened() {
@@ -206,6 +231,16 @@ fn show_toast(
     Ok(handle)
 }
 
+/// The handle for a toast that was never shown.
+fn inert_handle(ctx: &JSContext) -> JSResult<JSObject> {
+    let handle = JSObject::new(ctx);
+    handle.set(
+        "dismiss",
+        JSFunc::new(ctx, || Ok::<(), rong::RongJSError>(()))?,
+    )?;
+    Ok(handle)
+}
+
 /// Resolves after the layer accepts presentation, not after the toast expires.
 async fn present_toast(ctx: &JSContext, request: ToastRequest) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(ctx)?;
@@ -247,6 +282,40 @@ rong::js_api! {
             ts_params = "message: string, options?: ToastOptions",
             ts_return = "ToastHandle"
         ) = show_toast;
+    }
+}
+
+#[cfg(test)]
+mod error_form_tests {
+    use rong::{JSEngine, JSObject, JSValue, Source, function::Optional};
+
+    fn value(ctx: &rong::JSContext, js: &str) -> JSValue {
+        ctx.eval(Source::from_bytes(js)).unwrap()
+    }
+
+    #[test]
+    fn a_cancel_shows_nothing_and_hands_back_a_handle_that_does_nothing() {
+        let runtime = <rong::RongJS as JSEngine>::runtime();
+        let ctx = runtime.context();
+        let cancel = value(
+            &ctx,
+            "Object.assign(new Error('stop'), { code: 'E_ABORT' })",
+        );
+        // No app is open: a toast that tried to show would refuse with `appClosed`.
+        let handle: JSObject = super::show_toast(ctx.clone(), cancel, Optional(None)).unwrap();
+        let dismiss: rong::JSFunc = handle.get("dismiss").unwrap();
+        let _: () = dismiss.call(None, ()).unwrap();
+    }
+
+    #[test]
+    fn a_toast_with_no_message_is_refused() {
+        let runtime = <rong::RongJS as JSEngine>::runtime();
+        let ctx = runtime.context();
+        let missing = value(&ctx, "undefined");
+        let error = super::show_toast(ctx.clone(), missing, Optional(None))
+            .err()
+            .unwrap();
+        assert_eq!(error.code(), Some(rong::error::E_INVALID_ARG));
     }
 }
 

@@ -567,6 +567,25 @@ declare global {
     download(url: string | URL, options?: DownloadOptions): DownloadTask<DownloadResult>;
   }
 
+  interface UiApi {
+    /**
+     * Show a short message, or a caught failure in its `lx.app.errorText` words. A failure is
+     * `danger` unless `options.tone` says otherwise; a cancel (`E_ABORT`) shows nothing and returns
+     * a handle that does nothing.
+     *
+     * @example
+     * ```ts
+     * try { await save(); } catch (e) { lx.ui.toast(e); }
+     * ```
+     */
+    toast(error: unknown, options?: ToastOptions & ErrorTextOptions): ToastHandle;
+    /** An acknowledgement dialog, or one titled with a failure's `lx.app.errorText` words; a cancel (`E_ABORT`) resolves with no dialog. */
+    alert(error: Error | {
+      /** What went wrong, as an `lx` failure names it. */
+      readonly code: string;
+    }, options?: ErrorTextOptions): Promise<void>;
+  }
+
   interface Lx {
     /** The host app: identity, notifications, badges, appearance, language, cache and updates. */
     readonly host: HostAppApi;

@@ -32,7 +32,10 @@ argumentContracts({
   },
   'ui.toast': [
     ['no message', [], 'E_INVALID_ARG'],
-    ['number message', [1], 'E_INVALID_ARG'],
+    ['a thrown number reads as a failure', [1], 'ok'],
+    ['a failure', [{ code: 'E_NETWORK' }], 'ok'],
+    ['a cancel', [{ code: 'E_ABORT' }], 'ok'],
+    ['a failure with its fallback', [{ code: 'E_INTERNAL' }, { fallback: 'Not saved' }], 'ok'],
     ['options not object', ['hi', 'x'], 'E_INVALID_ARG'],
     ['unknown tone', ['hi', { tone: 'loud' }], 'E_INVALID_ARG'],
     ['message', ['hi'], 'ok'],

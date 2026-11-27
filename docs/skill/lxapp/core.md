@@ -115,7 +115,19 @@ lx.ui.toast(scan.value)                    // narrowed: the payload is present
 
 Everything an `lx` call throws or rejects with is an `LxError`, argument refusals included
 (`E_INVALID_ARG`, named `TypeError`, the argument in `data`); an `lx` call never throws a bare
-`TypeError`. `message` is English for a log; branch on `code` (and `reason`) and show your own text:
+`TypeError`. `message` is English for a log and is never shown. Show a failure by handing it to the
+toast, which words it by `code` in the app's language and shows nothing for `E_ABORT`:
+
+```ts
+try {
+  await lx.clipboard.writeText(link)
+} catch (e) {
+  lx.ui.toast(e)                                        // or lx.ui.toast(e, { fallback: "Couldn't copy the link" })
+}
+```
+
+A View's toaster takes the same: `useToast().show(e, { fallback })` (Liuli). `lx.ui.alert(e)` titles a
+dialog with the same words. Branch on `code` (and `reason`) only to act differently:
 
 ```ts
 import { LxError, lx } from '@lingxia/logic'
@@ -124,7 +136,7 @@ try {
   await lx.media.saveToLibrary(path)
 } catch (e) {
   if (e instanceof LxError && e.code === 'E_PERMISSION_DENIED') return lx.ui.toast('Allow photo access in Settings')
-  throw e
+  lx.ui.toast(e)
 }
 ```
 

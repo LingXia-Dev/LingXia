@@ -423,8 +423,7 @@ translation, an argument a translation adds or drops, and a catalogue for an und
 - An argument is wrapped in bidi isolates (U+2066–2069) when the language is right to left or the
   argument holds right-to-left text, so it cannot reorder the sentence around it.
 - Logic: `lx.app.t('cart.items', { count })` for toasts, dialogs and action sheets.
-  A failure's words come from `lx.app.errorText(error, { fallback })`, the same `@view.error.*` words a View's
-  `errorText` says by `code`; `null` for `E_ABORT`.
+  `lx.app.errorText(error, { fallback })` gives a failure's `@view.error.*` words for text of your own; a toast takes the error itself.
 - WebView (React): `const t = useText()` from `@lingxia/react`; `t` from `@lingxia/bridge` elsewhere.
 - The View's own words (picker Cancel/Done, dialog OK) are `@view.*` keys; a catalogue that names
   one, e.g. `"@view.done"`, overrides it in that language only. The build checks an override against

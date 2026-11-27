@@ -232,3 +232,28 @@ test('ToastRegion: takes several children and a page-bottom scroll, in one box t
   assert.equal(screen.getByTestId('list').parent, box);
   assert.deepEqual([box.props.grow, box.props.minHeight], [1, 0]);
 });
+
+test('a failure shows as its errorText words in the danger tone; a cancel shows nothing', async () => {
+  const screen = await renderPage(`
+    import { Button } from '@liulidesign/core/Button';
+    import { ToastRegion, useToast } from '@liulidesign/core/Toast';
+    function Fail() {
+      const toast = useToast();
+      const fail = (error, options) => () => { try { throw error; } catch (e) { toast.show(e, options); } };
+      return <view>
+        <Button label="Cancel" onClick={fail(Object.assign(Error('stop'), { code: 'E_ABORT' }))} data-testid="cancel" />
+        <Button label="Offline" onClick={fail(Object.assign(Error('down'), { code: 'E_NETWORK' }))} data-testid="offline" />
+        <Button label="Broken" onClick={fail(Error('boom'), { fallback: "Couldn't save the note" })} data-testid="broken" />
+      </view>;
+    }
+    export function render() { return <page><ToastRegion><Fail /></ToastRegion></page>; }
+  `);
+  screen.press(screen.getByTestId('cancel'));
+  assert.equal(shown(screen).length, 0);
+  screen.press(screen.getByTestId('offline'));
+  assert.notEqual(message(screen), 'down', 'the message is for the log, never shown');
+  assert.deepEqual(live(screen, 'alert'), [message(screen)], 'danger is announced at once');
+  screen.press(screen.getByTestId('toast-dismiss'));
+  screen.press(screen.getByTestId('broken'));
+  assert.equal(message(screen), "Couldn't save the note");
+});
