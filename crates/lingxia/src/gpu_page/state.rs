@@ -77,6 +77,19 @@ pub(crate) fn event_from_view(message: ToLogic) -> GpuViewEvent {
             id,
             outcome: outcome.map_err(error_from_view),
         },
+        ToLogic::HandlerFailure {
+            prop,
+            test_id,
+            action,
+            name,
+            message,
+        } => GpuViewEvent::HandlerFailure(lxapp::GpuHandlerFailure {
+            prop,
+            test_id,
+            action,
+            name,
+            message,
+        }),
     }
 }
 

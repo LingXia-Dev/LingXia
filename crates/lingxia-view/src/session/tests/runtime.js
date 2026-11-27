@@ -3023,6 +3023,18 @@
     handlerFailure = "";
     return result;
   }
+  function reportHandlerFailure(site, error) {
+    if (requests.length >= 512) return;
+    const isError = error instanceof Error;
+    requests.push({
+      kind: "failure",
+      prop: site ? String(site[0]) : "",
+      testId: site && typeof site[2] === "string" ? site[2] : null,
+      action: typeof error?.action === "string" ? error.action : null,
+      name: isError ? error.name : "Error",
+      message: (isError ? error.uiMessage ?? error.message : String(error)).slice(0, 2048)
+    });
+  }
   var leaveGuards = createLeaveGuards(callLeaveHost, report, (message) => failHandler(message));
   function currentActions() {
     return { actions, channels };
@@ -3150,6 +3162,7 @@
       pendingActions.set(id, {
         resolve: settle2.resolve,
         reject(cause) {
+          if (cause instanceof Error && cause.action === void 0) cause.action = name;
           settle2.reject(cause);
           Promise.resolve().then(() => {
             if (!promise.handled && cause?.code !== "E_ABORT") {
@@ -7280,6 +7293,7 @@
       if (paste) paste.state.open = false;
       if (result && typeof result.then === "function") Promise.resolve(result).catch((thrown) => {
         if (!hasActionEpoch(epoch2)) return;
+        reportHandlerFailure(entry.site, sited(thrown));
         const message = `UI_HANDLER: ${where(entry)} rejected: ${messageOf(sited(thrown))}`;
         if (entry.isolated) report(message);
         else failHandler(message);
@@ -7287,6 +7301,7 @@
       return paste?.state.prevented ? "prevented" : true;
     } catch (thrown) {
       const error = sited(thrown);
+      reportHandlerFailure(entry.site, error);
       if (error instanceof Error && entry.site) error.message = `UI_HANDLER: ${where(entry)} threw: ${error.message}`;
       page.updates.clear();
       if (!entry.isolated && loudFailures()) throw error;

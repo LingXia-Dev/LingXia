@@ -737,6 +737,23 @@
     );
     // What a test's getPage(id) reaches the page-scoped members through.
     Object.defineProperty(svc, "page", { value: page, enumerable: false });
+    // A View event handler of this page threw or rejected; the host hands it over to report.
+    Object.defineProperty(svc, "_reportViewFailure", {
+      value(failure) {
+        const report = globalThis.__LX_REPORT_FAILURE__;
+        const error = new Error(String(failure && failure.message));
+        if (failure && typeof failure.name === "string" && failure.name) error.name = failure.name;
+        const source = {
+          kind: "view_handler",
+          prop: String((failure && failure.prop) || ""),
+          testId: failure && typeof failure.testId === "string" ? failure.testId : null,
+          action: failure && typeof failure.action === "string" ? failure.action : null,
+        };
+        if (typeof report === "function") report({ error, source }, { name: page.name, instance: pageInstanceId });
+        else console.error(`A View handler of '${page.name}' failed:`, error);
+      },
+      enumerable: false,
+    });
     return svc;
   }
 

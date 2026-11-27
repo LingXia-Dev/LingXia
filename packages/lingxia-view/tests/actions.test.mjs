@@ -161,3 +161,21 @@ test('a read before the catalog arrives waits as undefined; the same read after 
   configureActions(catalog);
   assert.throws(()=>currentActions().actions.holdPage,{message:'UI_ACTION: `holdPage` is not an action of pages/home/index: the build did not see it'});
 });
+test('a failed handler is sent to Logic for App.onError, with the action it called',async()=>{
+  configureActions(catalog);setLoudFailures(false);
+  const flush=async()=>{for(let i=0;i<6;i++) await Promise.resolve();};
+  try {
+    const {actions}=createView({},{});
+    const node=describe(()=>h('button',{'data-testid':'go',onClick:async()=>{await actions.increment();}},'go'),{});
+    assert.equal(dispatch(node[7]),true);
+    const [call]=takeActionRequests().map(JSON.parse);
+    receiveActionResponse({v:2,kind:'res',id:call.id,ok:false,error:{code:'E_CONFLICT',message:'sold out'}});
+    await flush();
+    assert.deepEqual(takeActionRequests().map(JSON.parse),[{v:2,kind:'failure',prop:'onClick',testId:'go',action:'increment',name:'LxBridgeError',message:'sold out'}]);
+    const now=describe(()=>h('button',{onClick:()=>{throw TypeError('bad');}},'go'),{});
+    assert.equal(dispatch(now[7]),true);
+    const [thrown]=takeActionRequests().map(JSON.parse);
+    assert.deepEqual({...thrown,message:thrown.message.split('\n')[0]},{v:2,kind:'failure',prop:'onClick',testId:null,action:null,name:'TypeError',message:'bad'});
+    takeActionErrors();
+  } finally { setLoudFailures(true);reset(); }
+});

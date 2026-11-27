@@ -51,6 +51,14 @@ pub enum ToLogic {
         id: String,
         outcome: Result<Value, BridgeError>,
     },
+    /// An event handler threw or its promise rejected, for Logic's `App.onError`.
+    HandlerFailure {
+        prop: String,
+        test_id: Option<String>,
+        action: Option<String>,
+        name: String,
+        message: String,
+    },
 }
 
 fn invalid(what: &str) -> rong::RongJSError {
@@ -67,6 +75,15 @@ fn string(object: &JSObject, key: &str) -> JSResult<String> {
         return Err(invalid(key));
     }
     value.into_value().try_into()
+}
+
+/// An absent, `undefined` or `null` field is `None`; a string is kept.
+fn optional_string(object: &JSObject, key: &str) -> JSResult<Option<String>> {
+    match object.get_opt::<_, JSValue>(key)? {
+        Some(value) if value.is_string() => Ok(Some(value.into_value().try_into()?)),
+        Some(value) if !value.is_undefined() && !value.is_null() => Err(invalid(key)),
+        _ => Ok(None),
+    }
 }
 
 /// An absent or `undefined` field is `None`; anything else is walked.
@@ -86,8 +103,18 @@ impl ToLogic {
         let object = message
             .into_object()
             .ok_or_else(|| invalid("not an object"))?;
+        let kind = string(&object, "kind")?;
+        if kind == "failure" {
+            return Ok(Self::HandlerFailure {
+                prop: string(&object, "prop")?,
+                test_id: optional_string(&object, "testId")?,
+                action: optional_string(&object, "action")?,
+                name: string(&object, "name")?,
+                message: string(&object, "message")?,
+            });
+        }
         let id = string(&object, "id")?;
-        Ok(match string(&object, "kind")?.as_str() {
+        Ok(match kind.as_str() {
             "req" => Self::Call {
                 id,
                 method: string(&object, "method")?,
@@ -164,6 +191,15 @@ impl ToLogic {
                 outcome: Err(error),
             } => {
                 json!({"v":2,"kind":"res","id":id,"ok":false,"error":{"code":error.code,"message":error.message,"reason":error.reason,"data":error.data}})
+            }
+            Self::HandlerFailure {
+                prop,
+                test_id,
+                action,
+                name,
+                message,
+            } => {
+                json!({"v":2,"kind":"failure","prop":prop,"testId":test_id,"action":action,"name":name,"message":message})
             }
         };
         if let Some(frame) = frame.as_object_mut() {

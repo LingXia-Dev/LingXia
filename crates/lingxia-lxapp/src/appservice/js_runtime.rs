@@ -695,6 +695,12 @@ async fn handle_bridge_source(
             page_svc.handle_state_ack(work_id, scope, rev).await;
             Ok(())
         }
+        AppServiceCommand::HandlerFailure { work_id, failure } => {
+            if page_svc.session_work_is_active(work_id).await {
+                page_svc.report_view_failure(&failure);
+            }
+            Ok(())
+        }
         AppServiceCommand::StateResync { work_id, outbound } => {
             if !page_svc.session_work_is_active(work_id).await {
                 return Ok(());

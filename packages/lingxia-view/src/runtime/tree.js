@@ -4,7 +4,7 @@ import { h, resetArena, clearArena } from './nodes.js';
 import { resolveNode, listTag, resetStyleWarnings } from './elements.js';
 import { encodeTree, copyTree, retainCells, renderRow, wireReset } from './encode.js';
 import { validInputText, isFrozen } from './data.js';
-import { report, failHandler, loudFailures, resetActions, actionEpochNow, hasActionEpoch, syncPageTitle } from './actions.js';
+import { report, failHandler, loudFailures, resetActions, actionEpochNow, hasActionEpoch, syncPageTitle, reportHandlerFailure } from './actions.js';
 import { sited } from './errors.js';
 import { resetOverlays } from './overlay.js';
 import { resetFrameMeasures } from './frames.js';
@@ -275,6 +275,7 @@ export function dispatch(handle, value, timeStamp) {
     if (paste) paste.state.open = false;
     if (result && typeof result.then === 'function') Promise.resolve(result).catch(thrown => {
       if (!hasActionEpoch(epoch)) return;
+      reportHandlerFailure(entry.site, sited(thrown));
       const message = `UI_HANDLER: ${where(entry)} rejected: ${messageOf(sited(thrown))}`;
       if (entry.isolated) report(message); else failHandler(message);
     });
@@ -282,6 +283,7 @@ export function dispatch(handle, value, timeStamp) {
     return paste?.state.prevented ? 'prevented' : true;
   } catch (thrown) {
     const error = sited(thrown);
+    reportHandlerFailure(entry.site, error);
     if (error instanceof Error && entry.site) error.message = `UI_HANDLER: ${where(entry)} threw: ${error.message}`;
     // The writes of the turn that threw are discarded; the page keeps its last state.
     page.updates.clear();

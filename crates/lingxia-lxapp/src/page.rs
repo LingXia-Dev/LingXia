@@ -6,9 +6,10 @@ pub(crate) mod runtime;
 pub(crate) mod view_limits;
 mod view;
 pub use view::{
-    GpuBridgeError, GpuPageView, GpuPageViewFactory, GpuPatchOp, GpuStateSignal, GpuStateWrite,
-    GpuVideoCommand, GpuVideoRequest, GpuViewCreation, GpuViewEvent, GpuViewGeneration,
-    GpuViewMessage, GpuViewRequest, PageViewEnvironment, register_gpu_page_view_factory,
+    GpuBridgeError, GpuHandlerFailure, GpuPageView, GpuPageViewFactory, GpuPatchOp, GpuStateSignal,
+    GpuStateWrite, GpuVideoCommand, GpuVideoRequest, GpuViewCreation, GpuViewEvent,
+    GpuViewGeneration, GpuViewMessage, GpuViewRequest, PageViewEnvironment,
+    register_gpu_page_view_factory,
 };
 pub(crate) use view::{PageView, gpu_app_closed};
 #[cfg(all(test, feature = "js-appservice"))]

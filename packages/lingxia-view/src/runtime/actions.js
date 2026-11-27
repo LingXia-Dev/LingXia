@@ -41,6 +41,20 @@ export function loudFailures() { return loud; }
 export function failHandler(message) { if (loud) handlerFailure ||= message.slice(0, 2048); else report(message); }
 export function takeHandlerFailure() { const result = handlerFailure; handlerFailure = ''; return result; }
 
+/** A handler that threw or rejected also goes to Logic, which reports it to `App.onError`. */
+export function reportHandlerFailure(site, error) {
+  if (requests.length >= 512) return;
+  const isError = error instanceof Error;
+  requests.push({
+    kind: 'failure',
+    prop: site ? String(site[0]) : '',
+    testId: site && typeof site[2] === 'string' ? site[2] : null,
+    action: typeof error?.action === 'string' ? error.action : null,
+    name: isError ? error.name : 'Error',
+    message: (isError ? error.uiMessage ?? error.message : String(error)).slice(0, 2048),
+  });
+}
+
 export const leaveGuards = createLeaveGuards(callLeaveHost, report, message => failHandler(message));
 
 /** The current catalog; Views capture it when created. */
@@ -162,6 +176,8 @@ export function configureActions(metadata) {
     pendingActions.set(id, {
       resolve: settle.resolve,
       reject(cause) {
+        // `App.onError` names the action a failed handler called.
+        if (cause instanceof Error && cause.action === undefined) cause.action = name;
         settle.reject(cause);
         // Nobody awaited or caught it: the page log shows it instead of the failure vanishing.
         Promise.resolve().then(() => {

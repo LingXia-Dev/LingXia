@@ -98,6 +98,11 @@ pub(crate) enum AppServiceCommand {
         work_id: Option<SessionWorkId>,
         outbound: Option<OutboundContext>,
     },
+    /// A GPU View event handler failed; the page reports it to `App.onError`.
+    HandlerFailure {
+        work_id: Option<SessionWorkId>,
+        failure: crate::GpuHandlerFailure,
+    },
     /// Internal lifecycle transitions, never decoded from a document frame.
     BeginSessionWork {
         work_id: SessionWorkId,
@@ -1100,6 +1105,13 @@ impl PageBridge {
                 let error = error.map(RpcError::from);
                 self.close_channel_from_view(page, id, error, &work)
             }
+            crate::GpuViewEvent::HandlerFailure(failure) => self.forward_js_message(
+                page,
+                AppServiceCommand::HandlerFailure {
+                    work_id: work.work_id,
+                    failure,
+                },
+            ),
             crate::GpuViewEvent::Reply { id, outcome } => {
                 if !self.is_current_work(work.work_id) {
                     return Ok(());

@@ -227,6 +227,10 @@ in Logic for all writes up to that revision.
   worker in order with state writes. View → Logic requests, cancels, and channel frames enqueue
   directly onto Logic (where each action runs as its own context task, never blocking the worker
   message pump).
+- **Handler failures**: a View event handler that throws or rejects also sends `HandlerFailure`
+  (`prop`, `testId`, `action`, error `name` and `message`). It is fire-and-forget, admitted like
+  any View → Logic message, and Logic hands it to the page, which reports it to `App.onError` as a
+  `view_handler` source. WebView documents have no equivalent.
 
 ---
 

@@ -219,6 +219,21 @@ pub enum GpuViewEvent {
         id: String,
         outcome: Result<serde_json::Value, GpuBridgeError>,
     },
+    /// A View event handler threw or its promise rejected; Logic reports it to `App.onError`.
+    HandlerFailure(GpuHandlerFailure),
+}
+
+/// A failed View event handler, as `App.onError` receives its `view_handler` source.
+#[derive(Clone, Debug, PartialEq)]
+pub struct GpuHandlerFailure {
+    /// The handler's prop, such as `onPress`.
+    pub prop: String,
+    pub test_id: Option<String>,
+    /// The page action the handler called, when that call is what failed.
+    pub action: Option<String>,
+    /// The thrown error's `name` (`Error` when it was not an `Error`).
+    pub name: String,
+    pub message: String,
 }
 
 /// Native-owned GPU endpoint. Methods must enqueue without blocking the caller.

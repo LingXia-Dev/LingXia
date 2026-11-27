@@ -153,8 +153,8 @@ pub use page::embedded_document::{
     EmbeddedDocumentOptions, EmbeddedErrorCode, EmbeddedSourceError, OpenEmbeddedError,
 };
 pub use page::{
-    GpuBridgeError, GpuChunkReader, GpuPageView, GpuPageViewFactory, GpuPatchOp, GpuStateSignal,
-    GpuStateWrite, GpuVideoCommand, GpuVideoRequest, GpuViewCreation, GpuViewEvent,
+    GpuBridgeError, GpuChunkReader, GpuHandlerFailure, GpuPageView, GpuPageViewFactory, GpuPatchOp,
+    GpuStateSignal, GpuStateWrite, GpuVideoCommand, GpuVideoRequest, GpuViewCreation, GpuViewEvent,
     GpuViewGeneration, GpuViewMessage, GpuViewRequest, PageViewEnvironment,
     register_gpu_page_view_factory,
 };

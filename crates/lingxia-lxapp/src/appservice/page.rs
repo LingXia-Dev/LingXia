@@ -1704,6 +1704,27 @@ impl PageSvc {
         )))
     }
 
+    /// Hand a failed View handler to the page, which reports it to `App.onError`.
+    pub(crate) fn report_view_failure(&self, failure: &crate::GpuHandlerFailure) {
+        let Some(this) = self.this.get() else {
+            return;
+        };
+        let Ok(report) = this.get::<_, JSFunc>("_reportViewFailure") else {
+            return;
+        };
+        let record = serde_json::json!({
+            "prop": failure.prop,
+            "testId": failure.test_id,
+            "action": failure.action,
+            "name": failure.name,
+            "message": failure.message,
+        });
+        let ctx = this.context();
+        if let Ok(record) = record.to_string().json_to_js_value(&ctx) {
+            let _ = report.call::<_, ()>(Some(this), (record,));
+        }
+    }
+
     /// Retire the service: queued lifecycle events other than `onUnload` are
     /// dropped and in-flight handlers lose their write path back to the page.
     fn abort_lifetime(&self) {
