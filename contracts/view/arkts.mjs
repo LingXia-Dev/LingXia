@@ -52,24 +52,11 @@ ${['editorTextBytes', 'inputRequestBytes', 'inputBatchEdits', 'clipboardItems', 
 `;
 }
 
-// The same names as Android's GpuSemantics, so adapters stop spelling roles and keys as literals.
-function semanticsArkTS(schema) {
-  const { roles, liveRegions, events, actions, keys } = schema.semantics;
-  const line = (prefix, name, value) => `  static readonly ${prefix}_${constant(name)}: string = ${JSON.stringify(value)};`;
-  return `${header}/** Semantic node roles, live-region kinds, event kinds and JSON keys of the shared projection. */
-export class GpuSemantics {
-${[...roles.map(role => line('ROLE', role, role)), ...liveRegions.map(kind => line('LIVE', kind, kind)), ...events.map(kind => line('EVENT', kind, kind)),
-  ...actions.map(kind => line('ACTION', kind, kind)), ...Object.entries(keys).map(([name, key]) => line('KEY', name, key))].join('\n')}
-}
-`;
-}
-
 /** Repository-relative outputs, for `generate()`. */
 export function arkts(schema) {
   const root = 'lingxia-sdk/harmony/lingxia/src/main/ets/view/generated';
   return {
     [`${root}/GpuFrame.ets`]: frameArkTS(schema),
     [`${root}/GpuInput.ets`]: inputArkTS(schema),
-    [`${root}/GpuSemantics.ets`]: semanticsArkTS(schema),
   };
 }
