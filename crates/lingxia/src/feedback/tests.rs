@@ -105,7 +105,7 @@ struct Fixture {
 impl Fixture {
     fn new() -> Self {
         let overlays = Arc::new(Overlays::default());
-        let feedback = Feedback::new(overlays.clone());
+        let feedback = Feedback::with_themes(overlays.clone(), themes);
         Self { overlays, feedback }
     }
     fn surface(&self, index: usize) -> Arc<Surface> {
@@ -156,6 +156,25 @@ impl Fixture {
             }],
         );
     }
+}
+
+/// app.a seeds a green accent; app.b writes its accent roles; others bundle no theme.
+fn themes(appid: &str) -> Option<String> {
+    match appid {
+        "app.a" => Some(r##"{"name":"a","version":1,"accent":{"seed":"#0f9d58","derive":true}}"##.into()),
+        "app.b" => Some(
+            r##"{"name":"b","version":1,"appearance":{"light":{"accent":"#7a2bd9","canvas":"#000000"},"dark":{"accent":"#b48cff"}}}"##
+                .into(),
+        ),
+        _ => None,
+    }
+}
+
+fn themes_pushed(surface: &Surface) -> Vec<Value> {
+    (surface.environment.lock().unwrap().iter())
+        .filter(|update| update["kind"] == "theme")
+        .cloned()
+        .collect()
 }
 
 fn toast(title: &str, duration: Option<u64>) -> ToastRequest {
@@ -242,11 +261,65 @@ fn the_layer_takes_the_products_contrast_when_it_opens_and_when_it_changes() {
     f.feedback.toast("app.a", toast("Saved", None)).unwrap();
     let surface = f.surface(0);
     let pushed = |surface: &Surface| surface.environment.lock().unwrap().clone();
-    let first = pushed(&surface);
-    assert_eq!(first.len(), 1);
-    assert_eq!(first[0]["kind"], "contrast");
+    let contrast = |surface: &Surface| {
+        (pushed(surface).into_iter())
+            .filter(|update| update["kind"] == "contrast")
+            .count()
+    };
+    assert_eq!(
+        pushed(&surface)[0]["kind"],
+        "contrast",
+        "first, with the open"
+    );
+    assert_eq!(contrast(&surface), 1);
     f.feedback.contrast_changed();
-    assert_eq!(pushed(&surface).len(), 2, "an open layer takes the change");
+    assert_eq!(contrast(&surface), 2, "an open layer takes the change");
+}
+
+#[test]
+fn the_front_item_draws_in_its_lxapps_accent_over_the_default_theme() {
+    let f = Fixture::new();
+    f.feedback.toast("app.a", toast("Saved", None)).unwrap();
+    let surface = f.surface(0);
+    let first = themes_pushed(&surface);
+    assert_eq!(first.len(), 1);
+    assert_eq!(first[0]["pack"]["accent"]["seed"], "#0f9d58");
+    assert_eq!(
+        first[0]["pack"]["name"], "lingxia-default",
+        "only the accent is the app's"
+    );
+    f.feedback.toast("app.a", toast("Again", None)).unwrap();
+    assert_eq!(themes_pushed(&surface).len(), 1, "same lxapp, no push");
+
+    let _reply = f
+        .feedback
+        .dialog("app.b", "en-US", confirm("Delete?"))
+        .unwrap();
+    let pushed = themes_pushed(&surface);
+    let b = &pushed.last().unwrap()["pack"];
+    assert_eq!(pushed.len(), 2);
+    assert_eq!(b["appearance"]["light"]["accent"], "#7a2bd9");
+    assert_eq!(b["appearance"]["dark"]["accent"], "#b48cff");
+    assert_eq!(
+        b["accent"],
+        Value::Null,
+        "written roles are not fought by a seed"
+    );
+    assert_eq!(
+        b["appearance"]["light"]["canvas"], "#f6f7fb",
+        "surfaces stay the host's"
+    );
+    let revisions: Vec<_> = pushed.iter().map(|p| p["revision"].as_u64()).collect();
+    assert!(revisions[1] > revisions[0]);
+
+    f.feedback.dismiss("app.b");
+    f.feedback.toast("app.c", toast("Plain", None)).unwrap();
+    let pushed = themes_pushed(&surface);
+    assert_eq!(
+        pushed.last().unwrap()["pack"]["accent"]["seed"],
+        "#365cdd",
+        "an lxapp without a theme gets the default accent back"
+    );
 }
 
 #[test]

@@ -2989,7 +2989,7 @@ impl LxApp {
     }
 
     /// The theme the lxapp bundles (`theme.json`, completed by `lingxia build`).
-    pub(crate) fn read_theme_pack(&self) -> Option<String> {
+    pub fn read_theme_pack(&self) -> Option<String> {
         const LIMIT: usize = 64 * 1024;
         let bytes = self.read_bytes("theme.json").ok()?;
         if bytes.len() > LIMIT {

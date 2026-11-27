@@ -84,6 +84,8 @@ impl crate::gpu_page::automation::Automated for dyn OverlaySurface {
 
 pub(crate) struct Feedback {
     overlays: Arc<dyn WindowOverlays>,
+    /// An lxapp's bundled `theme.json`.
+    themes: fn(&str) -> Option<String>,
     windows: Mutex<HashMap<WindowId, Layer>>,
     me: Weak<Feedback>,
 }
@@ -95,6 +97,9 @@ struct Layer {
     revision: u64,
     /// Bumped on every change, so a close scheduled before it does nothing.
     generation: u64,
+    /// The lxapp whose accent the page has, and the theme push's revision.
+    accent: Option<String>,
+    theme_revision: u64,
 }
 
 /// Surface calls collected under the lock and made after it.
@@ -107,8 +112,16 @@ enum Call {
 
 impl Feedback {
     pub(crate) fn new(overlays: Arc<dyn WindowOverlays>) -> Arc<Self> {
+        Self::with_themes(overlays, |appid| lxapp::try_get(appid)?.read_theme_pack())
+    }
+
+    fn with_themes(
+        overlays: Arc<dyn WindowOverlays>,
+        themes: fn(&str) -> Option<String>,
+    ) -> Arc<Self> {
         Arc::new_cyclic(|me| Self {
             overlays,
+            themes,
             windows: Mutex::default(),
             me: me.clone(),
         })
@@ -250,8 +263,24 @@ impl Feedback {
             return Ok(None);
         };
         let calls = self.sync(window, layer);
+        // The item in front draws in its lxapp's accent; an empty layer keeps it for the exit.
+        let accent = match layer.model.front_appid() {
+            Some(appid) if layer.accent.as_deref() != Some(appid) => {
+                layer.accent = Some(appid.to_string());
+                layer.theme_revision += 1;
+                Some((appid.to_string(), layer.theme_revision))
+            }
+            _ => None,
+        };
         let surface = layer.surface.clone();
         drop(windows);
+        // The theme file is read outside the lock, and pushed before the state that shows it.
+        if let (Some((appid, revision)), Some(surface)) = (accent, &surface) {
+            let pack = accent_pack((self.themes)(&appid).as_deref());
+            surface.update_environment(serde_json::json!({
+                "kind": "theme", "revision": revision, "pack": pack,
+            }));
+        }
         run(surface, calls);
         Ok(Some(value))
     }
@@ -365,6 +394,39 @@ fn run(surface: Option<Arc<dyn OverlaySurface>>, calls: Vec<Call>) {
             Call::Reply(id, outcome) => surface.send(ToView::Reply { id, outcome }),
         }
     }
+}
+
+/// The default theme with `app`'s accent family: feedback keeps the host's surfaces and words but
+/// its buttons, focus and selection match the lxapp that asked.
+fn accent_pack(app: Option<&str>) -> lingxia_theme::Pack {
+    let mut pack = lingxia_theme::default_pack();
+    let Some(app) = app.and_then(|app| serde_json::from_str::<lingxia_theme::Pack>(app).ok())
+    else {
+        return pack;
+    };
+    let family = |role: &str| role.contains("accent") || role == "focus" || role == "selection";
+    let take = |colors: &lingxia_theme::Colors| -> lingxia_theme::Colors {
+        (colors.iter())
+            .filter(|(role, _)| family(role))
+            .map(|(role, color)| (role.clone(), *color))
+            .collect()
+    };
+    let (light, dark) = (take(&app.appearance.light), take(&app.appearance.dark));
+    // Written accent roles without a seed are used as written; a default seed would fight them.
+    if app.accent.is_some() || !light.is_empty() || !dark.is_empty() {
+        pack.accent = app.accent;
+    }
+    pack.appearance.light.extend(light);
+    pack.appearance.dark.extend(dark);
+    let contrast = |colors: &Option<lingxia_theme::Colors>| {
+        colors
+            .as_ref()
+            .map(take)
+            .filter(|colors| !colors.is_empty())
+    };
+    pack.appearance.high_contrast_light = contrast(&app.appearance.high_contrast_light);
+    pack.appearance.high_contrast_dark = contrast(&app.appearance.high_contrast_dark);
+    pack
 }
 
 /// The product's contrast preference as a View environment push.

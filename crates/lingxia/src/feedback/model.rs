@@ -136,6 +136,12 @@ impl WindowFeedback {
         !self.dialogs.is_empty()
     }
 
+    /// The lxapp whose item is in front: the shown dialog's, else the toast's.
+    pub fn front_appid(&self) -> Option<&str> {
+        (self.dialogs.front().map(|dialog| dialog.appid.as_str()))
+            .or(self.toast.as_ref().map(|toast| toast.appid.as_str()))
+    }
+
     /// The page's data.
     pub fn data(&self) -> Value {
         json!({
