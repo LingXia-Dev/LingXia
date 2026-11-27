@@ -103,3 +103,19 @@ fn invalid_tracks_name_the_offending_token() {
         "{error}"
     );
 }
+
+#[test]
+fn a_zero_minimum_track_holds_an_item_whose_content_is_wider() {
+    // `minmax(0, 1fr)` leaves no automatic minimum: the item is the track's width and its
+    // content overflows it, as in CSS.
+    let display = layout(
+        "h('view',{style:{display:'grid',width:200,gridTemplateColumns:'repeat(1, minmax(0, 1fr))'}},h('view',{'data-testid':'item'},h('view',{'data-testid':'wide',style:{minWidth:'max-content'}},h('text',{style:{whiteSpace:'nowrap'}},'a line much wider than the two hundred wide grid'))))",
+        300,
+    );
+    assert_eq!(
+        bounds(&display, "item")[2],
+        200.0,
+        "{:?}",
+        bounds(&display, "wide")
+    );
+}

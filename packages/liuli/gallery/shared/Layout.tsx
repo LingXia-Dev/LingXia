@@ -86,14 +86,17 @@ export function StageGrid({ children, stack = false }: { children: Child; stack?
   const oneUpAt = useLocal<string | null>('one-up-at', null);
   const isOneUp = oneUpAt.value === key;
   const report = (isOver: boolean) => { if (isOver && !isOneUp && grid.value && em.value) oneUpAt.set(key); };
+  // A stacked grid is one to a row below the desk width: nothing to measure, each stage takes the row.
+  const { env } = useView();
+  const isOneColumn = isOneUp || (stack && env.viewport.width < 768);
   return (
     <view>
       <view aria-hidden className="h-0 overflow-hidden">
         <text box={em} className="self-start text-body">M</text>
       </view>
-      {/* One to a row, the stages stop measuring, so a specimen wraps to its stage instead of running past the screen. */}
-      <StageFit.Provider value={isOneUp ? null : report}>
-        <view key={key} box={grid} className={isOneUp ? 'grid grid-cols-1 gap-y-6' : stack ? 'grid grid-cols-1 md:grid-cols-2 gap-x-3 gap-y-6' : 'grid grid-cols-2 gap-x-3 gap-y-6'}>{children}</view>
+      {/* One to a row, the stages do not measure, so a specimen wraps to its stage instead of running past the screen. */}
+      <StageFit.Provider value={isOneColumn ? null : report}>
+        <view key={key} box={grid} className={isOneColumn ? 'grid grid-cols-1 gap-y-6' : 'grid grid-cols-2 gap-x-3 gap-y-6'}>{children}</view>
       </StageFit.Provider>
     </view>
   );
