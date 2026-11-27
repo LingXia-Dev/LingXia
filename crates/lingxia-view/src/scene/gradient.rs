@@ -121,16 +121,9 @@ fn rgba_hex([r, g, b, a]: [u8; 4]) -> String {
 }
 
 impl BackgroundGradient {
-    /// Validates with the built-in palette; painting resolves roles with [`Self::parse_with`].
+    /// Validates the shape and each stop's colour syntax; stops stay unresolved, since an app
+    /// colour is known only to the palette the page paints with ([`Self::parse_with`]).
     pub fn parse(source: &str) -> Result<Option<Self>, String> {
-        Self::parse_with(source, &crate::theme::Palette::builtin(false))
-    }
-
-    /// Stops may be hex or roles; roles resolve against `palette` here.
-    pub fn parse_with(
-        source: &str,
-        palette: &crate::theme::Palette,
-    ) -> Result<Option<Self>, String> {
         if source == "none" {
             return Ok(None);
         }
@@ -197,9 +190,26 @@ impl BackgroundGradient {
         {
             return Err(invalid());
         }
-        let mut value = value;
+        if value
+            .stops
+            .iter()
+            .any(|s| crate::theme::parse(&s.color).is_err())
+        {
+            return Err(invalid());
+        }
+        Ok(Some(value))
+    }
+
+    /// Stops may be hex, roles or app colours; they resolve against `palette` here.
+    pub fn parse_with(
+        source: &str,
+        palette: &crate::theme::Palette,
+    ) -> Result<Option<Self>, String> {
+        let Some(mut value) = Self::parse(source)? else {
+            return Ok(None);
+        };
         for stop in &mut value.stops {
-            stop.color = rgba_hex(palette.resolve(&stop.color).map_err(|_| invalid())?);
+            stop.color = rgba_hex(palette.resolve(&stop.color)?);
         }
         Ok(Some(value))
     }
@@ -536,5 +546,21 @@ mod tests {
     fn a_key_this_host_does_not_know_is_ignored() {
         let later = r##"{"later":1,"stops":[{"offset":0,"color":"#000000","later":1},{"offset":1,"color":"#ffffff"}]}"##;
         assert!(BackgroundGradient::parse(later).is_ok_and(|gradient| gradient.is_some()));
+    }
+
+    #[test]
+    fn an_app_colour_stop_decodes_and_resolves_against_the_pages_palette() {
+        let source = r##"{"direction":"right","stops":[{"offset":0,"color":"app.sunrise"},{"offset":1,"color":"accent"}]}"##;
+        assert!(BackgroundGradient::parse(source).is_ok_and(|gradient| gradient.is_some()));
+        let colors = vec!["#000000"; lingxia_theme::ROLE_COUNT];
+        let palette = crate::theme::Palette::decode(
+            &serde_json::json!({"revision": 1, "colors": colors, "app": {"sunrise": "#c2410c"}}),
+        )
+        .unwrap();
+        let gradient = BackgroundGradient::parse_with(source, &palette)
+            .unwrap()
+            .unwrap();
+        assert_eq!(gradient.stops[0].color, "#c2410cff");
+        assert!(BackgroundGradient::parse(&source.replace("app.sunrise", "app.Sun rise")).is_err());
     }
 }
