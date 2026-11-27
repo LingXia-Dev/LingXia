@@ -403,3 +403,36 @@ fn a_page_with_keyframe_animations_swaps_in_place() {
     let broken = module("broken").replace(&payload, "'not an animation'");
     assert!(page.swap_module(&broken).is_err());
 }
+
+#[test]
+fn each_page_of_an_app_keeps_its_own_actions_when_another_is_bridged_or_swapped() {
+    if !super::bounded_jobs() {
+        return;
+    }
+    use serde_json::json;
+    // Render reads its action, as a page that binds a handler does.
+    let page = |action: &str| {
+        super::source(&format!(
+            "function render({{actions}}){{const go=actions.{action};return h('button',{{onClick(){{go()}}}},'{action}')}}"
+        )) + &format!("\nenableHotSwap();\nglobalThis.__lingxiaActionCatalog={{__names:['{action}'],__modes:{{{action}:'call'}}}};")
+    };
+    let snapshot = json!({"v":2,"kind":"state.snapshot","rev":0,"state":{}});
+    let mut app = crate::ViewApp::new(4).unwrap();
+    let home = app.create(&page("greet"), true).unwrap();
+    let other = app.create(&page("toggle"), true).unwrap();
+    for id in [home, other] {
+        let session = app.page(id).unwrap();
+        session.begin_bridge().unwrap();
+        session.write_state(super::state_write(&snapshot)).unwrap();
+    }
+    assert_eq!(app.page(home).unwrap().layout(200, 200, 1.0).unwrap().nodes[0].text, "greet");
+    app.page(other).unwrap().swap_module(&page("toggle")).unwrap();
+    app.page(other).unwrap().begin_bridge().unwrap();
+    app.page(other).unwrap().write_state(super::state_write(&snapshot)).unwrap();
+    assert_eq!(app.page(other).unwrap().layout(200, 200, 1.0).unwrap().nodes[0].text, "toggle");
+    // The page that was neither swapped nor bridged again still finds its own action.
+    let home = app.page(home).unwrap();
+    home.begin_bridge().unwrap();
+    home.write_state(super::state_write(&snapshot)).unwrap();
+    assert_eq!(home.layout(240, 200, 1.0).unwrap().nodes[0].text, "greet");
+}

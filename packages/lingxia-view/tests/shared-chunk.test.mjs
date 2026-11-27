@@ -147,7 +147,7 @@ test('incremental single-page dev build preserves sibling Liuli exports and chun
       join(root, 'pages', 'a', 'index.tsx'),
       `import { useLocal } from '@lingxia/view';\nexport function render() { const [n] = useLocal(99); return <text>A {n}</text>; }\n`,
     );
-    await build(root, ['pages/a/index.tsx'], out, {}, { dev: true });
+    await build(root, ['pages/a/index.tsx'], out, { 'pages/b/index.tsx': { __names: [], __modes: {} } }, { dev: true });
     const chunkAfter = await readFile(join(out, '_view', 'dev.js'), 'utf8');
     const buildIdAfter = JSON.parse(chunkAfter.split('\n')[0].replace('// LingXia UI module; ', '')).chunkBuildId;
     assert.equal(buildIdAfter, buildIdBefore, 'chunkBuildId stays stable on single-page dev edit');
@@ -214,20 +214,30 @@ test('a page styles and checks the chunk modules it reaches as a single-file bui
   }
 });
 
-test('a dev page edit that moves the chunk rebuilds its siblings against the new chunk', async () => {
+test('a dev page edit that moves the chunk rebuilds its siblings against the new chunk, actions kept', async () => {
   const root = await makeApp('0.30.0');
   try {
     await liuliKit(root);
     const out = join(root, 'dist');
-    await build(root, ['pages/a/index.tsx', 'pages/b/index.tsx'], out, {}, { dev: true });
+    const catalogs = {
+      'pages/a/index.tsx': { __names: [], __modes: {} },
+      'pages/b/index.tsx': { __names: ['greet'], __modes: { greet: 'call' } },
+    };
+    await build(root, ['pages/a/index.tsx', 'pages/b/index.tsx'], out, catalogs, { dev: true });
     await writeFile(
       join(root, 'pages', 'a', 'index.tsx'),
       `import { Button } from '@liulidesign/kit';\nexport function render() { return <Button label="A" />; }\n`,
     );
-    await build(root, ['pages/a/index.tsx'], out, {}, { dev: true });
+    // Without the sibling's catalog it would be rebuilt with no actions; that is refused.
+    await assert.rejects(
+      build(root, ['pages/a/index.tsx'], out, { 'pages/a/index.tsx': catalogs['pages/a/index.tsx'] }, { dev: true }),
+      /missing pages\/b\/index\.tsx/,
+    );
+    await build(root, ['pages/a/index.tsx'], out, catalogs, { dev: true });
     const chunk = header(await readFile(join(out, '_view', 'dev.js'), 'utf8')).chunkBuildId;
     for (const page of ['a', 'b'])
       assert.equal(header(await readFile(join(out, 'pages', page, 'index.js'), 'utf8')).chunkBuildId, chunk, page);
+    assert.match(await readFile(join(out, 'pages', 'b', 'index.js'), 'utf8'), /"__names":\s*\["greet"\]/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

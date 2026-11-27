@@ -588,6 +588,9 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
       const prior = await readRecord(recordPath);
       const known = Object.keys(prior).filter(p => p !== 'lx:view' && existsSync(resolve(root, p)));
       scanPages = [...new Set([...known, ...pages])];
+      // A moved chunk rebuilds every page; one rebuilt without its catalog would lose its actions.
+      const missing = known.filter(page => !pages.includes(page) && !catalogs[page]);
+      if (missing.length) throw Error(`pass the action catalogs of every built page; missing ${missing.join(', ')}`);
     }
     const sharedPackages = await discoverSharedPackages(root, scanPages, {
       tsconfig, runtimeRoot, publicEntry, jsx, compiledMessages,
