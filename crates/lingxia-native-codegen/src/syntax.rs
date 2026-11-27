@@ -231,22 +231,31 @@ fn bounded(ty: &Type, name: &str) -> syn::Result<Vec<Type>> {
     Ok(args)
 }
 
-/// The event type of a `watch` route: `T` in `-> Result<impl Stream<Item = T>, E>`.
+/// Whether a route returns a `Result` (any path ending in `Result`), or a plain value.
+pub fn returns_result(sig: &Signature) -> bool {
+    match &sig.output {
+        ReturnType::Type(_, ty) => last_segment(ty).is_some_and(|s| s.ident == "Result"),
+        ReturnType::Default => false,
+    }
+}
+
+/// The event type of a `watch` route: `T` in `-> impl Stream<Item = T>`, bare or in a `Result`.
 pub fn watch_event(sig: &Signature) -> syn::Result<Type> {
     let shape_error = |span| {
         syn::Error::new(
             span,
-            "a `watch` route returns `Result<impl Stream<Item = Event>, E>`; its first item is the current state",
+            "a `watch` route returns `impl Stream<Item = Event>`, or that in a `Result`; its first item is the current state",
         )
     };
     let ReturnType::Type(_, ty) = &sig.output else {
         return Err(shape_error(sig.ident.span()));
     };
-    let ok = match last_segment(ty) {
-        Some(segment) if segment.ident == "Result" => generics(ty)?.into_iter().next(),
-        _ => None,
+    let stream = if returns_result(sig) {
+        generics(ty)?.into_iter().next()
+    } else {
+        Some((**ty).clone())
     };
-    let Some(Type::ImplTrait(stream)) = ok else {
+    let Some(Type::ImplTrait(stream)) = stream else {
         return Err(shape_error(ty.span()));
     };
     stream
@@ -401,8 +410,12 @@ mod tests {
                 .unwrap(),
             "Vec < Ev >"
         );
+        assert_eq!(
+            item("fn f() -> impl Stream<Item = Ev> + Send + 'static {}").unwrap(),
+            "Ev"
+        );
         for wrong in [
-            "async fn f() -> impl Stream<Item = Ev> {}",
+            "async fn f() -> Vec<Ev> {}",
             "async fn f() -> lingxia::Result<Vec<Ev>> {}",
             "async fn f() -> lingxia::Result<impl Iterator<Item = Ev>> {}",
             "async fn f() {}",
@@ -415,5 +428,15 @@ mod tests {
                 "{wrong}"
             );
         }
+    }
+
+    #[test]
+    fn a_route_returns_a_result_by_its_type_name() {
+        let returns = |src: &str| returns_result(&parse(src));
+        assert!(returns("fn f() -> lingxia::Result<u32> {}"));
+        assert!(returns("fn f() -> anyhow::Result<()> {}"));
+        assert!(returns("fn f() -> Result<Note, NotesError> {}"));
+        assert!(!returns("fn f() -> String {}"));
+        assert!(!returns("fn f() {}"));
     }
 }

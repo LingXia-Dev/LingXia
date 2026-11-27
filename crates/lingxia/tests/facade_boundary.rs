@@ -20,6 +20,14 @@ fn facade_sync_echo(input: EchoInput) -> lingxia::Result<EchoOutput> {
     Ok(EchoOutput { value: input.value })
 }
 
+#[lingxia::native("facade.ping")]
+fn facade_ping(input: EchoInput) -> String {
+    input.value
+}
+
+#[lingxia::native("facade.touch")]
+async fn facade_touch() {}
+
 #[lingxia::native("facade.scope")]
 fn facade_scope(context: lingxia::host::HostInvocationContext) -> lingxia::Result<()> {
     let _ = context.caller();
@@ -65,6 +73,11 @@ fn facade_watch(
 ) -> lingxia::Result<impl futures::Stream<Item = StreamEvent> + Send + 'static> {
     let value = input.value.len() as u32;
     Ok(futures::stream::iter([StreamEvent { value }]))
+}
+
+#[lingxia::native("facade.bareWatch", watch)]
+fn facade_bare_watch() -> impl futures::Stream<Item = StreamEvent> + Send + 'static {
+    futures::stream::empty()
 }
 
 #[lingxia::native("facade.asyncWatch", watch)]
@@ -196,6 +209,9 @@ fn native_macro_accepts_lingxia_result_handlers() {
     let _ = facade_stream_host();
     let _ = facade_scope_stream_host();
     let _ = facade_watch_host();
+    let _ = facade_bare_watch_host();
+    let _ = facade_ping_host();
+    let _ = facade_touch_host();
     let _ = facade_async_watch_host();
     let _ = facade_channel_host();
     let _ = facade_scope_channel_host();

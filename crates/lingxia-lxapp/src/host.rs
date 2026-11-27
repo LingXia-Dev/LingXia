@@ -49,6 +49,49 @@ pub enum HostOutput {
 #[doc(hidden)]
 pub mod __native {
     use super::Future;
+    use serde::Serialize;
+    use serde::de::DeserializeOwned;
+
+    // The macro calls these at the user's own types, so a missing trait names that type.
+    #[diagnostic::on_unimplemented(
+        message = "`{Self}` cannot be a `#[lingxia::native]` payload",
+        label = "the payload must implement `serde::Deserialize`",
+        note = "add `#[derive(serde::Deserialize)]` to it"
+    )]
+    pub trait NativePayload: DeserializeOwned {}
+    impl<T: DeserializeOwned> NativePayload for T {}
+
+    #[diagnostic::on_unimplemented(
+        message = "`{Self}` cannot be returned from a `#[lingxia::native]` route",
+        label = "the result must implement `serde::Serialize`",
+        note = "add `#[derive(serde::Serialize)]` to it"
+    )]
+    pub trait NativeOutput: Serialize {}
+    impl<T: Serialize> NativeOutput for T {}
+
+    pub fn payload<T: NativePayload>(input: Option<&str>) -> lingxia_error::Result<T> {
+        super::parse_input(input)
+    }
+
+    pub fn result<T: NativeOutput, E>(result: Result<T, E>) -> lingxia_error::Result<T>
+    where
+        lingxia_error::Error: From<E>,
+    {
+        result.map_err(Into::into)
+    }
+
+    /// An infallible route's return value.
+    pub fn ok<T: NativeOutput>(value: T) -> lingxia_error::Result<T> {
+        Ok(value)
+    }
+
+    /// A watch route's stream, or why it could not open.
+    pub fn opened<S, E>(result: Result<S, E>) -> lingxia_error::Result<S>
+    where
+        lingxia_error::Error: From<E>,
+    {
+        result.map_err(Into::into)
+    }
 
     pub fn spawn<F>(future: F) -> tokio::task::JoinHandle<F::Output>
     where
@@ -59,14 +102,13 @@ pub mod __native {
     }
 
     /// Runs a plain-`fn` route on the blocking pool; a panic there fails the call as `E_INTERNAL`.
-    pub async fn call_blocking<F, T, E>(f: F) -> lingxia_error::Result<T>
+    pub async fn call_blocking<F, T>(f: F) -> lingxia_error::Result<T>
     where
-        F: FnOnce() -> Result<T, E> + Send + 'static,
+        F: FnOnce() -> lingxia_error::Result<T> + Send + 'static,
         T: Send + 'static,
-        E: Into<lingxia_error::Error>,
     {
         // Task-locals do not follow onto a blocking thread; carry the admitting document work.
-        let work = crate::bridge::in_host_effect_work(move || f().map_err(Into::into));
+        let work = crate::bridge::in_host_effect_work(f);
         match rong_rt::RongExecutor::global().spawn_blocking(work).await {
             Ok(result) => result,
             Err(err) if err.is_panic() => {
@@ -1858,9 +1900,11 @@ mod tests {
             ("E_PERMISSION_DENIED", "no grant")
         );
 
-        let err = __native::call_blocking(|| Err::<(), _>(std::io::Error::other("disk full")))
-            .await
-            .expect_err("converted error");
+        let err = __native::call_blocking(|| {
+            __native::result(Err::<(), _>(std::io::Error::other("disk full")))
+        })
+        .await
+        .expect_err("converted error");
         assert_eq!(
             err.code(),
             lingxia_error::Error::from(std::io::Error::other("x")).code()

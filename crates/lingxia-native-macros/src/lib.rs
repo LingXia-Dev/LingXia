@@ -1,8 +1,9 @@
-use lingxia_native_codegen::syntax::{Param, Params, Shape, classify, watch_event};
+use lingxia_native_codegen::syntax::{Param, Params, Shape, classify, returns_result, watch_event};
 use proc_macro::TokenStream;
-use quote::{format_ident, quote};
+use quote::{format_ident, quote, quote_spanned};
 use syn::parse::Parser;
 use syn::punctuated::Punctuated;
+use syn::spanned::Spanned;
 use syn::{Expr, ItemFn, Lit, LitStr, Token, Type, parse_macro_input};
 
 #[proc_macro_attribute]
@@ -363,11 +364,7 @@ fn expand_host(
                     __lingxia_invocation: ::lingxia::host::HostInvocationContext,
                     __lingxia_input: Option<String>,
                 ) -> ::lingxia::Result<::lingxia::host::HostOutput> {
-                    let __lingxia_result = {
-                        let __lingxia_result = #call_expr;
-                        __lingxia_result.map_err(::core::convert::Into::<::lingxia::Error>::into)
-                    };
-                    ::lingxia::host::serialize_result(__lingxia_result)
+                    ::lingxia::host::serialize_result(#call_expr)
                 }
             }
 
@@ -415,10 +412,7 @@ fn expand_host(
                 __lingxia_cancel: ::lingxia::host::HostCancel,
             ) -> ::lingxia::host::HostFuture<'a> {
                 Box::pin(async move {
-                    let __lingxia_result = {
-                        let __lingxia_result = #call_expr;
-                        __lingxia_result.map_err(::core::convert::Into::<::lingxia::Error>::into)
-                    };
+                    let __lingxia_result = #call_expr;
                     #serialize_expr
                 })
             }
@@ -442,14 +436,62 @@ fn expand_host(
 struct Plan {
     shape: Shape,
     params: Params,
+    /// The fn's return type, `(T, E)` for a `Result<T, E>`; `None` when it returns `()`.
+    output: Option<(Type, Option<Type>)>,
+    fallible: bool,
 }
 
 impl Plan {
     fn new(input_fn: &ItemFn, shape: Shape) -> syn::Result<Self> {
+        let sig = &input_fn.sig;
+        let fallible = returns_result(sig);
+        let output = match &sig.output {
+            syn::ReturnType::Type(_, ty) if fallible => {
+                let mut args = result_args(ty).into_iter();
+                args.next().map(|ok| (ok, args.next()))
+            }
+            syn::ReturnType::Type(_, ty) => Some(((**ty).clone(), None)),
+            syn::ReturnType::Default => None,
+        };
         Ok(Self {
             shape,
-            params: classify(&input_fn.sig, shape)?,
+            params: classify(sig, shape)?,
+            output,
+            fallible,
         })
+    }
+
+    /// `value` as a `lingxia::Result`. The turbofish repeats the user's own return types,
+    /// so a missing `Serialize` or error conversion is reported at them.
+    fn wrap(&self, value: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
+        let named = |ty: &Type| -> proc_macro2::TokenStream {
+            if matches!(ty, Type::ImplTrait(_)) {
+                quote!(_)
+            } else {
+                quote!(#ty)
+            }
+        };
+        let (ok, err) = match &self.output {
+            Some((ok, err)) => (named(ok), err.as_ref().map(named).unwrap_or(quote!(_))),
+            None => (quote!(()), quote!(_)),
+        };
+        match (self.shape, self.fallible) {
+            (Shape::Watch, true) => {
+                quote! { ::lingxia::host::__native::opened::<_, #err>(#value) }
+            }
+            (Shape::Watch, false) => {
+                quote! { ::core::result::Result::Ok::<_, ::lingxia::Error>(#value) }
+            }
+            (_, true) => {
+                // Spanned at the error type: a missing `From` for `lingxia::Error` lands there.
+                let span = match &self.output {
+                    Some((_, Some(err))) => err.span(),
+                    _ => proc_macro2::Span::call_site(),
+                };
+                quote_spanned! {span=> ::lingxia::host::__native::result::<#ok, #err>(#value) }
+            }
+            (_, false) => quote! { ::lingxia::host::__native::ok::<#ok>(#value) },
+        }
     }
 
     fn progress_event(&self) -> Type {
@@ -482,7 +524,9 @@ impl Plan {
                 Param::Progress(_) => call_args.push(quote! { __lingxia_progress }),
                 Param::Channel { .. } => call_args.push(quote! { __lingxia_channel }),
                 Param::Payload(input_ty) => {
-                    let parse = quote! { ::lingxia::host::parse_input(__lingxia_input.as_deref()) };
+                    let parse = quote_spanned! {input_ty.span()=>
+                        ::lingxia::host::__native::payload::<#input_ty>(__lingxia_input.as_deref())
+                    };
                     prelude.push(if self.shape == Shape::Channel {
                         quote! {
                             let __lingxia_payload: #input_ty = match #parse {
@@ -516,14 +560,14 @@ impl Plan {
             }
         }
 
+        let call = quote! { #fn_ident(#(#call_args),*) };
         let invoke = if is_async {
-            quote! { #fn_ident(#(#call_args),*).await }
+            self.wrap(quote! { #call.await })
         } else if self.shape == Shape::Sync {
-            quote! { #fn_ident(#(#call_args),*) }
+            self.wrap(call)
         } else {
-            quote! {
-                ::lingxia::host::__native::call_blocking(move || #fn_ident(#(#call_args),*)).await
-            }
+            let wrapped = self.wrap(call);
+            quote! { ::lingxia::host::__native::call_blocking(move || #wrapped).await }
         };
 
         quote! {
@@ -553,10 +597,7 @@ fn expand_stream(
     let body = quote! {
         Ok(::lingxia::host::__stream::run::<#event_ty, _, _, _>(
             __lingxia_cancel,
-            move |__lingxia_progress| async move {
-                let __lingxia_result = #call_expr;
-                __lingxia_result.map_err(::core::convert::Into::<::lingxia::Error>::into)
-            },
+            move |__lingxia_progress| async move { #call_expr },
         ))
     };
     stream_route(route_lit, namespace, method, options, input_fn, body)
@@ -578,9 +619,7 @@ fn expand_watch(
     }
     let call_expr = plan.call_expr(&input_fn.sig.ident, input_fn.sig.asyncness.is_some());
     let body = quote! {
-        let __lingxia_result = #call_expr;
-        let __lingxia_events =
-            __lingxia_result.map_err(::core::convert::Into::<::lingxia::Error>::into)?;
+        let __lingxia_events = #call_expr?;
         Ok(::lingxia::host::__stream::watch(__lingxia_events, __lingxia_cancel))
     };
     stream_route(route_lit, namespace, method, options, input_fn, body)
@@ -680,10 +719,7 @@ fn expand_channel(
                     __lingxia_ctx.disable_close_on_drop();
                     let #channel_ident =
                         __lingxia_ctx.with_types::<#inbound_ty, #outbound_ty>();
-                    let __lingxia_result: ::lingxia::Result<()> = {
-                        #call_expr
-                    }
-                    .map_err(::core::convert::Into::<::lingxia::Error>::into);
+                    let __lingxia_result: ::lingxia::Result<()> = #call_expr;
                     match __lingxia_result {
                         Ok(()) => __lingxia_close.close(),
                         Err(err) => __lingxia_close.close_with(err),
@@ -704,6 +740,25 @@ fn expand_channel(
             )
         }
     }
+}
+
+/// The generic arguments of a `Result<T, E>` (or a one-argument alias).
+fn result_args(ty: &Type) -> Vec<Type> {
+    let Type::Path(path) = ty else {
+        return Vec::new();
+    };
+    let Some(syn::PathArguments::AngleBracketed(args)) =
+        path.path.segments.last().map(|segment| &segment.arguments)
+    else {
+        return Vec::new();
+    };
+    args.args
+        .iter()
+        .filter_map(|arg| match arg {
+            syn::GenericArgument::Type(ty) => Some(ty.clone()),
+            _ => None,
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -903,7 +958,7 @@ mod tests {
         let out = expand(quote!("demo.load"), plain.clone());
         assert!(
             out.contains(
-                "::lingxia::host::__native::call_blocking(move||load(__lingxia_payload)).await"
+                "::lingxia::host::__native::call_blocking(move||::lingxia::host::__native::result::<String,_>(load(__lingxia_payload))).await"
             ),
             "{out}"
         );
@@ -929,7 +984,7 @@ mod tests {
         };
         let out = expand(quote!("demo.export", stream), stream);
         assert!(
-            out.contains("call_blocking(move||export(__lingxia_progress))"),
+            out.contains("call_blocking(move||::lingxia::host::__native::result::<String,_>(export(__lingxia_progress))).await"),
             "{out}"
         );
     }
@@ -1001,7 +1056,7 @@ mod tests {
         let plan = Plan::new(&sync_fn, Shape::Sync).expect("sync plan with PageState");
         let tokens = plan.call_expr(&sync_fn.sig.ident, false).to_string();
         assert!(tokens.contains("acquire_sync"), "{tokens}");
-        assert!(tokens.contains("parse_input"), "{tokens}");
+        assert!(tokens.contains("payload"), "{tokens}");
 
         let async_fn: ItemFn = syn::parse_quote! {
             async fn bad_sync() -> Result<()> { Ok(()) }
@@ -1021,6 +1076,40 @@ mod tests {
         .to_string();
         assert!(
             out.contains("only supported on non-async functions"),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn a_plain_return_value_and_the_payload_are_checked_at_the_users_types() {
+        let infallible: ItemFn = syn::parse_quote! {
+            fn ping(input: Query) -> String { String::new() }
+        };
+        let out = expand(quote!("demo.ping"), infallible);
+        assert!(
+            out.contains("call_blocking(move||::lingxia::host::__native::ok::<String>(ping(__lingxia_payload))).await"),
+            "{out}"
+        );
+        assert!(
+            out.contains("::lingxia::host::__native::payload::<Query>(__lingxia_input.as_deref())"),
+            "{out}"
+        );
+
+        let unit: ItemFn = syn::parse_quote! {
+            async fn touch() {}
+        };
+        let out = expand(quote!("demo.touch"), unit);
+        assert!(
+            out.contains("::lingxia::host::__native::ok::<()>(touch().await)"),
+            "{out}"
+        );
+
+        let watch: ItemFn = syn::parse_quote! {
+            fn follow() -> impl Stream<Item = Change> + Send + 'static { todo!() }
+        };
+        let out = expand(quote!("demo.watch", watch), watch);
+        assert!(
+            out.contains("::core::result::Result::Ok::<_,::lingxia::Error>(follow())"),
             "{out}"
         );
     }

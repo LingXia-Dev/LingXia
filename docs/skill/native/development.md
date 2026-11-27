@@ -88,8 +88,9 @@ Parameters are recognized by type, in any order, all optional:
 - anything else is the JSON payload (`serde::Deserialize`). Only one: a
   second is a compile error, so put multiple values in one struct.
 
-Return `lingxia::Result<T>` with `T: serde::Serialize`; `anyhow::Result<T>`
-fails as `E_INTERNAL`.
+Return `T: serde::Serialize`, or `Result<T, E>` for a route that can fail: `E` is
+`lingxia::Error`, a `#[derive(lingxia::NativeError)]` enum, or `anyhow::Error`
+(fails as `E_INTERNAL`).
 
 A plain `fn` runs on a blocking thread, so blocking I/O is fine there; its
 arguments and result must be `Send`, and a panic fails the call as `E_INTERNAL`.
