@@ -483,6 +483,7 @@
         "imageCacheEntries": 0,
         "lastPresentAt": 0,
         "nodes": 20,
+        "owed": false,
         "pacing": {
           "cpuMs": {
             "max": 0,
@@ -597,6 +598,7 @@
         "imageCacheEntries": 0,
         "lastPresentAt": 0,
         "nodes": 20,
+        "owed": false,
         "pacing": {
           "cpuMs": {
             "max": 0,

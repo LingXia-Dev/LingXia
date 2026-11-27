@@ -8348,3 +8348,35 @@ fn a_page_title_reaches_the_host_while_its_target_declines_every_frame() {
     assert_eq!(last(&host), ["Archive"]);
     assert_eq!(titles(&host), ["Inbox", "Archive"]);
 }
+
+#[test]
+fn an_environment_push_owes_a_frame_until_one_under_it_is_drawn() {
+    let worker = ViewWorker::spawn("test-owed").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source("function render({env}){return h('text',{},env.appearance)}"),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let owed = |host: &ViewHost<Fake>| {
+        host.automation_request(&serde_json::json!({"op": "frame"}))
+            .unwrap()["owed"]
+            .clone()
+    };
+    assert_eq!(last(&host), ["light"]);
+    assert_eq!(owed(&host), false, "a drawn page owes nothing");
+    host.automation_request(&serde_json::json!({"op": "environment", "appearance": "dark"}))
+        .unwrap();
+    // The push answers at once; `view.settled()` must not read the quiet before its frame as settled.
+    assert_eq!(owed(&host), true, "the push is not drawn yet");
+    platform.settle(&[&host]);
+    assert_eq!(last(&host), ["dark"]);
+    assert_eq!(owed(&host), false);
+    // A page that is not shown owes nothing, so a wait on it cannot hang.
+    host.set_visible(false);
+    host.automation_request(&serde_json::json!({"op": "environment", "appearance": "light"}))
+        .unwrap();
+    assert_eq!(owed(&host), false);
+}

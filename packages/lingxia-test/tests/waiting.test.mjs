@@ -1206,6 +1206,22 @@ test("view.settled waits for a page that stops presenting and names an endless a
   assert.equal(protocol.failed, 0, protocol.failed ? failedMessage(attachments) : "");
 });
 
+test("view.settled counts no quiet time while the page owes a frame", async () => {
+  const started = Date.now();
+  // No frame comes for 300 ms after an environment push, then its frame is drawn.
+  const world = createWorld({ frames: () => (Date.now() - started < 300 ? 0 : 1), owed: () => Date.now() - started < 300 });
+  const { attachments } = installFakeHost(world);
+
+  lxTest("owed", async (t) => {
+    const begin = Date.now();
+    await t.app.view.settled({ quietMs: 100 });
+    assert.ok(Date.now() - begin >= 400, `settled after ${Date.now() - begin}ms, before the owed frame`);
+  });
+
+  const protocol = await globalThis.__LINGXIA_TEST__.run();
+  assert.equal(protocol.failed, 0, protocol.failed ? failedMessage(attachments) : "");
+});
+
 test("view.settled rejects at its timeout while the page keeps presenting", async () => {
   let frames = 0;
   const world = createWorld({ frames: () => ++frames });

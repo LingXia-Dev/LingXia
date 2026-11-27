@@ -1654,23 +1654,26 @@ export class LiveFixture implements Fixture {
       const deadline = new ActionDeadline(timeout, this.budgetRoom());
       const read = () => deadline.call("page.uiFrame", () => this.readRetrying(() =>
         target.page === undefined ? page().uiFrame() : page().uiFrame(target)), () => "waiting for the page to settle");
-      let frames = (await read()).frames;
+      // Quiet counts only once no frame is owed: an environment push or a write not yet drawn
+      // would otherwise read as a settled page.
+      let sample = await read();
+      let frames = sample.frames, owed = sample.owed === true;
       let since = Date.now(), first = frames, started = since;
       for (;;) {
-        if (Date.now() - since >= quietMs) return;
+        if (!owed && Date.now() - since >= quietMs) return;
         if (deadline.expired()) break;
         await sleep(Math.min(SETTLED_POLL_MS, Math.max(1, deadline.remaining())));
-        let now: number;
-        try { now = (await read()).frames; } catch (error) {
+        try { sample = await read(); } catch (error) {
           if (error instanceof TimeoutError && deadline.expired()) break;
           throw error;
         }
-        if (now !== frames) { frames = now; since = Date.now(); }
+        owed = sample.owed === true;
+        if (sample.frames !== frames || owed) { frames = sample.frames; since = Date.now(); }
       }
       const shown = frames - first, over = Date.now() - started;
       throw new TimeoutError([
         `Timed out after ${deadline.elapsed()}ms waiting for the page to settle: it presented ${shown} frame${shown === 1 ? "" : "s"} in ${over}ms ` +
-          `and never ${quietMs}ms without one.`,
+          `and never ${quietMs}ms without one${owed ? "; a frame is still owed (an environment push or a write not yet drawn)" : ""}.`,
         "An endless animation (a spinner, a playing video, a blinking caret) never settles: freeze it with view.environment({ still: true }) or mask it.",
         deadline.clampNote(),
       ].filter(Boolean).join("\n"));

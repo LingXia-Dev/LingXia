@@ -578,6 +578,7 @@ export interface GpuFrameAutomationFrame {
   lastPresentAt?: number | null;
   lastPresentEpochMs?: number | null;
   frames: number;
+  owed: boolean;
   workerQueueUs: GpuFrameQueueTimes;
   evalMs: GpuFrameEvalTimes;
   imageCacheBytes: number;

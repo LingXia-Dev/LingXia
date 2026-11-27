@@ -311,6 +311,19 @@ impl<A: PlatformAdapter> Inner<A> {
             "lastPresentEpochMs": telemetry.last_present.map(epoch_ms),
             "lastPresentAt": telemetry.since_open(telemetry.last_present),
             "frames": telemetry.frames,
+            // A shown page with a frame still to come (a state write or an environment push
+            // not yet drawn): `view.settled()` counts no quiet time while it is owed.
+            "owed": main.visible
+                && !main.disposed
+                && !main.interaction.parked()
+                && main.stalled_at.is_none()
+                && main.failure.is_none()
+                && (main.dirty
+                    || main.pending
+                    || main.in_flight.is_some()
+                    || main.prepared.is_some()
+                    || main.next_prepared.is_some()
+                    || main.deferred.is_some()),
             "held": telemetry.held,
             "workerQueueUs": {
                 "last": telemetry.queue.back().copied().unwrap_or(0),

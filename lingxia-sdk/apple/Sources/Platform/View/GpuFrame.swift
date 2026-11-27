@@ -936,6 +936,7 @@ public struct GpuFrameAutomationFrame: Decodable, Sendable {
     public let lastPresentAt: UInt64?
     public let lastPresentEpochMs: UInt64?
     public let frames: UInt64
+    public let owed: Bool
     public let workerQueueUs: GpuFrameQueueTimes
     public let evalMs: GpuFrameEvalTimes
     public let imageCacheBytes: UInt64
@@ -974,6 +975,7 @@ public struct GpuFrameAutomationFrame: Decodable, Sendable {
         case lastPresentAt = "lastPresentAt"
         case lastPresentEpochMs = "lastPresentEpochMs"
         case frames = "frames"
+        case owed = "owed"
         case workerQueueUs = "workerQueueUs"
         case evalMs = "evalMs"
         case imageCacheBytes = "imageCacheBytes"

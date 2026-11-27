@@ -922,6 +922,8 @@ public final class GpuFrame {
         public Long lastPresentEpochMs() { if (json.isNull("lastPresentEpochMs")) return null; return json.optLong("lastPresentEpochMs"); }
         /** `frames`: u64 */
         public long frames() { return json.optLong("frames"); }
+        /** `owed`: bool */
+        public boolean owed() { return json.optBoolean("owed"); }
         /** `workerQueueUs`: QueueTimes */
         public QueueTimes workerQueueUs() { JSONObject o = json.optJSONObject("workerQueueUs"); return o == null ? null : new QueueTimes(o); }
         /** `evalMs`: EvalTimes */

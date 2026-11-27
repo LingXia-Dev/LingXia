@@ -482,6 +482,8 @@ export interface PageUiFrame {
   content?: { area: { left: number; top: number; width: number; height: number }; canvas: string } | null;
   lastPresentAt: number | null;
   frames: number;
+  /** A shown page still owes a frame (a state write or an environment push not yet drawn); an older host omits it. */
+  owed?: boolean;
   workerQueueUs: { last: number; p50: number; max: number };
   evalMs: { last: number; max: number };
   imageCacheBytes: number;
