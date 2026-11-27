@@ -4562,6 +4562,8 @@ declare global {
     /**
      * Acknowledgement-only dialog. Resolves when the user dismisses it. With `error`, the failure's
      * words (what the View's `errorText` says) are the title unless `title` is given, and a cancel shows no dialog.
+     * Back or Escape dismisses it; a tap outside does not.
+     * A dialog asked for while another shows waits for it.
      * @example
      * ```ts
      * try {
@@ -4578,6 +4580,8 @@ declare global {
     alert(options: string | AlertOptions): Promise<void>;
     /**
      * Ask a yes/no question. Dismissal resolves false; presentation failure rejects.
+     * Cancel, Back or Escape dismiss it; a tap outside does not.
+     * A dialog asked for while another shows waits for it.
      * @throws {E_INVALID_ARG} A missing or empty `title`.
      * @throws {E_ABORT} `signal` aborted; the dialog is closed.
      * @throws {E_INVALID_STATE} No page can show a dialog now; `reason` is `'appClosed'` when the app is not open.

@@ -5677,7 +5677,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4612"
+      "source": "src/generated/logic.ts:4616"
     },
     {
       "path": "lx.network.wifi.current",
@@ -5708,7 +5708,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4625"
+      "source": "src/generated/logic.ts:4629"
     },
     {
       "path": "lx.network.wifi.list",
@@ -5750,7 +5750,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4619"
+      "source": "src/generated/logic.ts:4623"
     },
     {
       "path": "lx.network.wifi.onConnected",
@@ -5783,7 +5783,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:4627"
+      "source": "src/generated/logic.ts:4631"
     },
     {
       "path": "lx.openExternal",
@@ -7169,7 +7169,7 @@
       "kind": "function",
       "entry": "global",
       "summary": "Acknowledgement-only dialog.",
-      "description": "Acknowledgement-only dialog. Resolves when the user dismisses it. With `error`, the failure's\nwords (what the View's `errorText` says) are the title unless `title` is given, and a cancel shows no dialog.",
+      "description": "Acknowledgement-only dialog. Resolves when the user dismisses it. With `error`, the failure's\nwords (what the View's `errorText` says) are the title unless `title` is given, and a cancel shows no dialog.\nBack or Escape dismisses it; a tap outside does not.\nA dialog asked for while another shows waits for it.",
       "signatures": [
         {
           "text": "alert(options: string | AlertOptions): Promise<void>",
@@ -7210,14 +7210,14 @@
       "examples": [
         "try {\nawait lx.clipboard.writeText('https://example.com');\n} catch (e) {\nawait lx.ui.alert({ error: e, fallback: \"Couldn't copy the link\" });\n}"
       ],
-      "source": "src/generated/logic.ts:4578"
+      "source": "src/generated/logic.ts:4580"
     },
     {
       "path": "lx.ui.confirm",
       "kind": "function",
       "entry": "global",
       "summary": "Ask a yes/no question.",
-      "description": "Ask a yes/no question. Dismissal resolves false; presentation failure rejects.",
+      "description": "Ask a yes/no question. Dismissal resolves false; presentation failure rejects.\nCancel, Back or Escape dismiss it; a tap outside does not.\nA dialog asked for while another shows waits for it.",
       "signatures": [
         {
           "text": "confirm(options: string | ConfirmOptions): Promise<boolean>",
@@ -7255,7 +7255,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4586"
+      "source": "src/generated/logic.ts:4590"
     },
     {
       "path": "lx.ui.toast",
@@ -12072,7 +12072,7 @@
       "description": "Feature contracts generated from the runtime registry.",
       "text": "\"app.appUse\" | \"app.browser\" | \"app.browserUse\" | \"app.computerUse\" | \"app.mediaCapture\" | \"app.proxy\" | \"automation\" | \"device.haptics\" | \"host.autostart\" | \"host.badge\" | \"host.banner\" | \"host.notification\" | \"host.selfUpdate\" | \"host.terminal\" | \"host.terminal.conpty\" | \"host.tray\" | \"media.saveToLibrary\" | \"pick.camera\" | \"pick.directory\" | \"surface.tab\" | \"surface.window\" | \"surface.window.fullChrome\"",
       "fields": [],
-      "source": "src/generated/logic.ts:4634"
+      "source": "src/generated/logic.ts:4638"
     },
     {
       "name": "LxFile",
@@ -17172,7 +17172,7 @@
           "type": "(options: string | AlertOptions) => Promise<void>",
           "required": true,
           "summary": "Acknowledgement-only dialog.",
-          "description": "Acknowledgement-only dialog. Resolves when the user dismisses it. With `error`, the failure's\nwords (what the View's `errorText` says) are the title unless `title` is given, and a cancel shows no dialog.",
+          "description": "Acknowledgement-only dialog. Resolves when the user dismisses it. With `error`, the failure's\nwords (what the View's `errorText` says) are the title unless `title` is given, and a cancel shows no dialog.\nBack or Escape dismisses it; a tap outside does not.\nA dialog asked for while another shows waits for it.",
           "tags": {
             "throws": [
               {
@@ -17199,7 +17199,7 @@
           "type": "(options: string | ConfirmOptions) => Promise<boolean>",
           "required": true,
           "summary": "Ask a yes/no question.",
-          "description": "Ask a yes/no question. Dismissal resolves false; presentation failure rejects.",
+          "description": "Ask a yes/no question. Dismissal resolves false; presentation failure rejects.\nCancel, Back or Escape dismiss it; a tap outside does not.\nA dialog asked for while another shows waits for it.",
           "tags": {
             "throws": [
               {
