@@ -318,6 +318,15 @@ test("show, hide, confirm, and cancel in-app feedback overlays", {
   await t.step('pick and dismiss an action sheet', async () => {
     const picked = app.logic.eval(({ lx }) =>
       lx.ui.actionSheet({ items: ['View Details', '查看日志', 'Send Email', '删除'].map((label) => ({ id: label, label })) }));
+    // The layer covers the page area, never a sidebar beside it: as wide as the page, and between
+    // the page and the window in height (a page card may include its navigation bar).
+    await layer.testId('lx-action-sheet').first().waitFor({ state: 'visible', timeout: 30_000 });
+    const covered = await layer.testId('lx-feedback').boundingBox();
+    const pageSize = await (await app.page({ name: 'ui' })).view.viewport();
+    const window = await app.chrome.viewport().catch(() => null);
+    expect(Math.abs(covered.width - pageSize.width), `layer ${covered.width} wide over a ${pageSize.width} wide page`).toBeLessThanOrEqual(1);
+    expect(covered.height).toBeGreaterThanOrEqual(pageSize.height - 1);
+    if (window) expect(covered.height).toBeLessThanOrEqual(window.height + 1);
     await press('lx-action-sheet-item-1');
     const selected = await picked;
     expect(selected.status === 'canceled').toBeFalsy();

@@ -7,18 +7,19 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 use std::sync::Arc;
-use windows::Win32::Foundation::{COLORREF, HWND, RECT};
+use windows::Win32::Foundation::{COLORREF, HWND, POINT, RECT};
 use windows::Win32::Graphics::Dwm::{
     DWM_WINDOW_CORNER_PREFERENCE, DWMWA_EXTENDED_FRAME_BOUNDS, DWMWA_WINDOW_CORNER_PREFERENCE,
     DWMWCP_DEFAULT, DWMWCP_ROUND, DWMWCP_ROUNDSMALL, DwmGetWindowAttribute,
 };
+use windows::Win32::Graphics::Gdi::ClientToScreen;
 use windows::Win32::System::Threading::GetCurrentProcessId;
 use windows::Win32::UI::Accessibility::{HWINEVENTHOOK, SetWinEventHook, UnhookWinEvent};
 use windows::Win32::UI::HiDpi::GetDpiForWindow;
 use windows::Win32::UI::WindowsAndMessaging::{
     CHILDID_SELF, EVENT_OBJECT_DESTROY, EVENT_OBJECT_HIDE, EVENT_OBJECT_LOCATIONCHANGE,
     EVENT_OBJECT_SHOW, GA_ROOT, GWL_EXSTYLE, GWL_STYLE, GetAncestor, GetForegroundWindow,
-    GetWindowLongPtrW, GetWindowRect, GetWindowThreadProcessId, HWND_TOP, IsWindow,
+    GetWindowLongPtrW, GetWindowRect, GetWindowThreadProcessId, HWND_TOP, IsChild, IsWindow,
     IsWindowVisible, IsZoomed, LWA_ALPHA, OBJID_WINDOW, SW_HIDE, SW_SHOWNOACTIVATE,
     SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SetForegroundWindow,
     SetLayeredWindowAttributes, SetWindowLongPtrW, SetWindowPos, ShowWindow, WINEVENT_OUTOFCONTEXT,
@@ -57,6 +58,7 @@ pub enum Gone {
 
 struct Owned {
     page: Weak<Page>,
+    region: Region,
     closed: Rc<dyn Fn(Gone)>,
 }
 
@@ -79,9 +81,10 @@ impl Overlay {
         shell: Arc<dyn Shell>,
         worker: &str,
         owner: isize,
+        region: Region,
         closed: Box<dyn Fn(Gone)>,
     ) -> Result<Self, String> {
-        let (bounds, radius) = cover(owner);
+        let (bounds, radii) = cover(owner, region);
         let ex_style = WS_EX_NOREDIRECTIONBITMAP
             | WS_EX_LAYERED
             | WS_EX_TRANSPARENT
@@ -97,7 +100,7 @@ impl Overlay {
         })?;
         page.set_see_through();
         let [left, top, width, height] = bounds;
-        page.set_bounds(left, top, width, height, [radius; 4]);
+        page.set_bounds(left, top, width, height, radii);
         let mut process = 0;
         // SAFETY: an out-parameter; the hook calls back on this thread's message loop.
         let hook = unsafe {
@@ -118,6 +121,7 @@ impl Overlay {
                 owner,
                 Owned {
                     page: Rc::downgrade(&page),
+                    region,
                     closed: Rc::from(closed),
                 },
             )
@@ -181,8 +185,22 @@ impl Drop for Overlay {
     }
 }
 
-/// The owner's visible frame in screen pixels, and the radius its corners are rounded to.
-fn cover(owner: isize) -> ([i32; 4], i32) {
+/// The page area of a host window: client-pixel `[left, top, width, height]` and corner radii.
+pub type Region = fn(isize) -> Option<([i32; 4], [i32; 4])>;
+
+/// What the overlay covers in screen pixels, and its corner radii: the owner's page area, so a
+/// sheet sits over the page and not a sidebar; the owner's visible frame without one.
+fn cover(owner: isize, region: Region) -> ([i32; 4], [i32; 4]) {
+    if let Some(([left, top, width, height], radii)) = region(owner)
+        && width > 0
+        && height > 0
+    {
+        let mut origin = POINT { x: left, y: top };
+        // SAFETY: an in/out parameter for a window that may be gone.
+        if unsafe { ClientToScreen(HWND(owner as *mut _), &mut origin) }.as_bool() {
+            return ([origin.x, origin.y, width, height], radii);
+        }
+    }
     let window = HWND(owner as *mut _);
     let mut rect = RECT::default();
     // SAFETY: out-parameters on the stack, for a window that may be gone.
@@ -203,7 +221,7 @@ fn cover(owner: isize) -> ([i32; 4], i32) {
         rect.right - rect.left,
         rect.bottom - rect.top,
     ];
-    (bounds, corner_radius(window))
+    (bounds, [corner_radius(window); 4])
 }
 
 /// Windows 11 rounds a framed window's corners, 8 pt (4 pt when asked for small ones) unless
@@ -248,6 +266,11 @@ pub(crate) fn gpu_unavailable(hwnd: isize, error: &str) {
     }
 }
 
+fn fit_to(page: &Page, owner: isize, region: Region) {
+    let ([left, top, width, height], radii) = cover(owner, region);
+    page.set_bounds(left, top, width, height, radii);
+}
+
 /// The owner moved, showed, hid or went.
 unsafe extern "system" fn owner_event(
     _: HWINEVENTHOOK,
@@ -262,11 +285,30 @@ unsafe extern "system" fn owner_event(
         return;
     }
     let owner = hwnd.0 as isize;
-    let Some((page, closed)) = OWNED.with(|owned| {
+    // A page view under an owner moved, showed or hid (an aside opened, the page card changed):
+    // the owner's overlay fits its page area again.
+    if event != EVENT_OBJECT_DESTROY && OWNED.with(|owned| !owned.borrow().contains_key(&owner)) {
+        if !view::is_page_window(owner) {
+            return;
+        }
+        let fit = OWNED.with(|owned| {
+            owned
+                .borrow()
+                .iter()
+                // SAFETY: plain query on windows that may be gone.
+                .find(|(o, _)| unsafe { IsChild(HWND(**o as *mut _), hwnd).as_bool() })
+                .and_then(|(o, owned)| Some((*o, owned.region, owned.page.upgrade()?)))
+        });
+        if let Some((owner, region, page)) = fit {
+            fit_to(&page, owner, region);
+        }
+        return;
+    }
+    let Some((page, region, closed)) = OWNED.with(|owned| {
         owned
             .borrow()
             .get(&owner)
-            .map(|o| (o.page.upgrade(), o.closed.clone()))
+            .map(|o| (o.page.upgrade(), o.region, o.closed.clone()))
     }) else {
         return;
     };
@@ -274,8 +316,7 @@ unsafe extern "system" fn owner_event(
         EVENT_OBJECT_DESTROY => closed(Gone::Owner),
         EVENT_OBJECT_LOCATIONCHANGE => {
             if let Some(page) = page {
-                let ([left, top, width, height], radius) = cover(owner);
-                page.set_bounds(left, top, width, height, [radius; 4]);
+                fit_to(&page, owner, region);
             }
         }
         EVENT_OBJECT_SHOW | EVENT_OBJECT_HIDE => {

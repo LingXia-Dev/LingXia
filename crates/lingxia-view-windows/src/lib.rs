@@ -45,7 +45,7 @@ pub use web_input::adopt_web_surfaces;
 pub use adapter::WindowsAdapter;
 pub use dispatch::Dispatcher;
 pub use lingxia_view;
-pub use overlay::{Gone, Overlay, active_window, root_window};
+pub use overlay::{Gone, Overlay, Region, active_window, root_window};
 
 /// The embedding host's half: the lxapp page binding and the chrome around the page.
 pub trait Shell: Send + Sync + 'static {

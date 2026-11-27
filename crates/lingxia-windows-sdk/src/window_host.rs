@@ -652,6 +652,10 @@ impl WindowsHostBackend for WindowsHostBackendImpl {
         active_host_window().and_then(active_webtag_key_for_window)
     }
 
+    fn presentation_region(&self, hwnd: isize) -> Option<([i32; 4], [i32; 4])> {
+        presentation_region(HWND(hwnd as *mut _))
+    }
+
     fn present_webview_as_group_main(&self, webtag: &WebTag, group_key: String) -> StdResult<()> {
         present_webview_as_group_main(webtag, group_key)
     }
@@ -3219,6 +3223,33 @@ fn surface_clip_style(hwnd: HWND, webtag_key: &str, rect: RECT) -> ([i32; 4], u3
     )
 }
 
+/// The main page card in client pixels, navigation bar included, and its corner radii.
+#[cfg(feature = "shell-chrome")]
+fn presentation_region(hwnd: HWND) -> Option<([i32; 4], [i32; 4])> {
+    windows_chrome_renderer()?;
+    let key = active_webtag_key_for_window(hwnd)?;
+    if webtag_is_fullscreen_drill(&key) {
+        return None;
+    }
+    let mut client = RECT::default();
+    unsafe { WindowsAndMessaging::GetClientRect(hwnd, &mut client) }.ok()?;
+    let card = match attached_layout_for_window(hwnd, &key, client) {
+        Some(attached) => attached.main_region,
+        None => crate::shell::workspace_silhouette_rect(client, &current_window_layout(&key))?,
+    };
+    let radii =
+        crate::shell::workspace_corner_radii(card, card, crate::shell::shell_content_radius());
+    Some((
+        [
+            card.left,
+            card.top,
+            card.right - card.left,
+            card.bottom - card.top,
+        ],
+        radii,
+    ))
+}
+
 #[cfg(all(feature = "shell-chrome", feature = "device-frame"))]
 fn device_frame_surface_clip_style(
     hwnd: HWND,
@@ -3269,6 +3300,11 @@ fn client_rect_to_screen(hwnd: HWND, rect: RECT) -> Option<RECT> {
 #[cfg(all(feature = "shell-chrome", feature = "device-frame"))]
 fn device_frame_surface_corner_radii(surface: RECT, screen: RECT, radius: i32) -> [i32; 4] {
     crate::shell::workspace_corner_radii(surface, screen, radius)
+}
+
+#[cfg(not(feature = "shell-chrome"))]
+fn presentation_region(_hwnd: HWND) -> Option<([i32; 4], [i32; 4])> {
+    None
 }
 
 #[cfg(not(feature = "shell-chrome"))]

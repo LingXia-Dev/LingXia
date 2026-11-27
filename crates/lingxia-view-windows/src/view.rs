@@ -24,15 +24,15 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 };
 use windows::Win32::UI::Input::Pointer::GetPointerType;
 use windows::Win32::UI::WindowsAndMessaging::{
-    CS_DBLCLKS, CreateWindowExW, DLGC_WANTALLKEYS, DefWindowProcW, GetClientRect, GetMessageTime,
-    GetSystemMetrics, IDC_ARROW, IsWindowVisible, LoadCursorW, PT_PEN, PT_TOUCH, RegisterClassW,
-    RegisterWindowMessageW, SM_CXDRAG, WINDOW_EX_STYLE, WINDOW_STYLE, WM_CAPTURECHANGED, WM_CHAR,
-    WM_DESTROY, WM_DPICHANGED_AFTERPARENT, WM_ERASEBKGND, WM_GETDLGCODE, WM_GETOBJECT,
-    WM_IME_COMPOSITION, WM_IME_ENDCOMPOSITION, WM_IME_SETCONTEXT, WM_IME_STARTCOMPOSITION,
-    WM_KEYDOWN, WM_KILLFOCUS, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEHWHEEL,
-    WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_PAINT, WM_POINTERCAPTURECHANGED, WM_POINTERDOWN, WM_POINTERUP,
-    WM_POINTERUPDATE, WM_RBUTTONUP, WM_SETFOCUS, WM_SIZE, WM_TIMER, WNDCLASSW, WS_CHILD,
-    WS_CLIPCHILDREN, WS_CLIPSIBLINGS, WS_POPUP, WS_VISIBLE,
+    CS_DBLCLKS, CreateWindowExW, DLGC_WANTALLKEYS, DefWindowProcW, GetClassNameW, GetClientRect,
+    GetMessageTime, GetSystemMetrics, IDC_ARROW, IsWindowVisible, LoadCursorW, PT_PEN, PT_TOUCH,
+    RegisterClassW, RegisterWindowMessageW, SM_CXDRAG, WINDOW_EX_STYLE, WINDOW_STYLE,
+    WM_CAPTURECHANGED, WM_CHAR, WM_DESTROY, WM_DPICHANGED_AFTERPARENT, WM_ERASEBKGND,
+    WM_GETDLGCODE, WM_GETOBJECT, WM_IME_COMPOSITION, WM_IME_ENDCOMPOSITION, WM_IME_SETCONTEXT,
+    WM_IME_STARTCOMPOSITION, WM_KEYDOWN, WM_KILLFOCUS, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN,
+    WM_LBUTTONUP, WM_MOUSEHWHEEL, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_PAINT, WM_POINTERCAPTURECHANGED,
+    WM_POINTERDOWN, WM_POINTERUP, WM_POINTERUPDATE, WM_RBUTTONUP, WM_SETFOCUS, WM_SIZE, WM_TIMER,
+    WNDCLASSW, WS_CHILD, WS_CLIPCHILDREN, WS_CLIPSIBLINGS, WS_POPUP, WS_VISIBLE,
 };
 use windows::core::w;
 
@@ -96,6 +96,14 @@ pub(crate) fn unregister(hwnd: isize) {
 
 pub(crate) fn page_for(hwnd: isize) -> Option<Rc<Page>> {
     PAGES.with(|pages| pages.borrow().get(&hwnd)?.upgrade())
+}
+
+/// Whether `hwnd` is a GPU page window, on any thread.
+pub(crate) fn is_page_window(hwnd: isize) -> bool {
+    let mut class = [0u16; 32];
+    // SAFETY: a stack buffer for a window that may be gone.
+    let length = unsafe { GetClassNameW(HWND(hwnd as *mut _), &mut class) } as usize;
+    String::from_utf16_lossy(&class[..length]) == "LingXiaGpuPage"
 }
 
 fn page_of(hwnd: HWND) -> Option<Rc<Page>> {

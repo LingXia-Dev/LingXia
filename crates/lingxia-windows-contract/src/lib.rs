@@ -335,6 +335,12 @@ pub trait WindowsHostBackend: Send + Sync {
         None
     }
 
+    /// The main page card of host window `hwnd` in client pixels as `[left, top, width,
+    /// height]`, navigation bar included, with its corner radii: what a window overlay covers.
+    fn presentation_region(&self, _hwnd: isize) -> Option<([i32; 4], [i32; 4])> {
+        None
+    }
+
     fn present_webview_as_group_main(&self, _webtag: &WebTag, _group_key: String) -> StdResult<()> {
         unsupported_operation("present_webview_as_group_main")
     }
@@ -533,6 +539,11 @@ pub fn set_windows_host_backend(backend: Arc<dyn WindowsHostBackend>) {
     if BACKEND.set(backend).is_err() {
         log::warn!("Windows host backend is already installed; ignoring replacement");
     }
+}
+
+/// See [`WindowsHostBackend::presentation_region`]; `None` without a shell.
+pub fn presentation_region(hwnd: isize) -> Option<([i32; 4], [i32; 4])> {
+    BACKEND.get()?.presentation_region(hwnd)
 }
 
 fn backend() -> StdResult<&'static Arc<dyn WindowsHostBackend>> {

@@ -130,7 +130,14 @@ impl WindowOverlays for WinOverlays {
                 }
                 closed(window);
             });
-            match Overlay::new(token, Arc::new(OverlayShell), WORKER, owner, gone) {
+            match Overlay::new(
+                token,
+                Arc::new(OverlayShell),
+                WORKER,
+                owner,
+                lingxia_windows_contract::presentation_region,
+                gone,
+            ) {
                 Ok(overlay) => {
                     let host = overlay.page().host();
                     host.load(module.to_owned());
@@ -189,7 +196,11 @@ impl OverlaySurface for WinSurface {
 
     fn update_environment(&self, update: serde_json::Value) {
         on_overlay(self.token, move |overlay| {
-            if let Err(error) = overlay.page().host().update_environment(&update.to_string()) {
+            if let Err(error) = overlay
+                .page()
+                .host()
+                .update_environment(&update.to_string())
+            {
                 log::warn!("window overlay environment: {error}");
             }
         });
