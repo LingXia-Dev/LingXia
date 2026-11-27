@@ -80,21 +80,22 @@ async fn set_badge(
     options: Optional<JSObject>,
 ) -> JSResult<JSObject> {
     let invocation = authorization::require(&ctx, LogicRoute::AppBadgeSet)?;
-    // A surface the platform lacks is reported before the value, which may be valid elsewhere.
     let surface = badge_surface(options.0)?;
-    reachable(surface)?;
     let value_is_number = value.is_number();
     let text = badge_text(value)?;
-    // A count of 0 clears, so a counter can be passed through unchanged.
-    if text == "0" && value_is_number {
-        return paint_badge(&ctx, invocation.lxapp(), String::new(), surface).await;
-    }
+    let clears = text == "0" && value_is_number;
     if text.is_empty() {
         return Err(rong::HostError::new(
             rong::error::E_INVALID_ARG,
             "lx.host.badge.set needs a count or text; remove a badge with lx.host.badge.clear()",
         )
         .into());
+    }
+    // A surface the platform lacks is reported before a count-only refusal, as text is valid elsewhere.
+    reachable(surface)?;
+    // A count of 0 clears, so a counter can be passed through unchanged.
+    if clears {
+        return paint_badge(&ctx, invocation.lxapp(), String::new(), surface).await;
     }
     if lingxia_platform::badge_surfaces().numeric_only && text.parse::<i64>().is_err() {
         return Err(rong::HostError::new(

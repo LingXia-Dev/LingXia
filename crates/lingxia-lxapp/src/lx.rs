@@ -36,6 +36,17 @@ pub fn subscribe(
     options: Option<rong::JSValue>,
     subscribe: impl FnOnce() -> JSResult<JSFunc>,
 ) -> JSResult<JSFunc> {
+    subscribe_gated(ctx, options, || Ok(()), subscribe)
+}
+
+/// [`subscribe`] with a `gate` (feature support) checked once the options are valid, so a
+/// pre-aborted signal on a host without the feature still refuses like any well-formed call.
+pub fn subscribe_gated(
+    ctx: &JSContext,
+    options: Option<rong::JSValue>,
+    gate: impl FnOnce() -> JSResult<()>,
+    subscribe: impl FnOnce() -> JSResult<JSFunc>,
+) -> JSResult<JSFunc> {
     let invalid = || {
         rong::RongJSError::from(rong::HostError::new(
             rong::error::E_INVALID_ARG,
@@ -55,6 +66,7 @@ pub fn subscribe(
         }
     };
     let Some(signal) = signal else {
+        gate()?;
         return subscribe();
     };
     let add = signal
@@ -63,6 +75,7 @@ pub fn subscribe(
     let remove = signal
         .get::<_, JSFunc>("removeEventListener")
         .map_err(|_| invalid())?;
+    gate()?;
     if signal.get::<_, bool>("aborted").unwrap_or(false) {
         return JSFunc::new(ctx, || {});
     }

@@ -243,6 +243,19 @@ pub(crate) fn unsupported_automation(ctx: &JSContext) -> JSResult<()> {
     Ok(())
 }
 
+/// A well-formed call to a member of `feature` on a host without it: checked after the
+/// arguments, so a broken call answers `E_INVALID_ARG` on every host.
+pub(crate) fn require(ctx: &JSContext, feature: &'static str) -> JSResult<()> {
+    if exposes(ctx, feature) {
+        return Ok(());
+    }
+    Err(HostError::new(
+        rong::error::E_NOT_SUPPORTED,
+        format!("{feature} is not supported by this host; check lx.supports('{feature}') first"),
+    )
+    .into())
+}
+
 /// A capability namespace stays present without the capability: each member
 /// at `path` fails with `E_NOT_SUPPORTED` naming `feature`, by throwing when
 /// it is synchronous and by rejecting otherwise.
@@ -390,8 +403,6 @@ mod tests {
 
     const STUBBED: &[&str] = &[
         "lx.host.autostart",
-        "lx.host.notification",
-        "lx.host.banner",
         "lx.host.terminal.settings",
         "lx.host.terminal.colorSchemes",
         "lx.host.terminal.fonts",

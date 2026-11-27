@@ -40,14 +40,10 @@ struct JSShowOptions {
     background: Option<String>,
 }
 
-/// `lx.host.banner` — product-drawn desktop overlay; off desktop every call
-/// fails `E_NOT_SUPPORTED`. A guest's banners are
+/// `lx.host.banner` — product-drawn desktop overlay; off desktop every well-formed
+/// call fails `E_NOT_SUPPORTED`. A guest's banners are
 /// scoped to it and carry its name and icon.
 pub(super) fn init(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
-    if !crate::capability::exposes(ctx, "host.banner") {
-        crate::capability::unsupported_namespace(ctx, app, "lx.host.banner", "host.banner")?;
-        return Ok(());
-    }
     let banner = JSObject::new(ctx);
     banner.set("show", JSFunc::new(ctx, show)?.name("show")?)?;
     banner.set("dismiss", JSFunc::new(ctx, dismiss)?.name("dismiss")?)?;
@@ -74,6 +70,7 @@ async fn show(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
         navigation::validate(&target).map_err(navigation_error)?;
         targets.push((action, target));
     }
+    crate::capability::require(&ctx, "host.banner")?;
     let caller_id = request.id.clone();
     let mut request = request;
     request.id = scope.platform_id(&caller_id);
@@ -212,6 +209,7 @@ async fn dismiss(ctx: JSContext, id: JSValue) -> JSResult<()> {
             }
             Ok(id)
         })?;
+    crate::capability::require(&ctx, "host.banner")?;
     let runtime = invocation.lxapp().runtime.clone();
     let id = AttentionScope::of(&invocation).platform_id(&id);
     let turn = call_order::take();

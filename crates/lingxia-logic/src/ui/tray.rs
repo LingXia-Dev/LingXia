@@ -23,16 +23,16 @@ fn tray_namespace(ctx: &JSContext) -> JSResult<JSObject> {
     crate::namespace::child(ctx, &crate::app::app_namespace(ctx)?, "tray")
 }
 
-fn require_tray(ctx: &JSContext, route: LogicRoute) -> JSResult<std::sync::Arc<lxapp::LxApp>> {
-    let invocation = authorization::require(ctx, route)?;
-    if !crate::capability::exposes(ctx, "host.tray") {
-        return Err(rong::HostError::new(
-            rong::error::E_NOT_SUPPORTED,
-            "this host has no tray item; check lx.supports('host.tray') first",
-        )
-        .into());
+/// Off the desktop a well-formed call fails here, after its arguments were checked.
+fn require_tray(ctx: &JSContext) -> JSResult<()> {
+    if crate::capability::exposes(ctx, "host.tray") {
+        return Ok(());
     }
-    Ok(invocation.lxapp())
+    Err(rong::HostError::new(
+        rong::error::E_NOT_SUPPORTED,
+        "this host has no tray item; check lx.supports('host.tray') first",
+    )
+    .into())
 }
 
 /// `lx.host.tray.update` patch; an absent key leaves that part unchanged.
@@ -50,7 +50,7 @@ struct JSTrayPatch {
 /// @supports host.tray
 /// @throws {E_NOT_SUPPORTED} Off the desktop.
 fn update(ctx: JSContext, patch: JSTrayPatch) -> JSResult<()> {
-    let lxapp = require_tray(&ctx, LogicRoute::TrayUpdate)?;
+    let lxapp = authorization::require(&ctx, LogicRoute::TrayUpdate)?.lxapp();
     let title = match patch.title {
         None => None,
         Some(value) if value.is_null() || value.is_undefined() => Some(String::new()),
@@ -58,6 +58,7 @@ fn update(ctx: JSContext, patch: JSTrayPatch) -> JSResult<()> {
             crate::i18n::js_invalid_parameter_error("tray title must be a string or null")
         })?),
     };
+    require_tray(&ctx)?;
     if let Some(icon) = patch.icon {
         lxapp.runtime.set_tray_icon(&icon).map_err(js_error)?;
     }
@@ -76,9 +77,9 @@ fn update(ctx: JSContext, patch: JSTrayPatch) -> JSResult<()> {
 /// @supports host.tray
 /// @throws {E_NOT_SUPPORTED} Off the desktop.
 fn on_click(ctx: JSContext, handler: JSFunc, options: Optional<JSValue>) -> JSResult<JSFunc> {
+    let lxapp = authorization::require(&ctx, LogicRoute::TrayOnClick)?.lxapp();
     let scope = ctx.clone();
-    lxapp::lx::subscribe(&scope, options.0, move || {
-        let lxapp = require_tray(&ctx, LogicRoute::TrayOnClick)?;
+    lxapp::lx::subscribe_gated(&scope, options.0, || require_tray(&scope), move || {
         let token = register_app_handler(&ctx, "lx.host.tray.click", handler)?;
         if CLICK_HANDLERS.fetch_add(1, Ordering::SeqCst) == 0 {
             let _ = lxapp.runtime.set_tray_click_intercept(true);
@@ -106,7 +107,7 @@ fn on_click(ctx: JSContext, handler: JSFunc, options: Optional<JSValue>) -> JSRe
 /// @throws {E_INVALID_ARG} An item without a non-empty `label`, or a field of the wrong type.
 /// @throws {E_NOT_SUPPORTED} Off the desktop.
 fn replace_menu(ctx: JSContext, items: Vec<JSObject>) -> JSResult<()> {
-    let lxapp = require_tray(&ctx, LogicRoute::TrayMenuReplace)?;
+    let lxapp = authorization::require(&ctx, LogicRoute::TrayMenuReplace)?.lxapp();
     let appid = lxapp.appid.clone();
 
     // Validate the whole menu first: a refused item leaves the current menu in place.
@@ -151,6 +152,8 @@ fn replace_menu(ctx: JSContext, items: Vec<JSObject>) -> JSResult<()> {
             "checked": checked.unwrap_or(false),
         }));
     }
+
+    require_tray(&ctx)?;
 
     // Drop the previous menu's per-index click handlers.
     let previous = MENU_COUNTS.lock().ok().and_then(|m| m.get(&appid).copied());

@@ -37,19 +37,10 @@ struct JSShowOptions {
 }
 
 /// `lx.host.notification` — local banners as a resume affordance, when the host
-/// declared `capabilities.notifications`; otherwise every call fails
+/// declared `capabilities.notifications`; otherwise every well-formed call fails
 /// `E_NOT_SUPPORTED`. Every lxapp gets it; a
 /// guest's calls are scoped to itself by [`AttentionScope`].
 pub(super) fn init(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
-    if !crate::capability::exposes(ctx, "host.notification") {
-        crate::capability::unsupported_namespace(
-            ctx,
-            app,
-            "lx.host.notification",
-            "host.notification",
-        )?;
-        return Ok(());
-    }
     let notification = JSObject::new(ctx);
     notification.set("show", JSFunc::new(ctx, show)?.name("show")?)?;
     notification.set("cancel", JSFunc::new(ctx, cancel)?.name("cancel")?)?;
@@ -172,6 +163,7 @@ async fn show(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
     // The request is checked before the frontmost state is consulted, so an
     // invalid target cannot be quietly accepted as a suppressed show.
     navigation::validate(&target).map_err(navigation_error)?;
+    crate::capability::require(&ctx, "host.notification")?;
     let app = invocation.lxapp();
     let runtime = app.runtime.clone();
     let mut claimed = false;
@@ -255,6 +247,7 @@ async fn cancel(ctx: JSContext, id: JSValue) -> JSResult<()> {
             }
             Ok(id)
         })?;
+    crate::capability::require(&ctx, "host.notification")?;
     let runtime = invocation.lxapp().runtime.clone();
     let id = AttentionScope::of(&invocation).platform_id(&id);
     // Retire the target first: a banner the OS has not removed yet must not
@@ -268,6 +261,7 @@ async fn cancel(ctx: JSContext, id: JSValue) -> JSResult<()> {
 /// clears only what it posted.
 async fn cancel_all(ctx: JSContext) -> JSResult<()> {
     let invocation = authorization::require(&ctx, LogicRoute::AppNotificationCancelAll)?;
+    crate::capability::require(&ctx, "host.notification")?;
     let runtime = invocation.lxapp().runtime.clone();
     let Some(owner) = AttentionScope::of(&invocation).owner().map(str::to_string) else {
         intent::invalidate_all();
