@@ -22,7 +22,7 @@ async function bars(t: Fixture, root = 'view-index') {
 /** The tab items a user can reach, or null where the host does not expose its tab bar. */
 async function tabItems(t: Fixture) {
   try {
-    return await t.app.chrome.elements({ scope: 'tabBar' });
+    return (await t.app.chrome.elements({ scope: 'tabBar' })).filter(item => item.role !== 'bar');
   } catch {
     return null;
   }

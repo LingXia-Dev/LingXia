@@ -125,6 +125,20 @@ internal object LxAppGesture {
                     "CapsuleButton" -> "capsule"
                     else -> area
                 }
+                // The bar itself, so a spec can see how far its plate reaches.
+                if (view.javaClass.simpleName == "TabBar" && (scope.isEmpty() || scope == here)) {
+                    val at = IntArray(2).also { view.getLocationOnScreen(it) }
+                    out.put(JSONObject()
+                        .put("label", "")
+                        .put("role", "bar")
+                        .put("scope", here)
+                        .put("selected", false)
+                        .put("bounds", JSONArray()
+                            .put(((at[0] - origin[0]) / density).toDouble())
+                            .put(((at[1] - origin[1]) / density).toDouble())
+                            .put((view.width / density).toDouble())
+                            .put((view.height / density).toDouble())))
+                }
                 // A pressable container (a dialog, its backdrop) lists the controls inside it.
                 if (view.isClickable && !hasClickableChild(view) && here != "page" && (scope.isEmpty() || scope == here)) {
                     val label = view.contentDescription?.toString()?.takeIf { it.isNotBlank() } ?: texts(view)

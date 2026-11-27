@@ -548,6 +548,7 @@ internal class TabBar(context: Context) : LinearLayout(context) {
         return LinearLayout(context).apply {
             orientation = VERTICAL
             gravity = Gravity.CENTER
+            this.isSelected = isSelected
             val padH = ((if (isVertical) 6 else 0) * resources.displayMetrics.density).toInt()
             val padV = (4 * resources.displayMetrics.density).toInt()
 
@@ -700,6 +701,8 @@ internal class TabBar(context: Context) : LinearLayout(context) {
     }
 
     private fun updateTabState(tabView: LinearLayout, slot: Slot, selected: Boolean) {
+        // Accessibility and automation read the selection off the cell.
+        tabView.isSelected = selected
         val content = tabView.getChildAt(0) as LinearLayout
         val iconContainer = content.getChildAt(0) as FrameLayout
         iconContainer.background = if (selected) activeIndicatorDrawable() else null

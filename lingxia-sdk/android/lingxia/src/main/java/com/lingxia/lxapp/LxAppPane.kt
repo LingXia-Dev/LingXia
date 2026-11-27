@@ -731,18 +731,11 @@ internal class LxAppPane(
             activity.resources.displayMetrics.density,
             transparent = transparent,
         )
-        if (transparent) {
-            // Lift above the navigation bar or gesture zone; the page paints underneath.
-            params.height = tabBarSizePx
-            params.bottomMargin = extra
-            tabBar.setPadding(tabBar.paddingLeft, tabBar.paddingTop, tabBar.paddingRight, 0)
-        } else {
-            // Grow the opaque strip so its background fills the gesture zone
-            // and the icons stay in the original 64dp.
-            params.height = tabBarSizePx + extra
-            params.bottomMargin = 0
-            tabBar.setPadding(tabBar.paddingLeft, tabBar.paddingTop, tabBar.paddingRight, extra)
-        }
+        // The bar's plate, translucent ones included, reaches the screen's bottom edge under the
+        // navigation bar or gesture zone; the tabs keep their height above it.
+        params.height = tabBarSizePx + extra
+        params.bottomMargin = 0
+        tabBar.setPadding(tabBar.paddingLeft, tabBar.paddingTop, tabBar.paddingRight, extra)
     }
 
     internal fun updateLayoutMargins() {
