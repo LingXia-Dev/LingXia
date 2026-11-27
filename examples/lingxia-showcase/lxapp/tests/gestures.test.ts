@@ -58,10 +58,11 @@ test('a sheet moves between its detents and closes when dragged off', { covers: 
   // Keys step the detents as assistive tech does.
   await sheet.press('ArrowDown');
   await expect(state).toHaveAttribute('data-state', 'open=true at=1 closed=0');
-  // Dragged down past half its height it settles off screen and closes.
+  // Dragged down past half its height it settles off screen and closes; closing puts its detent
+  // back where it opened.
   await view.drag(view.testId('lab-detents-title'), { dx: 0, dy: 600, durationMs: 500 });
   await expect(sheet).not.toBeAttached();
-  await expect(state).toHaveAttribute('data-state', 'open=false at=2 closed=1');
+  await expect(state).toHaveAttribute('data-state', 'open=false at=1 closed=1');
   // Reopened, it rests on its half detent again, not where the drag left it.
   await view.testId('lab-detents-open').click();
   await expect(state).toHaveAttribute('data-state', 'open=true at=1 closed=1');
