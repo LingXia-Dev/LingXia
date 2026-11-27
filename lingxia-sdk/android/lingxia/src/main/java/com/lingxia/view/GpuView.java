@@ -225,6 +225,8 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     /** A window overlay's page: its CPU frames clear the surface first. */
     private volatile boolean seeThrough;
     private boolean hasSurfaceFrame;
+    // The size of the surface the host last took; -1 once it is lost.
+    private int surfaceWidth = -1, surfaceHeight = -1;
     private final String worker;
     private long refusedInputLoggedAt = -1000;
     // The presented frame: its generation each frame; its JSON pulled from the core and
@@ -932,16 +934,21 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         finishSurfaceRedraws();
         ime.setCaretActive(false);
         gpuAttached = false;
+        surfaceWidth = surfaceHeight = -1;
         if (!destroyed) nativeSurfaceLost(host);
     }
     @Override public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
         hasSurfaceFrame = false;
         surfaceEpoch++;
         if (destroyed) return;
-        // Whether a scheme or contrast change arrives here at an unchanged size, which rebuilds the View.
-        Log.i("LingXia.UI", "UI_SURFACE: changed " + width + "x" + height + " night="
-            + (getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK));
-        nativeSurfaceChanged(host);
+        boolean resized = width != surfaceWidth || height != surfaceHeight;
+        surfaceWidth = width;
+        surfaceHeight = height;
+        Log.i("LingXia.UI", "UI_SURFACE: changed " + width + "x" + height + (resized ? "" : " (same size)"));
+        // At the same size only the environment can have moved (a scheme or contrast change): the
+        // View runs again only for what it read, as on the other platforms.
+        if (resized) nativeSurfaceChanged(host);
+        else { nativeEnvironmentChanged(host); requestFrame(); }
         // The SurfaceView shows its layer again when it resizes it.
         updateSurfaceVisibility();
         if (!gpuAttached) attachGpu();
