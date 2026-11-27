@@ -187,17 +187,7 @@ impl Compiler {
     /// Compile every GPU page of the last dev build into a scratch directory in the background,
     /// so the first save of the session compiles warm.
     fn prime(&mut self) {
-        let inputs = std::fs::read_to_string(&self.record)
-            .ok()
-            .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok());
-        let Some(pages) = inputs.as_ref().and_then(|v| v.as_object()) else {
-            return;
-        };
-        let pages: Vec<String> = pages
-            .keys()
-            .filter(|page| page.as_str() != CHUNK_KEY)
-            .cloned()
-            .collect();
+        let pages = self.recorded_pages();
         if pages.is_empty() {
             return;
         }
@@ -215,13 +205,38 @@ impl Compiler {
         }
     }
 
+    /// The GPU pages the session build's inputs record holds.
+    fn recorded_pages(&self) -> Vec<String> {
+        std::fs::read_to_string(&self.record)
+            .ok()
+            .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+            .and_then(|inputs| {
+                inputs.as_object().map(|pages| {
+                    pages
+                        .keys()
+                        .filter(|page| page.as_str() != CHUNK_KEY && self.dir.join(page).exists())
+                        .cloned()
+                        .collect()
+                })
+            })
+            .unwrap_or_default()
+    }
+
+    /// The pages a compile of `pages` passes catalogs for: a changed shared chunk rebuilds every
+    /// recorded page, each with its own catalog.
+    fn catalog_pages(&self, pages: &[String]) -> Vec<String> {
+        let mut every: BTreeSet<String> = self.recorded_pages().into_iter().collect();
+        every.extend(pages.iter().cloned());
+        every.into_iter().collect()
+    }
+
     pub(super) fn dir(&self) -> &Path {
         &self.dir
     }
 
     /// Recompile `pages` (`pages/x/index.tsx`) into the lxapp's build output.
     pub(super) fn compile(&mut self, pages: &[String]) -> Result<Compiled> {
-        let catalogs = crate::lxapp::gpu_dev_inputs(&self.dir, pages)?;
+        let catalogs = crate::lxapp::gpu_dev_inputs(&self.dir, &self.catalog_pages(pages))?;
         let request = serde_json::json!({
             "pages": pages,
             "output": self.output,
@@ -369,6 +384,30 @@ mod tests {
         assert!(
             lxapp.path().join("out/pages/a/index.js").is_file(),
             "the compile still writes its output"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_compile_passes_the_catalog_of_every_recorded_page() {
+        let lxapp = gpu_lxapp();
+        std::fs::create_dir_all(lxapp.path().join("pages/b")).unwrap();
+        std::fs::write(
+            lxapp.path().join("pages/b/index.tsx"),
+            "export function render() { return <view />; }\n",
+        )
+        .unwrap();
+        // b was built earlier in the session; c's source is gone; the chunk is not a page.
+        std::fs::write(
+            lxapp.path().join("out.gpu-inputs.json"),
+            r#"{"pages/a/index.tsx":["pages/a/index.tsx"],"pages/b/index.tsx":["pages/b/index.tsx"],"pages/c/index.tsx":["pages/c/index.tsx"],"lx:view":["shared/x.ts"]}"#,
+        )
+        .unwrap();
+        let compiler = Compiler::spawn(lxapp.path(), &lxapp.path().join("out")).unwrap();
+        // A save of a alone may move the shared chunk, which rebuilds b too: b's actions go along.
+        assert_eq!(
+            compiler.catalog_pages(&["pages/a/index.tsx".to_owned()]),
+            ["pages/a/index.tsx", "pages/b/index.tsx"]
         );
     }
 
