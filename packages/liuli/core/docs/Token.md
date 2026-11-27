@@ -139,7 +139,7 @@ export function Sizes() {
 - `className`: classes merged after the recipe's, so they win.
 - The recipe, `tokenRecipe` from `@liulidesign/core/Token/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-caption`, `--text-footnote`.
-- Colour roles it paints with, set by the theme pack: `accent-soft`, `focus`, `hue-1`, `hue-1-soft`, `hue-2`, `hue-2-soft`, `hue-3`, `hue-3-soft`, `hue-4`, `hue-4-soft`, `hue-5`, `hue-5-soft`, `hue-6`, `hue-6-soft`, `hue-7`, `hue-7-soft`, `hue-8`, `hue-8-soft`, `on-accent-soft`, `text`, `text-faint`, `text-muted`.
+- Colour roles it paints with, set by the theme pack: `accent-soft`, `focus`, `hue-1`, `hue-1-soft`, `hue-2`, `hue-2-soft`, `hue-3`, `hue-3-soft`, `hue-4`, `hue-4-soft`, `hue-5`, `hue-5-soft`, `hue-6`, `hue-6-soft`, `hue-7`, `hue-7-soft`, `hue-8`, `hue-8-soft`, `line`, `on-accent-soft`, `text`, `text-faint`, `text-muted`.
 
 ## Accessibility
 

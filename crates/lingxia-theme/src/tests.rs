@@ -1391,10 +1391,17 @@ fn hover_and_pressed_solids_step_away_from_their_text_and_a_pack_cannot_write_th
                 let [fill, hover, pressed] = [solid, hover, pressed].map(|role| theme.color(role));
                 let lightness = |color: Rgba| color.oklch().l;
                 // Each state steps away from its text: deeper under white, lighter under a dark ink.
-                let away = if theme.color(label(solid)).oklch().l > 0.5 { 1.0 } else { -1.0 };
+                let away = if theme.color(label(solid)).oklch().l > 0.5 {
+                    1.0
+                } else {
+                    -1.0
+                };
                 for (from, to) in [(fill, hover), (hover, pressed)] {
                     let step = away * (lightness(from) - lightness(to));
-                    assert!(step >= 0.04, "{tag}: a state steps {step:.4} away from its text");
+                    assert!(
+                        step >= 0.04,
+                        "{tag}: a state steps {step:.4} away from its text"
+                    );
                 }
                 let chroma = |color: Rgba| color.oklch().c / color.oklch().l;
                 for shade in [hover, pressed] {
@@ -1690,8 +1697,8 @@ fn neutral_soft_is_a_translucent_neutral_that_stands_off_every_floor_in_every_lo
                 Role::Canvas,
             ] {
                 let edge = pair_contrast(&theme, Role::NeutralSoft, ground);
-                let needed = if prefs.high_contrast { 3.0 } else { 1.3 };
-                assert!(edge >= needed, "{label}: on {} {edge:.2}", ground.name());
+                // High contrast keeps the tint: its edge is a line, and its text reaches 7:1.
+                assert!(edge >= 1.3, "{label}: on {} {edge:.2}", ground.name());
             }
         });
     }
@@ -1714,7 +1721,7 @@ fn every_edge_stands_three_to_one_off_each_floor_under_high_contrast() {
                 ..Prefs::default()
             };
             let theme = resolve(&pack, &prefs).unwrap();
-            for edge in [Role::Line, Role::LineStrong, Role::Focus, Role::NeutralSoft] {
+            for edge in [Role::Line, Role::LineStrong, Role::Focus] {
                 for floor in [
                     Role::Canvas,
                     Role::Surface,
@@ -2008,9 +2015,17 @@ fn under_high_contrast_a_separator_stands_off_every_tint_it_sits_on() {
             for floor in [Role::Surface, Role::Canvas] {
                 let floor = theme.color(floor);
                 let wash = Rgba([text.0[0], text.0[1], text.0[2], 0x14]);
-                for ground in tints.map(|tint| theme.color(tint)).into_iter().chain([wash]) {
+                for ground in tints
+                    .map(|tint| theme.color(tint))
+                    .into_iter()
+                    .chain([wash])
+                {
                     let ratio = contrast(line, over(ground, floor));
-                    assert!(ratio >= 3.0 - 1e-9, "{} {appearance:?}: line {ratio:.2}", pack.name);
+                    assert!(
+                        ratio >= 3.0 - 1e-9,
+                        "{} {appearance:?}: line {ratio:.2}",
+                        pack.name
+                    );
                 }
             }
             // A separator stays lighter than an interactive boundary.

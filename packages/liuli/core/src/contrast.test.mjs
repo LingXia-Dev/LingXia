@@ -49,13 +49,11 @@ test('pairs on roles the engine derives wait for the resolved palette', t => {
 const boosted = pair => (needed(pair) >= 4.5 ? 7 : 4.5);
 
 /**
- * Pairs the high-contrast looks miss today, named so none is added. High contrast holds `line` 3:1 off
- * the surface, a mid grey nothing but black reads 4.5:1 on; and `neutral-soft` is itself the avatar's
- * 3:1 edge, which leaves its initials short of 7:1.
+ * Pairs the high-contrast looks miss by design, named so none is added. The Slider thumb's rim is
+ * accent on `line`, a mid grey nothing but black reads 4.5:1 on; the thumb's own fill, white in
+ * light and dark in dark, is what tells it from the track.
  */
 const highContrastGaps = new Set([
-  'Avatar: initials (high-contrast-light)',
-  'Avatar: initials (high-contrast-dark)',
   'Slider: thumb rim against the track (high-contrast-light)',
   'Slider: thumb rim against the track (high-contrast-dark)',
 ]);

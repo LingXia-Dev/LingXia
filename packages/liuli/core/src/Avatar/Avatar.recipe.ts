@@ -24,6 +24,8 @@ export const avatarRecipe = {
     } satisfies Record<AvatarShape, Record<AvatarSize, string>>,
     /** A square at every text size; at large text it grows a little with the text (Avatar caps it), photo or initials alike. */
     size: { xs: 'size-6', sm: 'size-8', md: 'size-10', lg: 'size-14' } satisfies Record<AvatarSize, string>,
+    /** High contrast keeps the light fill and draws its edge, so the initials read on a tint. */
+    highContrast: 'inset-ring inset-ring-line',
     /** A hue's soft fill in place of the accent's, so people are told apart at a glance. */
     hue: { 1: 'bg-hue-1-soft', 2: 'bg-hue-2-soft', 3: 'bg-hue-3-soft', 4: 'bg-hue-4-soft', 5: 'bg-hue-5-soft', 6: 'bg-hue-6-soft', 7: 'bg-hue-7-soft', 8: 'bg-hue-8-soft' } satisfies Record<Hue, string>,
     /** In a group, a 2 px edge in the colour of the surface behind cuts each one out of the next. */

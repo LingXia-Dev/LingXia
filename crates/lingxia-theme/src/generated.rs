@@ -144,7 +144,7 @@ pub enum Role {
     DangerSolidHover = 68,
     /// danger-solid while pressed: the same step again past hover, in the same direction. Always derived; a pack does not write it.
     DangerSolidPressed = 69,
-    /// Translucent fill of the theme's own neutral behind initials and placeholders, dark in light and light in dark, raised in alpha only as far as it shows as an edge on every floor, 3:1 under high contrast; text on it uses text.
+    /// Translucent fill of the theme's own neutral behind initials and placeholders, dark in light and light in dark, raised in alpha only as far as it shows as an edge on every floor; high contrast keeps the same tint, and a component draws its edge with a line role; text on it uses text.
     NeutralSoft = 70,
     /// `line` as drawn inside a raised surface: the contrast `line` has on surface, at least 1.3:1, 3:1 under high contrast.
     LineOnRaised = 71,

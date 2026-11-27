@@ -205,7 +205,7 @@ export function Hues() {
 - `className`: classes merged after the recipe's, so they win.
 - The recipe, `avatarRecipe` from `@liulidesign/core/Avatar/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-caption`, `--text-footnote`, `--text-callout`, `--radius-control`, `--radius-container`, `--radius-checkbox`, `--radius-segment`.
-- Colour roles it paints with, set by the theme pack: `danger-mark`, `focus`, `hue-1-soft`, `hue-2-soft`, `hue-3-soft`, `hue-4-soft`, `hue-5-soft`, `hue-6-soft`, `hue-7-soft`, `hue-8-soft`, `neutral-soft`, `success-mark`, `surface`, `surface-raised`, `surface-sunken`, `text`, `warning-mark`.
+- Colour roles it paints with, set by the theme pack: `danger-mark`, `focus`, `hue-1-soft`, `hue-2-soft`, `hue-3-soft`, `hue-4-soft`, `hue-5-soft`, `hue-6-soft`, `hue-7-soft`, `hue-8-soft`, `line`, `neutral-soft`, `success-mark`, `surface`, `surface-raised`, `surface-sunken`, `text`, `warning-mark`.
 
 ## Accessibility
 

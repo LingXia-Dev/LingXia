@@ -1,4 +1,4 @@
-import { cx, type Child } from '@lingxia/view';
+import { cx, useEnv, type Child } from '@lingxia/view';
 import { liuliText } from '../i18n/text';
 import type { Hue } from '../hue';
 import type { IconRef } from '../Icon/Icon';
@@ -59,7 +59,8 @@ export function Token({ label, startIcon, hue, onClick, isSelected = false, size
       <Glyph name="close" weight={2.5} side={removeSides[size]} className={r.removeIcon.size[size]} />
     </button>
   );
-  const classes = cx(r.root.base, r.root.size[size], onRemove === undefined && r.root.plain[size], !isDisabled && hue !== undefined && r.root.hue[hue], !isDisabled && isSelected && r.root.selected, isDisabled && r.root.disabled, className);
+  const { highContrast } = useEnv();
+  const classes = cx(r.root.base, r.root.size[size], highContrast && r.root.highContrast, onRemove === undefined && r.root.plain[size], !isDisabled && hue !== undefined && r.root.hue[hue], !isDisabled && isSelected && r.root.selected, isDisabled && r.root.disabled, className);
   // A token that both opens and can be removed is two buttons side by side, never one inside the other.
   if (onClick !== undefined && onRemove === undefined) {
     return (

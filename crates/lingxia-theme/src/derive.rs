@@ -786,7 +786,7 @@ impl Build<'_> {
     }
 
     /// The theme's own neutral at tone 10 in light and 90 in dark, at 10 % and 20 %, its alpha
-    /// raised only as far as it stands off every floor as an edge, 3:1 under high contrast.
+    /// raised only as far as it stands off every floor; high contrast keeps the same tint.
     fn neutral_soft(&mut self) {
         let floors = [
             Role::Surface,
@@ -798,13 +798,7 @@ impl Build<'_> {
         let edge = crate::CONTRAST
             .iter()
             .filter(|(role, ..)| *role == Role::NeutralSoft)
-            .map(|&(.., ratio)| {
-                if self.strong {
-                    crate::boosted(ratio)
-                } else {
-                    f64::from(ratio)
-                }
-            })
+            .map(|&(.., ratio)| f64::from(ratio))
             .fold(1.0, f64::max);
         let neutral = self.get(Role::Canvas).oklch();
         let Rgba([r, g, b, _]) = tone(neutral, self.pick([10.0, 90.0]));

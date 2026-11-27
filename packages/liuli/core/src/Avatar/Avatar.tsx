@@ -1,4 +1,4 @@
-import { childrenToArray, createContext, cx, useContext, useLocal, useView, type Child } from '@lingxia/view';
+import { childrenToArray, createContext, cx, useContext, useEnv, useLocal, useView, type Child } from '@lingxia/view';
 import type { Hue } from '../hue';
 import { avatarRecipe as r } from './Avatar.recipe';
 import { dataOf } from '../internal/data';
@@ -64,6 +64,7 @@ export function Avatar({ name, src, initials, hue, size, shape: ownShape, status
   const actual = size ?? group?.size ?? 'md';
   const shape = ownShape ?? group?.shape ?? 'circle';
   const failed = useLocal(false);
+  const { highContrast } = useEnv();
   const letters = initials ?? initialsOf(name);
   const showImage = src !== undefined && !failed.value;
   const spoken = statusLabel === undefined ? name : `${name}, ${statusLabel}`;
@@ -73,7 +74,7 @@ export function Avatar({ name, src, initials, hue, size, shape: ownShape, status
       aria-hidden={isDecorative || undefined}
       data-testid={testId} {...dataOf(attributes)}
       style={scaled.box}
-      className={cx(r.root.base, r.root.shape[shape][actual], r.root.size[actual], hue !== undefined && r.root.hue[hue], group && r.root.inGroup[group.surface], className)}
+      className={cx(r.root.base, r.root.shape[shape][actual], r.root.size[actual], hue !== undefined && r.root.hue[hue], highContrast && r.root.highContrast, group && r.root.inGroup[group.surface], className)}
     >
       {/* The initials stay under the photo, so a slow or failed load never shows an empty circle. */}
       <text role={showImage ? undefined : 'img'} aria-label={showImage ? undefined : spoken} aria-hidden={showImage || undefined} style={scaled.letters} className={cx(r.initials.base, r.initials.size[actual])}>{letters}</text>
@@ -115,6 +116,7 @@ export function AvatarGroup({ label, children, max, overflowLabel, onOverflowCli
   const shown = max === undefined ? all : all.slice(0, max);
   const rest = all.length - shown.length;
   const scaled = useScaled(size);
+  const { highContrast } = useEnv();
   return (
     <InGroup.Provider value={{ size, surface, shape }}>
       <view role="group" aria-label={label} data-testid={testId} {...dataOf(attributes)} className={cx(r.group.base, className)}>
@@ -124,11 +126,11 @@ export function AvatarGroup({ label, children, max, overflowLabel, onOverflowCli
         {rest > 0 && (
           <view className={cx(r.overlap.size[size], r.slot[surface], r.root.shape[shape][size])}>
             {onOverflowClick ? (
-              <button aria-label={overflowLabel?.(rest) ?? `+${rest}`} onClick={onOverflowClick} data-testid={testId && `${testId}-overflow`} style={scaled.box} className={cx(r.root.base, r.root.shape[shape][size], r.root.size[size], r.root.inGroup[surface], r.overflow.button)}>
+              <button aria-label={overflowLabel?.(rest) ?? `+${rest}`} onClick={onOverflowClick} data-testid={testId && `${testId}-overflow`} style={scaled.box} className={cx(r.root.base, r.root.shape[shape][size], r.root.size[size], highContrast && r.root.highContrast, r.root.inGroup[surface], r.overflow.button)}>
                 <text aria-hidden style={scaled.letters} className={cx(r.initials.base, r.initials.size[size], r.overflow.text)}>{`+${rest}`}</text>
               </button>
             ) : (
-              <view data-testid={testId && `${testId}-overflow`} style={scaled.box} className={cx(r.root.base, r.root.shape[shape][size], r.root.size[size], r.root.inGroup[surface])}>
+              <view data-testid={testId && `${testId}-overflow`} style={scaled.box} className={cx(r.root.base, r.root.shape[shape][size], r.root.size[size], highContrast && r.root.highContrast, r.root.inGroup[surface])}>
                 <text aria-label={overflowLabel?.(rest)} style={scaled.letters} className={cx(r.initials.base, r.initials.size[size], r.overflow.text)}>{`+${rest}`}</text>
               </view>
             )}

@@ -23,6 +23,8 @@ export const tokenRecipe = {
     /** A category: the hue's soft fill; selected still wins. */
     hue: { 1: 'bg-hue-1-soft', 2: 'bg-hue-2-soft', 3: 'bg-hue-3-soft', 4: 'bg-hue-4-soft', 5: 'bg-hue-5-soft', 6: 'bg-hue-6-soft', 7: 'bg-hue-7-soft', 8: 'bg-hue-8-soft' } satisfies Record<Hue, string>,
     selected: 'bg-accent-soft text-on-accent-soft',
+    /** High contrast keeps the tint light and draws its edge. */
+    highContrast: 'inset-ring inset-ring-line',
     /**
      * Faded by an opaque colour: opacity would cost a layer, and an ink with alpha lays each path of an icon
      * on its own, so where two cross is darker. Hue and selection give way to it.

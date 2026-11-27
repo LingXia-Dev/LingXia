@@ -300,7 +300,7 @@ authored ones and the accent seed, unless a pack sets them.
 | `accent-solid-pressed` | derived |  | accent-solid while pressed: the same step again past hover, in the same direction. Always derived; a pack does not write it. |
 | `danger-solid-hover` | derived |  | danger-solid under a hovering pointer: a visible step deeper, or lighter where deeper would make its label hard to read; hue kept. Always derived; a pack does not write it. |
 | `danger-solid-pressed` | derived |  | danger-solid while pressed: the same step again past hover, in the same direction. Always derived; a pack does not write it. |
-| `neutral-soft` | derived | 1.3:1 on `surface`, 1.3:1 on `surface-sunken`, 1.3:1 on `surface-raised`, 1.3:1 on `canvas` | Translucent fill of the theme's own neutral behind initials and placeholders, dark in light and light in dark, raised in alpha only as far as it shows as an edge on every floor, 3:1 under high contrast; text on it uses text. |
+| `neutral-soft` | derived | 1.3:1 on `surface`, 1.3:1 on `surface-sunken`, 1.3:1 on `surface-raised`, 1.3:1 on `canvas` | Translucent fill of the theme's own neutral behind initials and placeholders, dark in light and light in dark, raised in alpha only as far as it shows as an edge on every floor; high contrast keeps the same tint, and a component draws its edge with a line role; text on it uses text. |
 
 ### Hover and pressed fills
 

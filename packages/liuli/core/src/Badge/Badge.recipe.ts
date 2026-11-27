@@ -12,6 +12,8 @@ export const badgeRecipe = {
     base: 'flex-row items-center-safe self-start rounded-full',
     // A least height, so a label at large text makes the pill taller instead of spilling out.
     size: { sm: 'min-h-5 py-0.5 px-2 gap-1', md: 'min-h-6 py-0.5 px-2.5 gap-1.5' } satisfies Record<BadgeSize, string>,
+    /** High contrast keeps a soft pill light and draws its edge; a solid fill needs none. */
+    highContrast: 'inset-ring inset-ring-line',
     soft: {
       // A quiet tint of the text colour: it reads as a pill on any surface, where a sunken surface reads as a hole.
       neutral: 'bg-text/8 text-text',

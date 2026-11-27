@@ -684,10 +684,12 @@ fn near_black(pack: &Pack, colors: &Colors, role: Role, appearance: Appearance) 
     Some(ink.rgba(alpha))
 }
 
-/// Selection pairs keep their base ratios under high contrast: text must stay readable on the
-/// highlight, and a highlight boosted past 3:1 off the page would leave no room for that.
+/// Selection and `neutral-soft` keep their base ratios under high contrast: each is a light tint
+/// that text reads on, so its edge comes from a line role rather than from darkening the tint.
 fn keeps_base_ratio(foreground: Role, background: Role) -> bool {
-    foreground == Role::Selection || background == Role::Selection
+    [foreground, background]
+        .iter()
+        .any(|&role| role == Role::Selection || role == Role::NeutralSoft)
 }
 
 /// The contrast a pair is held to: a translucent foreground is measured laid over its background.
