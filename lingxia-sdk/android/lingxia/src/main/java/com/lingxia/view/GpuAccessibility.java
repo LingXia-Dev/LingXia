@@ -108,6 +108,12 @@ final class GpuAccessibility {
         if (!name.isEmpty() && !name.equals(text(node.text()))) info.setContentDescription(name);
         // A select's chosen label (or placeholder) is its state, spoken after the name.
         String value = text(node.value());
+        // Android has no partly checked state before API 36: its state description says it.
+        boolean mixed = Boolean.TRUE.equals(node.mixed());
+        if (mixed) {
+            String spoken = host.getContext().getString(com.lingxia.lxapp.R.string.lx_gpu_a11y_mixed);
+            value = value.isEmpty() ? spoken : value + ", " + spoken;
+        }
         // Android has no item depth: a tree item speaks its level with its state.
         Long level = node.level();
         if (level != null) {
@@ -127,7 +133,8 @@ final class GpuAccessibility {
         info.setClickable(node.clickable());
         info.setFocused(node.focused());
         Boolean checked = node.checked(), pressed = node.pressed(), selectedState = node.selected(), expanded = node.expanded();
-        if (checked != null) { info.setCheckable(true); info.setChecked(checked); }
+        if (mixed) { info.setCheckable(true); info.setChecked(false); }
+        else if (checked != null) { info.setCheckable(true); info.setChecked(checked); }
         // A toggle button reads as checkable, the closest Android state to aria-pressed.
         else if (pressed != null) { info.setCheckable(true); info.setChecked(pressed); }
         if (selectedState != null) info.setSelected(selectedState);

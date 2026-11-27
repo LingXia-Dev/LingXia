@@ -162,6 +162,8 @@ gpu:
   a11y_suggestions: "有可选建议"
   # A GPU page tree item's depth, where the platform reader has no level of its own.
   a11y_level: "第 {level} 级"
+  # A partly checked GPU page control (aria-checked="mixed"), where the platform has no such state.
+  a11y_mixed: "部分选中"
 
 # The floating menu over a GPU page's text selection and editors, in `MenuAction` order
 # (Harmony shell and the Windows SDK; Android and Apple label theirs from system strings).
