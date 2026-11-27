@@ -43,6 +43,8 @@ export const TEST_ERROR_CODES = [
   "failed",
   /** A routed response broke the run's OpenAPI contract (`lxdev test --openapi`). */
   "E_OPENAPI_CONTRACT",
+  /** A page failed, stalled or showed nothing during the test, undeclared by `expectPageFailure`. */
+  "E_PAGE_HEALTH",
   /** A fixture call ran out of time (a wait, an action budget, an eval, a nav), or the test did. */
   "E_TIMEOUT",
   /** `t.skip()` stopped the test. */

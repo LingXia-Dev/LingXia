@@ -308,6 +308,9 @@ impl lingxia_view_android::StateListener for States {
     fn console(&self, owner: i64, level: log::Level, message: &str) {
         gpu_page::console(owner, level, message);
     }
+    fn failed(&self, owner: i64, error: &str) {
+        gpu_page::failed(owner, error);
+    }
     fn sync_webviews(
         &self,
         owner: i64,

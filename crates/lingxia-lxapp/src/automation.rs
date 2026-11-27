@@ -17,6 +17,8 @@ use std::time::Duration;
 
 #[path = "automation_gpu.rs"]
 pub mod gpu;
+#[path = "automation_page_events.rs"]
+pub mod page_events;
 
 /// The window feedback layer over `app`'s window (its toast and dialogs), automated as a GPU
 /// page is. Not a page: no page name reaches it.

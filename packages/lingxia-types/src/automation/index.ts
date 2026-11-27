@@ -149,6 +149,45 @@ export interface HostRunAutomation extends Automation {
   lxapp(): LxAppDriver;
   /** Drive a specific running lxapp. */
   lxapp(appid: string): LxAppDriver;
+  /** What went wrong on any page of any lxapp while the run is active. */
+  readonly pageEvents: PageEventDriver;
+}
+
+/** A kind of page event the host records during a run. */
+export type PageEventKind =
+  /** A page's View failed and shows the recovery panel or banner. */
+  | 'page_failed'
+  | 'webview_crashed'
+  | 'webview_load_failed'
+  /** A visible page had a frame requested and none presented for over 1 s. */
+  | 'frame_gap'
+  /** A settled page area was one colour while its tree had visible content. */
+  | 'blank_page';
+
+/** One page event. */
+export interface PageEvent {
+  /** Increasing within the run. */
+  seq: number;
+  /** Host milliseconds since the run started. */
+  atMs: number;
+  kind: PageEventKind;
+  appId: string;
+  /** Page path, when the event belongs to a page. */
+  page?: string;
+  instance?: string;
+  /** Overlay or surface id. */
+  surface?: string;
+  /** The error code, e.g. `UI_TIMEOUT`, when there is one. */
+  code?: string;
+  message: string;
+  /** `frame_gap`: how long the frame was owed, in ms. */
+  gapMs?: number;
+}
+
+/** The run's page events; every call rejects with `E_AUTOMATION` outside a host test run. */
+export interface PageEventDriver {
+  /** Events after `since` (a `seq`), oldest first; `dropped` counts events lost to the bound. */
+  read(options?: { since?: number }): Promise<{ events: PageEvent[]; dropped: number }>;
 }
 
 // ========================== terminal tier ==========================

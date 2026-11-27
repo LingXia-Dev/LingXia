@@ -10,6 +10,7 @@ import { createRedactor } from "./redact.js";
 import { clearInline, countStatuses, renderHtml } from "./report.js";
 import { coverageSummary, parseManifest } from "./coverage.js";
 import { ContractError, ContractLedger, parseOpenApiControl, setActiveOpenApi } from "./openapi.js";
+import { PageEventReader, describeEvent, gradePageHealth, validatePageHealthOptions } from "./page-health.js";
 import { matchesTags, parseTagFilter, tagSummary, validateTags } from "./tags.js";
 import type { TestApi } from "./test-api.js";
 import type { LingxiaTestController } from "./host-types.js";
@@ -17,6 +18,8 @@ import type {
   FailOptions,
   FileOptions,
   Fixture,
+  PageFailureMatch,
+  PageHealthOptions,
   RejectExpected,
   TestBody,
   TestOptions,
@@ -31,6 +34,7 @@ import type {
   JsonReport,
   ListedSpec,
   FailureNetworkCall,
+  PageHealthSummary,
   ProtocolReport,
   RunSubject,
   SpecStatus,
@@ -80,6 +84,8 @@ interface RegisteredSpec {
   skip?: string;
   /** Run inputs the spec needs; unmet, it is skipped. */
   requires: Requirements;
+  expectPageFailure?: PageFailureMatch;
+  pageHealth?: PageHealthOptions;
   /**
    * The options the spec was registered with. The fields above are settled
    * from them and its file's `test.configure()` defaults when the run starts
@@ -246,6 +252,7 @@ function validateOptions(options: FileOptions, where: string): void {
   }
   validateTags(options.tags, where);
   validateRequires(options.requires, where);
+  validatePageHealthOptions(options.expectPageFailure, options.pageHealth, where);
   if (options.covers !== undefined && (!Array.isArray(options.covers) || options.covers.some((id) => typeof id !== "string"))) {
     throw new TypeError(`${where} covers must be an array of strings`);
   }
@@ -273,6 +280,8 @@ function settle(item: RegisteredSpec, file: FileOptions | undefined): void {
   item.forensics = pick("forensics") !== false;
   item.skip = pick("skip");
   item.reason = item.skip ?? pick("reason");
+  item.expectPageFailure = pick("expectPageFailure");
+  item.pageHealth = pick("pageHealth");
   item.requires = {
     args: [...new Set([...fileRequires.args, ...ownRequires.args])],
     openapi: fileRequires.openapi || ownRequires.openapi,
@@ -731,6 +740,26 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
   const started = Date.now();
   clearInline();
   contractSeq = 0;
+  pageEvents.reset();
+  const pageOutside: PageHealthSummary["outside"] = [];
+  // Page events outside any test fail the run, naming the test before them.
+  const notePageEventsOutside = async (after: string | undefined, before: string) => {
+    let read;
+    try { read = await pageEvents.read(automationRoot); }
+    catch (readError) {
+      await host.emit({ type: "diagnostic", phase: "page_health", level: "warn",
+        message: `Page events could not be read ${before}: ${readError instanceof Error ? readError.message : String(readError)}` });
+      return;
+    }
+    if (!read || (read.events.length === 0 && read.dropped === 0)) return;
+    const graded = gradePageHealth(read, undefined, undefined).record;
+    for (const event of graded.events) pageOutside.push({ ...(after !== undefined ? { after } : {}), event });
+    const where = after !== undefined ? `after "${after}" finished, ${before}` : before;
+    const lines = graded.events.slice(0, 5).map((event) => `  ${describeEvent(event)}`);
+    if (graded.dropped > 0) lines.push(`  ${graded.dropped} more were lost to the host's bound`);
+    await host.emit({ type: "diagnostic", phase: "page_health",
+      message: `A page failed ${where}; the run cannot pass:\n${lines.join("\n")}` });
+  };
 
   assertAttributed();
   assignFileIndexes();
@@ -838,6 +867,7 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
     cases: plan.map(({ item, repeat }) => ({ id: resolvedId(item), title: item.title, name: item.title,
       full_name: fullName(item, repeat), ...sourceOf(item), ...(repeatEach > 1 ? { repeat } : {}),
       suite: suiteOf(sourceOf(item).file), timeout_ms: item.timeout, covers: item.covers, tags: tagsOf(item) })) });
+  await notePageEventsOutside(undefined, "before the first test");
   if (manifest) {
     const known = new Set(manifest.map((entry) => entry.id));
     const stray = [...new Set(specs.flatMap((item) => item.covers).filter((id) => !known.has(id)))];
@@ -967,6 +997,9 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
           (previous ? `; it stopped during or after "${previous.title}" (${previous.status})` : "") +
           `. Reopened it on its home page${reopened.error ? `, which failed: ${reopened.error}` : ""}.` });
     }
+
+    const ranBefore = [...cases].reverse().find((entry) => entry.status !== "skipped");
+    if (ranBefore) await notePageEventsOutside(ranBefore.full_name, `before "${record.full_name}" started`);
 
     // What the spec installs from here on — routes, a mock scenario, test
     // clocks — belongs to this attempt; the host removes it when the
@@ -1368,6 +1401,33 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
       }
     }
 
+    // A page failure is never the one `test.fail` declared: it has its own
+    // declaration, `expectPageFailure`.
+    if (status !== "skipped") {
+      let pageRead;
+      try { pageRead = await pageEvents.read(automationRoot); }
+      catch (readError) {
+        await host.emit({ type: "diagnostic", phase: "page_health", level: "warn",
+          message: `"${record.full_name}": page events could not be read: ${readError instanceof Error ? readError.message : String(readError)}` });
+      }
+      if (pageEvents.available) {
+        const graded = gradePageHealth(pageRead, item.expectPageFailure, item.pageHealth);
+        if (graded.record.events.length > 0 || graded.record.opted_out.length > 0 || graded.record.unavailable) {
+          record.page_health = graded.record;
+        }
+        if (graded.error) {
+          if (status === "failed" || status === "timeout") {
+            if (error instanceof Error) error.message += `\n${graded.error.message}`;
+            else error = graded.error;
+          } else {
+            status = "failed";
+            error = graded.error;
+            fixture.failurePhase = "page";
+          }
+        }
+      }
+    }
+
     if (deferErrors.length > 0) {
       // A spec that hung is reported as a timeout; cleanup that could not
       // finish afterwards is a consequence of the hang, not a different
@@ -1540,6 +1600,8 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
   uninstallPendingTracker();
   unfenceGlobalAutomation();
   setStrayAssertionSink();
+  const ranLast = [...cases].reverse().find((entry) => entry.status !== "skipped");
+  if (ranLast) await notePageEventsOutside(ranLast.full_name, "before the run ended");
 
   // The run ends as each spec starts: with the app under test running, so
   // what comes next (a rerun, `lxdev lxapp`, a developer) does not meet a
@@ -1588,6 +1650,8 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
       specs.map((item) => ({ id: resolvedId(item), title: item.title, covers: item.covers })));
   }
   if (ledger) json.openapi = redact.deep(ledger.summary);
+  const pageSummary = pageHealthSummary(json.cases, pageOutside);
+  if (pageSummary) json.page_health = redact.deep(pageSummary);
   if (skipUnused.length > 0) json.skipUnused = [...skipUnused];
 
   await attachText(host, "report.json", JSON.stringify(json, null, 2), "application/json");
@@ -1995,6 +2059,20 @@ export type { TestOptions, TestBody, Fixture };
 
 /** Bound on the capture driver calls a contract check makes. */
 const CONTRACT_CALL_MS = 5_000;
+
+const pageEvents = new PageEventReader();
+
+function pageHealthSummary(cases: readonly CaseRecord[], outside: PageHealthSummary["outside"]): PageHealthSummary | undefined {
+  let events = 0;
+  let failed = 0;
+  for (const entry of cases) {
+    const graded = entry.page_health?.events.filter((event) => !event.expected && !event.opted_out).length ?? 0;
+    events += graded;
+    if (entry.error?.code === "E_PAGE_HEALTH" || (graded > 0 && entry.status === "failed")) failed += 1;
+  }
+  if (events === 0 && outside.length === 0) return undefined;
+  return { events, cases: failed, outside };
+}
 /** Newest captured response already checked, per run. */
 let contractSeq = 0;
 

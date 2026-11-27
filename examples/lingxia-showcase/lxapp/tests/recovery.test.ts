@@ -40,6 +40,7 @@ async function slowPanel(t: Fixture) {
 }
 
 test('a pushed page whose View throws shows the recovery panel; Retry fails again and keeps the page', {
+  expectPageFailure: { page: /spec-fault/ },
   covers: ['view:recovery'], start: openDemo('recovery'), requires: { chrome: true },
 }, async (t) => {
   const before = await openFailing(t);
@@ -54,6 +55,7 @@ test('a pushed page whose View throws shows the recovery panel; Retry fails agai
 });
 
 test('Go back on the recovery panel leaves only the failed page', {
+  expectPageFailure: { page: /spec-fault/ },
   covers: ['view:recovery'], start: openDemo('recovery'), requires: { chrome: true },
 }, async (t) => {
   const before = await openFailing(t);
@@ -66,6 +68,7 @@ test('Go back on the recovery panel leaves only the failed page', {
 });
 
 test('the recovery buttons open their pages from the View tab as from the group page', {
+  expectPageFailure: { page: /spec-fault/ },
   covers: ['view:recovery'], start: openUnderTabs('recovery'), requires: { chrome: true },
 }, async (t) => {
   const before = await openFailing(t);
@@ -76,6 +79,7 @@ test('the recovery buttons open their pages from the View tab as from the group 
 
 // `devHoldFirstState`: under lingxia dev the page's Logic never sends its first state.
 test('a page whose first state never comes shows the slow-load notice; Keep waiting closes it until it returns, and Go back leaves only that page', {
+  expectPageFailure: { page: /spec-stall/ },
   covers: ['view:recovery'], start: openDemo('recovery'), requires: { chrome: true },
 }, async (t) => {
   const before = await openFailing(t, 'lab-recovery-stall', 'spec-stall');
@@ -96,6 +100,7 @@ test('a page whose first state never comes shows the slow-load notice; Keep wait
 // An update that fails over a shown page keeps the page: a banner, not a panel over it. The host
 // draws it in each appearance, so the spec reads it in both.
 test('an update that fails after the page has shown keeps the page under a banner with Retry and Go back, light and dark', {
+  expectPageFailure: { page: /spec-break/ },
   covers: ['view:recovery'], start: openDemo('recovery'), requires: { chrome: true },
 }, async (t) => {
   const preference = await t.app.logic.eval(({ lx }) => lx.host.appearancePreference.get() ?? null);

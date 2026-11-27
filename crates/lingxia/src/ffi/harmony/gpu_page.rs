@@ -141,6 +141,9 @@ impl Shell for Bridge {
     }
     fn recovery(&self, token: i64, failure: Option<&Failure>) {
         use lingxia_view_harmony::lingxia_view::session::host::RecoveryAction;
+        if let Some(failure) = failure {
+            gpu_page::failed(token, &failure.error);
+        }
         // Message and action as indices into the shell's strings, as Android's panel reads them.
         let payload = failure
             .map(|f| {

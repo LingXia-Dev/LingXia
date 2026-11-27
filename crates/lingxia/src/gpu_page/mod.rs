@@ -805,6 +805,21 @@ pub(crate) fn page_of(token: Token) -> Option<PageInstance> {
     live(token).and_then(|endpoint| lxapp::find_page_by_instance_id(&endpoint.lease.page))
 }
 
+/// Page `token`'s View failed and shows recovery; a running test hears it.
+pub(crate) fn failed(token: Token, error: &str) {
+    #[cfg(feature = "automation")]
+    if lxapp::automation::page_events::armed()
+        && let Some(page) = page_of(token)
+    {
+        page.note_page_event(
+            lxapp::automation::page_events::PageEventKind::PageFailed,
+            error,
+        );
+    }
+    #[cfg(not(feature = "automation"))]
+    let _ = (token, error);
+}
+
 /// A line page `token`'s View `console` wrote, tagged as that page's console like a WebView's.
 pub(crate) fn console(token: Token, level: log::Level, message: &str) {
     let level = match level {

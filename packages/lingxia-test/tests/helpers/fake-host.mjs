@@ -733,6 +733,7 @@ export function installFakeHost(world, options = {}) {
           return world.app;
         },
         ...(options.lxapps ? { lxapps: options.lxapps } : {}),
+        ...(options.pageEvents ? { pageEvents: options.pageEvents } : {}),
       };
       // `hostTiers`: the host's own shape — tiers are getters on the root's
       // prototype returning callable objects whose methods live on their

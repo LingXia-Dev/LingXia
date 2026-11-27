@@ -129,7 +129,7 @@ export class XfailSignal extends Error {
   }
 }
 
-export type FailurePhase = "beforeEach" | "body" | "defer" | "forensics" | "timeout" | "contract" | "capture";
+export type FailurePhase = "beforeEach" | "body" | "defer" | "forensics" | "timeout" | "contract" | "capture" | "page";
 
 export class LiveFixture implements Fixture {
   readonly automation: TestAutomation;

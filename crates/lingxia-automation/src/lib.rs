@@ -38,6 +38,7 @@ use lingxia_network_dev as network;
 #[path = "network/unavailable.rs"]
 mod network;
 mod page;
+mod page_events;
 // Profile rollback needs a host run that owns an isolated profile; without
 // the runtime the driver exists but every call rejects.
 #[cfg(feature = "runtime")]
@@ -285,6 +286,13 @@ impl JSAutomation {
     fn device(&self, ctx: JSContext) -> JSResult<JSObject> {
         Ok(Class::lookup::<host::JSDeviceDriver>(&ctx)?.instance(host::JSDeviceDriver::new()))
     }
+
+    /// Page failures recorded during a host test run; every call rejects outside one.
+    #[js_method(getter, enumerable, rename = "pageEvents")]
+    fn page_events(&self, ctx: JSContext) -> JSResult<JSObject> {
+        Ok(Class::lookup::<page_events::JSPageEventDriver>(&ctx)?
+            .instance(page_events::JSPageEventDriver::new()))
+    }
 }
 
 /// `lx.automation()` has one shape in Logic and host automation contexts. The
@@ -341,6 +349,7 @@ pub fn init_automation_context(ctx: &JSContext) -> JSResult<()> {
     ctx.register_hidden_class::<host::JSBrowserCookies>()?;
     ctx.register_hidden_class::<host::JSBrowserConsole>()?;
     ctx.register_hidden_class::<shell::JSShellDriver>()?;
+    ctx.register_hidden_class::<page_events::JSPageEventDriver>()?;
     ctx.register_hidden_class::<terminal::JSTerminalDriver>()?;
     #[cfg(feature = "desktop")]
     {

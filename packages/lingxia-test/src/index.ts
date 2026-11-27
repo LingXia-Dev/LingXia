@@ -37,6 +37,8 @@ export type {
   NeedsMatcher,
   NetworkCall,
   OpenApiRun,
+  PageFailureMatch,
+  PageHealthOptions,
   ProfileCheckpoint,
   ProfileFixture,
   ProfileRestoreOptions,

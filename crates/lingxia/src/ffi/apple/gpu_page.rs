@@ -1242,6 +1242,7 @@ mod live {
                 return super::bridge::gpu_pages_recovery(token, -1, -1, false, false, "");
             };
             log::warn!("GPU page {token} failed: {}", failure.error);
+            gpu_page::failed(token, &failure.error);
             super::bridge::gpu_pages_recovery(
                 token,
                 failure.message.code(),

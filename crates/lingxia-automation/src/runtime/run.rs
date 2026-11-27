@@ -73,6 +73,8 @@ struct RunInner {
     attachment_names: HashSet<String>,
     result: Option<AutomationRunResult>,
     completed_at: Option<Instant>,
+    /// The page-event recording this run armed.
+    page_events: u64,
     /// Last `poll`, so a caller can tell a run someone is still reading from
     /// one whose client is gone.
     last_poll_at: Option<Instant>,
@@ -108,6 +110,7 @@ impl RunShared {
                 attachment_names: HashSet::new(),
                 result: None,
                 completed_at: None,
+                page_events: lxapp::automation::page_events::arm(),
                 last_poll_at: None,
             })),
         }
@@ -502,6 +505,7 @@ fn complete(inner: &Mutex<RunInner>, teardown: Result<(), String>, cleanup: Resu
     }
     inner.state = state;
     inner.completed_at = Some(Instant::now());
+    lxapp::automation::page_events::disarm(inner.page_events);
     inner.result = Some(AutomationRunResult {
         duration_ms: ending.duration_ms,
         error,

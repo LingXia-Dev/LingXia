@@ -2438,7 +2438,9 @@ fn poll_until_terminal(
                     if phase == "recovery_failed" {
                         app_not_live = true;
                     }
-                    if phase == "run_stopped" || phase == "recovery_failed" {
+                    // A page failure outside any test belongs to no case, so it fails the run.
+                    let page_failure = phase == "page_health" && level.as_deref() != Some("warn");
+                    if phase == "run_stopped" || phase == "recovery_failed" || page_failure {
                         stop_reasons.push(message.clone());
                     }
                     if !machine {

@@ -180,6 +180,8 @@ export interface CaseRecord {
    * `warnings` (the real server's) did not.
    */
   contract?: CaseContract;
+  /** Page failures the host recorded during the test, graded against `expectPageFailure`. */
+  page_health?: CasePageHealth;
   /**
    * `lx.*` members the spec's evals actually reached, observed by the runtime
    * rather than declared. A `covers` tag absent from here was claimed but never
@@ -207,6 +209,48 @@ export interface CaseRecord {
   error?: ReportError;
   timeout_ms: number;
   reason?: string;
+}
+
+/** A test's page events and the checks that graded them. */
+export interface CasePageHealth {
+  events: PageHealthEvent[];
+  /** Events lost to the host's bound. */
+  dropped: number;
+  /** Checks that graded the test: `events`, `frameGap`, `blank`. */
+  checks: string[];
+  /** Checks the test turned off with `pageHealth`. */
+  opted_out: string[];
+  /** The host records no page events; nothing was graded. */
+  unavailable?: true;
+}
+
+/** One page event. */
+export interface PageHealthEvent {
+  seq: number;
+  /** Host milliseconds since the run started; the host's clock, not the test's. */
+  run_ms: number;
+  app_id: string;
+  page?: string;
+  instance?: string;
+  surface?: string;
+  kind: string;
+  code?: string;
+  message: string;
+  gap_ms?: number;
+  /** Matched `expectPageFailure`. */
+  expected: boolean;
+  /** Its check was turned off; not graded. */
+  opted_out?: true;
+}
+
+/** Run-wide page health: what failed the tests, and what happened between them. */
+export interface PageHealthSummary {
+  /** Undeclared events across all tests. */
+  events: number;
+  /** Tests failed by them. */
+  cases: number;
+  /** Events outside any test, each naming the test before it. */
+  outside: Array<{ after?: string; event: PageHealthEvent }>;
 }
 
 /** One response that breaks the OpenAPI contract. */
@@ -380,6 +424,8 @@ export interface JsonReport {
   coverage?: CoverageSummary;
   /** `--openapi` contract summary. */
   openapi?: OpenApiSummary;
+  /** Page health over the run; absent when nothing was recorded. */
+  page_health?: PageHealthSummary;
   /** `lxdev test list`: the selected specs; nothing ran. */
   listed?: ListedSpec[];
 }

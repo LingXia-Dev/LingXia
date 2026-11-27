@@ -2908,6 +2908,11 @@ impl WebViewDelegate for PageInstance {
         warn!("Page renderer terminated; scheduling recovery")
             .with_appid(self.appid())
             .with_path(self.path());
+        #[cfg(feature = "automation")]
+        self.note_page_event(
+            crate::automation::page_events::PageEventKind::WebviewCrashed,
+            "the WebView content process terminated",
+        );
         self.owning_lxapp().recover_terminated_renderers();
     }
 
@@ -2942,6 +2947,11 @@ impl WebViewDelegate for PageInstance {
                 error!("page load failed: {} ({})", description, kind)
                     .with_appid(self.inner.appid.clone())
                     .with_path(self.inner.path.clone());
+                #[cfg(feature = "automation")]
+                self.note_page_event(
+                    crate::automation::page_events::PageEventKind::WebviewLoadFailed,
+                    &format!("{description} ({kind})"),
+                );
             }
             ClassifiedNavigation::Superseded => {}
         }

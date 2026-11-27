@@ -54,6 +54,7 @@ import type {
 export type TestErrorCode =
   | Exclude<AutomationErrorCode, "E_AUTOMATION_TIMEOUT" | "E_EVAL_TIMEOUT" | "E_DESKTOP_TIMEOUT" | "timeout">
   | "E_OPENAPI_CONTRACT"
+  | "E_PAGE_HEALTH"
   | "E_TIMEOUT"
   | "E_SKIPPED";
 
@@ -129,6 +130,24 @@ export interface TestOptions {
    * file's `test.configure({ requires })`.
    */
   requires?: TestRequirements;
+  /**
+   * The page failure this test causes on purpose. Any page failure the host
+   * records during a test fails it; with this set, every one must match and
+   * at least one must occur. A RegExp tests `"<kind> <code> <message>"`, a string
+   * is the code, `{ code, page }` also pins the page path.
+   */
+  expectPageFailure?: PageFailureMatch;
+  /** Turn off a page health check: `frameGap` (a visible page stopped presenting) or `blank` (a one-colour page). */
+  pageHealth?: PageHealthOptions;
+}
+
+/** `expectPageFailure`: which page failures the test causes. */
+export type PageFailureMatch = RegExp | string | { code?: RegExp | string; page?: RegExp | string };
+
+/** `pageHealth`: the checks a test turns off. */
+export interface PageHealthOptions {
+  frameGap?: false;
+  blank?: false;
 }
 
 /** `start`: the page a test begins on. */

@@ -56,6 +56,10 @@ pub trait StateListener: Send + Sync + 'static {
         owner: i64,
         orientation: Option<lingxia_view::scene::video::Orientation>,
     );
+    /// Main thread: page `owner`'s View failed and shows recovery.
+    fn failed(&self, owner: i64, error: &str) {
+        let _ = (owner, error);
+    }
     /// The View worker thread: a line page `owner`'s `console` wrote.
     fn console(&self, owner: i64, level: log::Level, message: &str) {
         let _ = owner;
@@ -887,6 +891,11 @@ impl HostEvents for AndroidAdapter {
         })
     }
     fn recovery(&self, failure: Option<&Failure>) {
+        if let (Some(failure), Some(listener)) =
+            (failure, STATE_LISTENER.get().filter(|_| self.owner != 0))
+        {
+            listener.failed(self.owner, &failure.error);
+        }
         let (message, action) = failure.map_or((-1, -1), recovery_codes);
         let retained = failure.is_some_and(|f| !f.covers_page());
         let error = failure.map(|f| f.error.as_str()).unwrap_or_default();

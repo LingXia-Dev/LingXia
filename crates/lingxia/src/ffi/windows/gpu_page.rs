@@ -360,6 +360,7 @@ impl Shell for Bridge {
     fn recovery(&self, token: i64, failure: Option<&Failure>) {
         if let Some(failure) = failure {
             log::warn!("GPU page {token} failed: {}", failure.error);
+            gpu_page::failed(token, &failure.error);
         }
     }
     fn text(&self, key: &str, fallback: &str) -> String {

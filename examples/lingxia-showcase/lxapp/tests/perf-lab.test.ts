@@ -174,7 +174,7 @@ test('the list at its largest row count stays windowed and the page responsive',
 const RELOAD = /^(Reload page|重新载入页面)$/;
 const HOME = /^(Home|首页)$/;
 
-test('a page past its View budget shows recovery chrome while the rest of the app works', { id: 'PERF-FAIL-001', requires: { chrome: true } }, async (t) => {
+test('a page past its View budget shows recovery chrome while the rest of the app works', { id: 'PERF-FAIL-001', requires: { chrome: true }, expectPageFailure: { page: /perf-lab/ } }, async (t) => {
   // The act fails with the page it was acting on; the chrome is what counts.
   await t.app.view.testId('perf-stall').click().catch(() => undefined);
   const chrome = await t.waitFor(() => t.app.chrome.elements(), { until: elements => elements.some(e => RELOAD.test(e.label)) });
