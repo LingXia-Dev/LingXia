@@ -109,6 +109,9 @@ Drag, swipe rows, sheet detents and scroll snap: [Drag and snap](./styling-motio
   accessibility. Images need `alt` (`""` for decoration).
 - The build fails with `UI_A11Y` when an editor, slider, radio group, select, plot, dialog or `<webview>` lacks `aria-label`,
   a button, link, checkbox or switch has neither text nor a label, or an `<image>` lacks `alt`; a placeholder is not a name.
+- Under `lingxia dev` the running page logs `UI_A11Y <rule>` once for what the build cannot see (an empty computed name,
+  a missing `aria-selected`/`aria-checked`, a tablist without one selected tab, an item outside its composite, twin
+  sibling names, a composite taking two Tab stops); read them with `lxdev logs --grep UI_A11Y`.
 - Text follows the system font size, up to 2× by default: lxapp.json `maxTextScale` (1 to 3) sets the cap and a
   page's json may lower it; `env.textScale` reads the applied factor (1 at default) for a layout that must change
   shape. Prefer `min-h-*` over fixed heights. Whitespace

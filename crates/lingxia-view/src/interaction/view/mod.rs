@@ -153,6 +153,9 @@ pub struct ViewInteraction {
     scrub: Option<scrub::Scrub>,
     /// The `onPointer` element the fine pointer is over, and where.
     hovering: Option<(String, [f32; 2])>,
+    /// Role-contract violations this page already logged.
+    #[cfg(feature = "dev")]
+    contract_logged: std::collections::HashSet<(crate::semantics::contract::Rule, String, String)>,
 }
 
 /// What a presentation produced besides pixels.
@@ -695,12 +698,12 @@ impl ViewInteraction {
             edges,
             more,
         });
+        let new_commit = previous
+            .as_ref()
+            .is_none_or(|previous| previous.commit != next.commit);
         // A frame answering `showPicker()` opens the picker through the editor dispatch a tap
         // takes; only the first presentation of its commit does, not its repaints.
-        if previous
-            .as_ref()
-            .is_none_or(|previous| previous.commit != next.commit)
-        {
+        if new_commit {
             for (node, snapshot) in next.nodes.iter().enumerate() {
                 if snapshot
                     .input
@@ -718,6 +721,14 @@ impl ViewInteraction {
             }
         }
         self.frame = Some(next);
+        #[cfg(feature = "dev")]
+        if new_commit {
+            let mut logged = std::mem::take(&mut self.contract_logged);
+            if let Some(semantics) = self.semantics() {
+                crate::semantics::contract::warn(&semantics, &mut logged);
+            }
+            self.contract_logged = logged;
+        }
         if let Some(point) = self.exploring {
             let target = self
                 .semantics()

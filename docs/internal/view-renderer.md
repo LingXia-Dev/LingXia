@@ -37,7 +37,7 @@ configs name no renderer.
 | `text` | Computed text style, Parley shaping, editing geometry, text scaling |
 | `scene` | Node snapshots, display list, paint order, plots, vectors, shadows |
 | `interaction` | Hit testing, scroll, reach, sliders, keyboard, pointer state |
-| `semantics` | Composed control groups, accessibility projection, stable ids |
+| `semantics` | Composed control groups, accessibility projection, stable ids, role-contract check |
 | `renderer` | CPU raster and wgpu/Vello presentation |
 | `theme` | Runtime theme-pack resolution and scale/palette application ([theme.md](theme.md)) |
 | `platform` | Adapter traits, host chrome colours; adapters live in their own crates (`lingxia-view-android`, `-apple`, `-harmony`, `-windows`) |
@@ -195,6 +195,11 @@ convert OS events and report pointer state; they compute no geometry.
   semantic node; its name is the explicit label or else the descendant text
   and image alternatives in order. Controls nested in a composed control stay their own nodes and targets; a scroll or list inside one is rejected.
 - Image `alt=""` marks decoration; omitted alt keeps the image exposed.
+- `semantics::contract::check` reports what a page left out of its role contracts: names,
+  composite items and owners, required states, one choice per tab list, twin siblings, and
+  one Tab stop per composite. Role behaviour itself (arrows, RTL, Escape, focus return) is the
+  engine's and is not checked there. `dev` builds run it on each new commit and log each
+  violation once as `UI_A11Y <rule>`; release builds never run it.
 - Editor focus survives reorder by token; disable, removal and reset end it.
 
 ## Images
