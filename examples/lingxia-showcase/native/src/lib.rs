@@ -3,6 +3,7 @@
 
 #[cfg(feature = "standard")]
 mod extension;
+mod notes;
 mod routes;
 
 lingxia::host!(ExampleHostAddon);
@@ -88,8 +89,6 @@ impl lingxia::HostAddon for ExampleHostAddon {
     }
 
     fn start_services(&self) {
-        #[cfg(feature = "devtools")]
-        lingxia_control_runtime::start_dev_session_bridge_from_env();
         #[cfg(feature = "control")]
         if let Err(error) = lingxia_control_runtime::local_control::install(true) {
             log::warn!("local control unavailable: {error}");

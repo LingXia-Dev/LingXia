@@ -125,6 +125,12 @@
   "api.mediaVideos": {
     "defaultMessage": "视频"
   },
+  "api.native": {
+    "defaultMessage": "原生路由"
+  },
+  "api.nativeDetail": {
+    "defaultMessage": "从 Logic 调用 Rust：调用、流与错误"
+  },
   "api.openAppFailed": {
     "defaultMessage": "无法打开该应用，请重试。"
   },
@@ -2777,6 +2783,54 @@
   "media.width": {
     "defaultMessage": "宽度"
   },
+  "native.add": {
+    "defaultMessage": "添加笔记"
+  },
+  "native.call": {
+    "defaultMessage": "调用"
+  },
+  "native.callDetail": {
+    "defaultMessage": "notes.add 返回新笔记；标题为空时以应用自己的 EMPTY_TITLE 错误码失败。"
+  },
+  "native.export": {
+    "defaultMessage": "导出笔记"
+  },
+  "native.exportStep": {
+    "defaultMessage": "已导出 {done} / {total}"
+  },
+  "native.findMissing": {
+    "defaultMessage": "查找不存在的笔记"
+  },
+  "native.intro": {
+    "defaultMessage": "每个按钮调用 showcase Rust crate 中的一个 #[lingxia::native] 路由。"
+  },
+  "native.state.added": {
+    "defaultMessage": "已添加笔记 {id}"
+  },
+  "native.state.emptyTitle": {
+    "defaultMessage": "EMPTY_TITLE：笔记需要标题"
+  },
+  "native.state.exported": {
+    "defaultMessage": "导出完成"
+  },
+  "native.state.notFound": {
+    "defaultMessage": "NOT_FOUND：没有笔记 {id}"
+  },
+  "native.state.ready": {
+    "defaultMessage": "就绪"
+  },
+  "native.status": {
+    "defaultMessage": "状态"
+  },
+  "native.stream": {
+    "defaultMessage": "流"
+  },
+  "native.streamDetail": {
+    "defaultMessage": "notes.export 逐条报告进度；返回值即导出的文本。"
+  },
+  "native.titleLabel": {
+    "defaultMessage": "笔记标题"
+  },
   "perfLab.aSecondLineOf": {
     "defaultMessage": "每一行都要排版的第二行文字"
   },
@@ -3307,6 +3361,9 @@
   },
   "title.motionTarget": {
     "defaultMessage": "推入的页面"
+  },
+  "title.native": {
+    "defaultMessage": "原生路由"
   },
   "title.perfLab": {
     "defaultMessage": "性能实验"

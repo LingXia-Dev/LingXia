@@ -1,7 +1,7 @@
 {
   "appId": "lingxia-showcase",
   "appName": "LingXia Showcase",
-  "version": "1.7.2",
+  "version": "1.7.3",
   "minRuntime": "0.30.0",
   "languages": [
     "en-US",
@@ -55,6 +55,10 @@
     {
       "name": "clipboard",
       "path": "pages/clipboard/index"
+    },
+    {
+      "name": "native",
+      "path": "pages/native/index"
     },
     {
       "name": "share",

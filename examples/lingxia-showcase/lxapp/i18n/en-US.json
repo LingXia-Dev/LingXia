@@ -167,6 +167,14 @@
     "defaultMessage": "Videos",
     "description": "API list entry (api-media-Videos)."
   },
+  "api.native": {
+    "defaultMessage": "Native routes",
+    "description": "API list entry (api-native)."
+  },
+  "api.nativeDetail": {
+    "defaultMessage": "Call Rust from Logic: a call, a stream, an error",
+    "description": "Under the Native routes entry."
+  },
   "api.openAppFailed": {
     "defaultMessage": "Unable to open the app. Please try again.",
     "description": "Toast when opening another lxapp fails."
@@ -3703,6 +3711,70 @@
     "defaultMessage": "Width",
     "description": "Text on the media page."
   },
+  "native.add": {
+    "defaultMessage": "Add note",
+    "description": "Button on the native routes page."
+  },
+  "native.call": {
+    "defaultMessage": "Call",
+    "description": "Section title on the native routes page."
+  },
+  "native.callDetail": {
+    "defaultMessage": "notes.add returns the new note; an empty title fails with the app's EMPTY_TITLE code.",
+    "description": "Section description on the native routes page."
+  },
+  "native.export": {
+    "defaultMessage": "Export notes",
+    "description": "Button on the native routes page."
+  },
+  "native.exportStep": {
+    "defaultMessage": "Exported {done} of {total}",
+    "description": "Export progress on the native routes page."
+  },
+  "native.findMissing": {
+    "defaultMessage": "Find a missing note",
+    "description": "Button on the native routes page."
+  },
+  "native.intro": {
+    "defaultMessage": "Each button calls a #[lingxia::native] route in the showcase's Rust crate.",
+    "description": "Intro on the native routes page."
+  },
+  "native.state.added": {
+    "defaultMessage": "Added note {id}",
+    "description": "Native routes status line, set by Logic."
+  },
+  "native.state.emptyTitle": {
+    "defaultMessage": "EMPTY_TITLE: a note needs a title",
+    "description": "Native routes status line, set by Logic."
+  },
+  "native.state.exported": {
+    "defaultMessage": "Export finished",
+    "description": "Native routes status line, set by Logic."
+  },
+  "native.state.notFound": {
+    "defaultMessage": "NOT_FOUND: no note {id}",
+    "description": "Native routes status line, set by Logic."
+  },
+  "native.state.ready": {
+    "defaultMessage": "Ready",
+    "description": "Native routes status line, set by Logic."
+  },
+  "native.status": {
+    "defaultMessage": "Status",
+    "description": "Section title on the native routes page."
+  },
+  "native.stream": {
+    "defaultMessage": "Stream",
+    "description": "Section title on the native routes page."
+  },
+  "native.streamDetail": {
+    "defaultMessage": "notes.export reports each note as it goes; its return value is the exported text.",
+    "description": "Section description on the native routes page."
+  },
+  "native.titleLabel": {
+    "defaultMessage": "Note title",
+    "description": "Input label on the native routes page."
+  },
   "perfLab.aSecondLineOf": {
     "defaultMessage": "A second line of text to lay out in every row",
     "description": "Text on the perf-lab page."
@@ -4410,6 +4482,10 @@
   "title.motionTarget": {
     "defaultMessage": "A pushed page",
     "description": "Navigation bar title of the motion-target page."
+  },
+  "title.native": {
+    "defaultMessage": "Native routes",
+    "description": "Navigation bar title of the native routes page."
   },
   "title.perfLab": {
     "defaultMessage": "Perf lab",
