@@ -166,11 +166,6 @@ pub(super) fn create_rust_library(
     vars.insert("PROJECT_NAME".to_string(), package_name.clone());
     vars.insert("PACKAGE_ID".to_string(), config.package_id.clone());
 
-    // Convert package ID to underscore format for JNI function names
-    // e.g., com.example.mouke -> com_example_mouke
-    let package_id_underscore = config.package_id.replace('.', "_");
-    vars.insert("PACKAGE_ID_UNDERSCORE".to_string(), package_id_underscore);
-
     vars.insert(
         "LINGXIA_VERSION".to_string(),
         crate::versions::cargo_compat_req(),
@@ -451,6 +446,23 @@ cloud = []
         assert!(!source.contains("register_host_entry") && !source.contains("include!"));
         let build = include_str!("../../../templates/native/build.rs");
         assert!(build.contains("lingxia_native_codegen::build();"));
+    }
+
+    /// The scaffold is a worked example: a route, and a home page that calls it.
+    #[test]
+    fn host_template_calls_its_own_route() {
+        let source = include_str!("../../../templates/native/src/lib.rs");
+        let manifest = include_str!("../../../templates/native/Cargo.toml.template");
+        assert!(source.contains("#[lingxia::native(\"hello.greet\")]"));
+        assert!(manifest.contains("serde = { version = \"1\", features = [\"derive\"] }"));
+        // `host!` starts the dev session; the addon carries only product services.
+        assert!(!source.contains("start_dev_session_bridge_from_env"));
+        for page in [
+            include_str!("../../../templates/lxapp-create/hosted/pages/home/index.ts"),
+            include_str!("../../../templates/lxapp-create/hosted/gpu/pages/home/index.ts"),
+        ] {
+            assert!(page.contains("native.hello.greet({ name, count })"));
+        }
     }
 
     /// One declared capability must not need two SDK features kept in sync by

@@ -50,6 +50,7 @@ lingxia = { workspace = true, features = {{LINGXIA_DEP_FEATURES}} }
 lingxia-control-runtime = { workspace = true, optional = true }
 lingxia-device-io = { workspace = true, optional = true }
 log = { version = "0.4", optional = true }
+serde = { version = "1", features = ["derive"] }
 
 [build-dependencies]
 lingxia-native-codegen = { workspace = true }

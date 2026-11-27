@@ -171,7 +171,7 @@ The CLI ships `@lingxia/polyfills`; never add it.
 | UI rendering, page state | lxapp `pages/<name>/index.tsx` (or `.html`) | View |
 | Page lifecycle, state, actions (JS) | lxapp `pages/<name>/index.ts` | `definePage` Logic |
 | Rust helpers, host capabilities, per-page native state | host Rust crate | `#[lingxia::native]` route, called from Logic (`@lingxia/native`, `page.native`) or a WebView View |
-| Background services (devtool, push, ipc) | host Rust crate | `HostAddon::start_services` |
+| Background services (push, ipc) | host Rust crate | `HostAddon::start_services` |
 | Platform integrations needing predeclaration | `lingxia.yaml` | `capabilities`, `features` |
 | Surfaces (windows, asides, sidebar/tray, terminal) | `lingxia.yaml` | `surfaces` |
 | Bundled lxapp sources | folder + `resources.bundles` | `lingxia.yaml` |

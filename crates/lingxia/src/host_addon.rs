@@ -107,6 +107,7 @@ pub fn __register_host(addon: Box<dyn HostAddon>, install_routes: fn()) {
 /// Installs every `#[lingxia::native]` route in the crate (the registry its `build.rs`
 /// writes with `lingxia_native_codegen::build()`), registers the addon, and exports the
 /// entrypoint each platform SDK calls. Harmony's needs `napi-derive-ohos` in the crate.
+/// With the crate's `devtools` feature it also starts the `lingxia dev` session bridge.
 #[macro_export]
 macro_rules! host {
     ($addon:expr) => {
@@ -119,10 +120,26 @@ macro_rules! host {
         #[cfg(target_env = "ohos")]
         pub use $crate::harmony::*;
 
+        // `devtools` is the host crate's own feature, read where this expands.
+        #[allow(unexpected_cfgs)]
+        #[cfg(feature = "devtools")]
+        struct __LingxiaDevSession;
+
+        #[allow(unexpected_cfgs)]
+        #[cfg(feature = "devtools")]
+        impl $crate::HostAddon for __LingxiaDevSession {
+            fn start_services(&self) {
+                ::lingxia_control_runtime::start_dev_session_bridge_from_env();
+            }
+        }
+
         #[doc(hidden)]
         pub fn __lingxia_register_host() {
             static REGISTER: ::std::sync::Once = ::std::sync::Once::new();
             REGISTER.call_once(|| {
+                #[allow(unexpected_cfgs)]
+                #[cfg(feature = "devtools")]
+                $crate::register_host_addon(::std::boxed::Box::new(__LingxiaDevSession));
                 $crate::__register_host(::std::boxed::Box::new($addon), __lingxia_native::install)
             });
         }

@@ -33,13 +33,11 @@ impl lingxia::HostAddon for AppHostAddon {
             authority.grant(lingxia::host::AppResourceGrant::Downloads);
         }
     }
-
-    fn start_services(&self) {
-        #[cfg(feature = "devtools")]
-        lingxia_control_runtime::start_dev_session_bridge_from_env();
-    }
 }
 ```
+
+`host!` starts the `lingxia dev` session bridge when the crate's `devtools`
+feature is on; `start_services` is only for the product's own services.
 
 - `install_product_cli` is the only pre-runtime command hook; its request
   handler goes in `install_host_apis` ([Driving a shipped product](../app/agent-control.md)).

@@ -64,6 +64,7 @@ pub(super) fn create_lxapp_from_template(
         }
 
         remove_dir_if_exists(&target_dir.join("native"))?;
+        remove_dir_if_exists(&target_dir.join("hosted"))?;
         remove_dir_if_exists(&target_dir.join("html"))?;
         remove_dir_if_exists(&target_dir.join("gpu"))?;
         if framework.eq_ignore_ascii_case("html") {
@@ -267,10 +268,25 @@ pub(super) fn create_lxapp_project(
         lingxia_bridge_version,
         None,
     )?;
+    if app_service.enabled() {
+        call_hello_route(&lxapp_dir, framework)?;
+    }
     Ok(LxAppInfo {
         app_id,
         dir_name: lxapp_dir_name.to_string(),
     })
+}
+
+/// A host project's home page greets through the native crate's `hello.greet` route.
+fn call_hello_route(target_dir: &Path, framework: &str) -> Result<()> {
+    let hosted = locate_templates_dir()?.join("lxapp-create").join("hosted");
+    let page = if framework.eq_ignore_ascii_case("gpu") {
+        hosted.join("gpu/pages/home/index.ts")
+    } else {
+        hosted.join("pages/home/index.ts")
+    };
+    fs::copy(page, target_dir.join("pages/home/index.ts"))?;
+    Ok(())
 }
 
 fn configure_native_logic_shell(

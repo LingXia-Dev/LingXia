@@ -17,9 +17,10 @@
     "declarationDir": "./.lingxia/logic-decl",
     "allowSyntheticDefaultImports": true,
     "paths": {
-      "@lingxia/page-types/*": ["./.lingxia/types/*"]
+      "@lingxia/page-types/*": ["./.lingxia/types/*"],
+      "@lingxia/native": ["./.lingxia/native.logic.ts"]
     }
   },
-  "include": ["lxapp.ts", "lxapp.config.ts", "pages/**/*.ts", "shared/**/*.ts", "mocks/**/*.ts", ".lingxia/types/**/*.d.ts", ".lingxia/logic-types/**/*.d.ts"],
+  "include": ["lxapp.ts", "lxapp.config.ts", "pages/**/*.ts", "shared/**/*.ts", "mocks/**/*.ts", ".lingxia/types/**/*.d.ts", ".lingxia/logic-types/**/*.d.ts", ".lingxia/native.logic.ts"],
   "exclude": ["node_modules", "dist", "pages/**/entry.ts"]
 }
