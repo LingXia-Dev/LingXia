@@ -8,7 +8,7 @@ draws on its first frame, and the campaign a host may show after them. The
 | Piece | Owner |
 | --- | --- |
 | Resource generation | `lingxia-cli` |
-| Hold time, home-ready signal | `lingxia-app-context` |
+| Hold time, home-ready signal | `lingxia-host-config` |
 | Campaign hook and store | `lingxia` (`lingxia::splash`) |
 | Overlay | Android, Apple, and HarmonyOS platform SDKs |
 

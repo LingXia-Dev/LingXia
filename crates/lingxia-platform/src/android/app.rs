@@ -350,11 +350,12 @@ impl Platform {
         // Register the host application context so platform APIs that need a
         // Context (display metrics, Settings.Secure, resources) can resolve
         // it without going through the lxapp business layer.
-        let app_context = unsafe { JObject::from_raw(jni_env, java_application_context_obj) };
-        if app_context.is_null() {
+        let application_context =
+            unsafe { JObject::from_raw(jni_env, java_application_context_obj) };
+        if application_context.is_null() {
             return Err("Application context is null".to_string());
         }
-        super::set_application_context(jni_env, &app_context)?;
+        super::set_application_context(jni_env, &application_context)?;
 
         Ok(Platform {
             asset_manager: asset_manager_ptr,

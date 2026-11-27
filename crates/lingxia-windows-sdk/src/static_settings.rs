@@ -1,5 +1,5 @@
 use lingxia::SettingsDestinationResolution;
-use lingxia_app_context::SettingsDestination;
+use lingxia_host_config::SettingsDestination;
 
 pub(crate) const STATIC_SETTINGS_ACTION_ID: &str = "lingxia:static-settings";
 

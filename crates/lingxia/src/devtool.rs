@@ -184,7 +184,7 @@ pub fn install_lxapp_dev_config_from_env() -> bool {
 fn build_host_app_config(
     runtime: &lingxia_platform::Platform,
     dev_config: &LxAppDevConfig,
-) -> lingxia_app_context::AppConfig {
+) -> lingxia_host_config::AppConfig {
     build_default_host_app_config(
         runtime,
         dev_config.identity.appid.clone(),
@@ -196,14 +196,14 @@ fn build_default_host_app_config(
     runtime: &lingxia_platform::Platform,
     home_app_id: String,
     home_app_version: String,
-) -> lingxia_app_context::AppConfig {
+) -> lingxia_host_config::AppConfig {
     let product_name = runtime
         .get_app_identifier()
         .ok()
         .filter(|value: &String| !value.trim().is_empty())
         .unwrap_or_else(|| "LingXia Host".to_string());
 
-    lingxia_app_context::AppConfig {
+    lingxia_host_config::AppConfig {
         product_name,
         product_names: Default::default(),
         languages: Vec::new(),
@@ -212,7 +212,7 @@ fn build_default_host_app_config(
         lingxia_id: None,
         lingxia_server: None,
         lingxia_servers: Default::default(),
-        env: lingxia_app_context::AppEnv::Dev,
+        env: lingxia_host_config::AppEnv::Dev,
         home_app_id,
         home_app_version,
         cache_max_size_mb: 1024,
@@ -236,7 +236,7 @@ fn build_default_host_app_config(
 
 fn build_web_runner_app_config(
     runtime: &lingxia_platform::Platform,
-) -> lingxia_app_context::AppConfig {
+) -> lingxia_host_config::AppConfig {
     build_default_host_app_config(runtime, String::new(), String::new())
 }
 
@@ -244,8 +244,8 @@ pub(crate) fn prepare_host_app_config(
     runtime: &std::sync::Arc<lingxia_platform::Platform>,
     load_bundled: impl FnOnce(
         &std::sync::Arc<lingxia_platform::Platform>,
-    ) -> Option<lingxia_app_context::AppConfig>,
-) -> Option<lingxia_app_context::AppConfig> {
+    ) -> Option<lingxia_host_config::AppConfig>,
+) -> Option<lingxia_host_config::AppConfig> {
     let _ = install_lxapp_dev_config_from_env();
 
     let Some(dev_config) = lxapp_dev_config() else {
@@ -329,7 +329,7 @@ const OPEN_WAIT: std::time::Duration = std::time::Duration::from_secs(2);
 
 pub(crate) fn prepare_bundle_sources(runtime: &std::sync::Arc<lingxia_platform::Platform>) {
     lxapp::set_dev_bundle_preparer(prepare_dev_bundle_for_open);
-    let home_id = lingxia_app_context::app_config()
+    let home_id = lingxia_host_config::app_config()
         .map(|config| config.home_app_id.trim().to_string())
         .unwrap_or_default();
     if !home_id.is_empty() {
@@ -470,7 +470,7 @@ fn lock<T>(mutex: &std::sync::Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 /// no manifest keeps the source it already opened from.
 pub fn sync_dev_bundle(appid: &str) -> Result<(), String> {
     let runtime = crate::runtime::platform().map_err(|err| err.to_string())?;
-    let home_id = lingxia_app_context::app_config()
+    let home_id = lingxia_host_config::app_config()
         .map(|config| config.home_app_id.trim().to_string())
         .unwrap_or_default();
     match sync::sync_dev_bundle(runtime, appid, std::time::Instant::now() + SYNC_DEADLINE)? {

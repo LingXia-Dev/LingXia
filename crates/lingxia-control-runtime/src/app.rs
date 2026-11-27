@@ -171,7 +171,7 @@ fn build_app_doctor() -> Value {
 pub(crate) fn declared_capabilities() -> Vec<&'static str> {
     let mut declared = Vec::new();
     if let Some(capabilities) =
-        lingxia_app_context::app_config().and_then(|c| c.capabilities.as_ref())
+        lingxia_host_config::app_config().and_then(|c| c.capabilities.as_ref())
     {
         if capabilities.app_use_effective() {
             declared.push("appUse");

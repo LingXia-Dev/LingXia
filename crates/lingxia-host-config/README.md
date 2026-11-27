@@ -1,6 +1,6 @@
-# lingxia-app-context
+# lingxia-host-config
 
-Shared app/product context primitives for LingXia workspace crates.
+The host app's parsed `lingxia.yaml` configuration, its env and Runner flags, and the product identity shared by every LingXia crate.
 
 ## What it owns
 

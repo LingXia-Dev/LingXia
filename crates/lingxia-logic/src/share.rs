@@ -247,8 +247,8 @@ fn app_link_channel(lxapp: &LxApp) -> Option<&'static str> {
 }
 
 fn first_app_link_host() -> JSResult<String> {
-    let _ = lingxia_app_context::app_config().ok_or_else(share_page_unsupported_error)?;
-    lingxia_app_context::service_app_link_hosts()
+    let _ = lingxia_host_config::app_config().ok_or_else(share_page_unsupported_error)?;
+    lingxia_host_config::service_app_link_hosts()
         .into_iter()
         .find(|host| !host.is_empty())
         .ok_or_else(share_page_unsupported_error)

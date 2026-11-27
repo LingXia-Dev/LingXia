@@ -14,7 +14,7 @@ line below.
 
 | Layer | Crates | Owns |
 |---|---|---|
-| 1. Contracts | `error`, `app-context`, `provider`, `log`, `messaging`, `settings`, `surface`, `shell`, `update`, `control-protocol`, `theme`, `i18n` | Types, policy, wire formats. No runtime. |
+| 1. Contracts | `error`, `host-config`, `provider`, `log`, `messaging`, `settings`, `surface`, `shell`, `update`, `control-protocol`, `theme`, `i18n` | Types, policy, wire formats. No runtime. |
 | 2. Platform | `webview`, `platform`, `windows-contract`, `device-io`, `transfer` | OS, WebView hosting and HTTP transfer. Knows nothing of lxapps. |
 | 3. Runtime | `lxapp`, `view`, `view-android`, `view-apple`, `view-harmony`, `view-windows`, `logic`, `service`, `media`, `browser`, `terminal`, `terminal-config` | What a shipped app runs. |
 | 4. Products and dev features | `browser-shell`, `proxy`, `control-commands`, `network-dev`, `automation` | Built on the runtime; pulled in by facade features. |
@@ -58,7 +58,7 @@ Names omit the `lingxia-` prefix.
 **Contracts**
 
 - `error`: the one error type, its `E_*` codes and its wire shape; every layer returns it.
-- `app-context`: product identity and configuration shared by every layer.
+- `host-config`: the host app's parsed `lingxia.yaml` configuration, its env and Runner flags, and the product identity shared by every layer. "Host", not "app": an lxapp's own configuration lives in `lxapp`.
 - `provider`: host provider contracts (registry, update, logs).
 - `log`: structured log domain and the in-memory pipeline.
 - `messaging`: cross-platform message passing primitives.

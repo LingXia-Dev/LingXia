@@ -50,7 +50,7 @@ fn spawn_cache_cleanup(runtime: Arc<Platform>) {
             }
         }));
     }
-    let max_bytes = lingxia_app_context::cache_max_size_bytes();
+    let max_bytes = lingxia_host_config::cache_max_size_bytes();
     if max_bytes == 0 {
         info!("Cache cleanup disabled (cacheMaxSizeMB=0)");
         return;
@@ -162,7 +162,7 @@ pub fn dev_session_active() -> bool {
     if env_active {
         return true;
     }
-    lingxia_app_context::app_config()
+    lingxia_host_config::app_config()
         .and_then(|config| config.dev_ws_url.as_deref())
         .map(|value| !value.trim().is_empty())
         .unwrap_or(false)
@@ -171,7 +171,7 @@ pub fn dev_session_active() -> bool {
 /// Identify a Runner host before SDK initialization, including direct launches.
 /// This designation is process-wide and cannot be revoked by the environment.
 pub fn register_runner_host() {
-    lingxia_app_context::register_runner_host();
+    lingxia_host_config::register_runner_host();
     // Specs drive the Runner while its window is often covered by the
     // terminal or editor.
     keep_responsive_for_development();
@@ -186,10 +186,10 @@ pub fn keep_responsive_for_development() {
 }
 
 pub fn runner_active() -> bool {
-    lingxia_app_context::runner_active()
+    lingxia_host_config::runner_active()
 }
 
-/// Initialize the LxApps singleton using the host app configuration from app-context.
+/// Initialize the LxApps singleton using the host app configuration from host-config.
 pub fn init(runtime: Platform) -> Result<Option<String>, lingxia_error::Error> {
     init_with_native_authority(runtime, None, None, Box::new(|_, _, _, _| Ok(())))
         .map(|(home_app_id, _, _)| home_app_id)
@@ -300,8 +300,8 @@ fn init_with_native_authority(
     }
 
     let (Some(home_app_id), Some(home_app_version)) = (
-        lingxia_app_context::home_app_id(),
-        lingxia_app_context::home_app_version(),
+        lingxia_host_config::home_app_id(),
+        lingxia_host_config::home_app_version(),
     ) else {
         info!("LxApps initialized without a home lxapp");
         spawn_cache_cleanup(runtime_arc);
@@ -334,7 +334,7 @@ fn init_with_native_authority(
 
     let dev_session_active = dev_session_active();
     // A dev build reinstalls when the bundled bytes changed, whatever the version says.
-    let dev_bundle = (lingxia_app_context::env() == lingxia_app_context::AppEnv::Dev)
+    let dev_bundle = (lingxia_host_config::env() == lingxia_host_config::AppEnv::Dev)
         .then(|| bundled_home_hash(&runtime_arc, &home_app_id))
         .flatten();
     let marker = runtime_arc

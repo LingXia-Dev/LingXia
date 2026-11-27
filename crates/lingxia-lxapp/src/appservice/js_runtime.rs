@@ -42,7 +42,7 @@ mod runtime_ctx;
 pub(crate) use runtime_ctx::set_app_svc_for_ctx;
 use runtime_ctx::{register_app_ctx, remove_app_ctx, with_app_svc, with_page_svc_map};
 
-pub(crate) async fn shutdown_app_context(ctx: &JSContext) {
+pub(crate) async fn shutdown_js_context(ctx: &JSContext) {
     context_lifecycle::shutdown(ctx).await;
     console::clear_trace_context(ctx);
     remove_app_ctx(ctx);
@@ -891,7 +891,7 @@ async fn handle_service_message(
                 .while_alive(lxapp.logic_entry_source(&ctx))
                 .await
             else {
-                shutdown_app_context(&ctx).await;
+                shutdown_js_context(&ctx).await;
                 return;
             };
             match source {
@@ -905,13 +905,13 @@ async fn handle_service_message(
                         .await
                     {
                         None => {
-                            shutdown_app_context(&ctx).await;
+                            shutdown_js_context(&ctx).await;
                             return;
                         }
                         Some(Err(e)) => {
                             error!("[Worker {}] Logic was not started: {}", worker_id, e)
                                 .with_appid(lxapp.appid.clone());
-                            shutdown_app_context(&ctx).await;
+                            shutdown_js_context(&ctx).await;
                             return;
                         }
                         Some(Ok(_)) => {}
@@ -948,7 +948,7 @@ async fn handle_service_message(
         }
         ServiceMessage::TerminateAppSvc { lxapp, ack_tx, .. } => {
             if let Some(ctx) = current_ctx.as_ref() {
-                shutdown_app_context(ctx).await;
+                shutdown_js_context(ctx).await;
                 *current_ctx = None;
                 info!("[Worker {}] Removed LxApp context ", worker_id)
                     .with_appid(lxapp.appid.clone());

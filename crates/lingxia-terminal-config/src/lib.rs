@@ -89,7 +89,7 @@ pub struct ConfigLayers {
 
 impl TerminalConfig {
     pub fn path(app_data_dir: &Path) -> PathBuf {
-        lingxia_app_context::app_state_file(app_data_dir, CONFIG_FILE)
+        lingxia_host_config::app_state_file(app_data_dir, CONFIG_FILE)
     }
 
     /// Load the user's configuration on top of the framework defaults.

@@ -89,7 +89,7 @@ impl JSContextService for TerminalContextService {
 
 pub(crate) fn eligible(app: &Arc<LxApp>) -> bool {
     cfg!(any(target_os = "macos", target_os = "windows"))
-        && lingxia_app_context::terminal_enabled()
+        && lingxia_host_config::terminal_enabled()
         // Presence is presentation only. Every call below independently uses
         // the central invocation authorization path.
         && app.app_session_class() == lxapp::AppSessionClass::ControlSurface
@@ -119,7 +119,7 @@ fn require_access(ctx: &JSContext, route: LogicRoute) -> JSResult<Arc<LxApp>> {
         )
     })?;
     if !cfg!(any(target_os = "macos", target_os = "windows"))
-        || !lingxia_app_context::terminal_enabled()
+        || !lingxia_host_config::terminal_enabled()
     {
         return Err(HostError::new(
             rong::error::E_PERMISSION_DENIED,

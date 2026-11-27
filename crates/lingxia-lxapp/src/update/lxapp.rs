@@ -319,7 +319,7 @@ impl UpdateManager {
     /// and retries a failed check. Started once, by the first home check.
     pub(crate) fn start_home_update_poll() {
         static STARTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-        let Some(interval) = lingxia_app_context::update::check_interval() else {
+        let Some(interval) = lingxia_host_config::update::check_interval() else {
             return;
         };
         if STARTED.swap(true, std::sync::atomic::Ordering::SeqCst) {
@@ -329,7 +329,7 @@ impl UpdateManager {
             interval,
             || async {
                 // Looked up each time: a channel switch replaces the instance.
-                let home = lingxia_app_context::home_app_id().and_then(lxapp_runtime::try_get);
+                let home = lingxia_host_config::home_app_id().and_then(lxapp_runtime::try_get);
                 if let Some(home) = home {
                     UpdateManager::spawn_background_update_check(home);
                 }
@@ -511,7 +511,7 @@ pub async fn prepare_lxapp_open(
     target_appid: &str,
     release_type: Channel,
 ) -> Result<(), lingxia_error::Error> {
-    let home_appid = lingxia_app_context::home_app_id()
+    let home_appid = lingxia_host_config::home_app_id()
         .map(str::to_string)
         .ok_or_else(|| lingxia_error::Error::internal("host app config is not initialized"))?;
 

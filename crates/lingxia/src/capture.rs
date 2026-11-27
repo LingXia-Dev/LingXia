@@ -9,7 +9,7 @@ pub use lingxia_media::capture::CaptureProviderSet;
 /// is not declared or this is not an Android build.
 #[cfg(all(feature = "android-capture", target_os = "android"))]
 pub fn android_providers() -> CaptureProviderSet {
-    let tracks = lingxia_app_context::capabilities_config()
+    let tracks = lingxia_host_config::capabilities_config()
         .map(|capabilities| capabilities.media_capture)
         .unwrap_or_default();
     if !tracks.is_enabled() {

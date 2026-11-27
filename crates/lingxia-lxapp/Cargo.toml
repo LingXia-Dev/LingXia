@@ -69,7 +69,7 @@ rong_http = { workspace = true, default-features = false, optional = true }
 rong_console = { workspace = true, optional = true }
 rong_event = { workspace = true, optional = true }
 rong_timer = { workspace = true, optional = true }
-lingxia-app-context = { workspace = true }
+lingxia-host-config = { workspace = true }
 lingxia-i18n = { workspace = true }
 lingxia-log = { workspace = true }
 lingxia-provider = { workspace = true }

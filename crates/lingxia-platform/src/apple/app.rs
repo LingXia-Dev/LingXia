@@ -255,7 +255,7 @@ impl AppRuntime for Platform {
         // iOS returns false when the notification system refuses the count.
         let written = ffi::set_app_badge(text);
         #[cfg(target_os = "macos")]
-        if written && lingxia_app_context::capability::notifications() {
+        if written && lingxia_host_config::capability::notifications() {
             // The label reaches LaunchServices either way, but the Dock will
             // not draw one for an app that is registered with Notification
             // Center and not allowed — the same state that hides every other

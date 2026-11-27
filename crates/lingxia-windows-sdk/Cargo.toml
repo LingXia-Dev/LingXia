@@ -43,7 +43,7 @@ components = [
 runtime = [
     "components",
     "dep:lingxia",
-    "dep:lingxia-app-context",
+    "dep:lingxia-host-config",
     "dep:lingxia-surface",
     "dep:resvg",
     "dep:tiny-skia",
@@ -60,7 +60,7 @@ standard = ["runtime", "lingxia/standard"]
 device-frame = ["runtime"]
 shell-chrome = [
     "runtime",
-    "dep:lingxia-app-context",
+    "dep:lingxia-host-config",
     "dep:lingxia-logic",
     "dep:resvg",
     "dep:tiny-skia",
@@ -90,7 +90,7 @@ webview-input = ["host-api", "lingxia?/webview-input"]
 lingxia = { workspace = true, default-features = false, optional = true }
 lingxia-error = { workspace = true }
 lingxia-theme = { workspace = true }
-lingxia-app-context = { workspace = true, optional = true }
+lingxia-host-config = { workspace = true, optional = true }
 lingxia-browser = { workspace = true, optional = true }
 lingxia-logic = { workspace = true, optional = true }
 lingxia-shell = { workspace = true, optional = true }

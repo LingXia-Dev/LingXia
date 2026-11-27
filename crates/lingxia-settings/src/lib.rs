@@ -64,7 +64,7 @@ fn settings_key(app_data_dir: &Path) -> String {
 }
 
 pub fn settings_path(app_data_dir: &Path) -> PathBuf {
-    lingxia_app_context::app_state_file(app_data_dir, "settings.json")
+    lingxia_host_config::app_state_file(app_data_dir, "settings.json")
 }
 
 pub fn load(app_data_dir: &Path) -> Result<Settings, SettingsError> {

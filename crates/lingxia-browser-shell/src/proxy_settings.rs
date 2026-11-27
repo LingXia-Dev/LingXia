@@ -108,7 +108,7 @@ fn is_default_proxy_socks_port(value: &u16) -> bool {
 }
 
 pub fn proxy_settings_path(app_data_dir: &Path) -> PathBuf {
-    lingxia_app_context::app_state_file(app_data_dir, "proxy-settings.json")
+    lingxia_host_config::app_state_file(app_data_dir, "proxy-settings.json")
 }
 
 pub fn load_proxy_settings(app_data_dir: &Path) -> Result<ProxySettings, ProxySettingsError> {

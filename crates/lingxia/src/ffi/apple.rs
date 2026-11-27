@@ -1846,7 +1846,7 @@ pub fn shell_pins() -> String {
     ffi_catch_unwind!("shell_pins", String::new(), || {
         lingxia_shell::pins()
             .ok()
-            .map(|pins| crate::shell::visible_shell_pins(&pins, lingxia_app_context::home_app_id()))
+            .map(|pins| crate::shell::visible_shell_pins(&pins, lingxia_host_config::home_app_id()))
             .and_then(|pins| serde_json::to_string(&pins).ok())
             .unwrap_or_default()
     })
@@ -1921,7 +1921,7 @@ pub fn shell_set_pinned(kind: &str, key: &str, pinned: bool) -> i32 {
 }
 
 fn shell_pin_is_home_lxapp(kind: &str, key: &str) -> bool {
-    kind == "lxapp" && lingxia_app_context::home_app_id().is_some_and(|home| home == key.trim())
+    kind == "lxapp" && lingxia_host_config::home_app_id().is_some_and(|home| home == key.trim())
 }
 
 fn shell_pin_target(kind: &str, key: &str) -> Option<lingxia_shell::ShellPinTarget> {
@@ -3175,11 +3175,11 @@ pub fn terminal_session_close(id: u64) {
 }
 
 pub fn browser_bookmarks_enabled() -> bool {
-    lingxia_app_context::browser_bookmarks_enabled()
+    lingxia_host_config::browser_bookmarks_enabled()
 }
 
 pub fn browser_system_pages_enabled() -> bool {
-    lingxia_app_context::browser_system_pages_enabled()
+    lingxia_host_config::browser_system_pages_enabled()
 }
 
 pub fn browser_reopen_closed_tab() -> String {

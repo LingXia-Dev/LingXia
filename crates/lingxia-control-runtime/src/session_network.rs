@@ -166,12 +166,12 @@ fn mode_arg(args: &Value, key: &str) -> Result<Option<MockMode>, String> {
 fn target_appid(explicit: Option<String>) -> Result<String, String> {
     match explicit.as_deref() {
         None => {
-            if let Some(home) = lingxia_app_context::home_app_id() {
+            if let Some(home) = lingxia_host_config::home_app_id() {
                 return Ok(home.to_string());
             }
         }
         Some("home") => {
-            return lingxia_app_context::home_app_id()
+            return lingxia_host_config::home_app_id()
                 .map(str::to_string)
                 .ok_or_else(|| "(unavailable): this host has no home lxapp".into());
         }

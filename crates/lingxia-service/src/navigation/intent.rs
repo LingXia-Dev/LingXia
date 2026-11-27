@@ -384,10 +384,10 @@ pub fn live_count() -> usize {
 }
 
 fn scope() -> String {
-    let product = lingxia_app_context::lingxia_id()
-        .or_else(lingxia_app_context::product_name)
+    let product = lingxia_host_config::lingxia_id()
+        .or_else(lingxia_host_config::product_name)
         .unwrap_or("lingxia");
-    format!("{product}/{}", lingxia_app_context::env().as_str())
+    format!("{product}/{}", lingxia_host_config::env().as_str())
 }
 
 fn path(store: &Store) -> Option<PathBuf> {

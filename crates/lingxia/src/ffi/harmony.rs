@@ -361,7 +361,7 @@ pub fn open_browser_tab(appid: String, session_id: i64, url: String) -> Option<S
 /// Browser chrome shows its system-page entries only when the host bundles them.
 #[napi]
 pub fn browser_system_pages_enabled() -> bool {
-    lingxia_app_context::browser_system_pages_enabled()
+    lingxia_host_config::browser_system_pages_enabled()
 }
 
 /// Native browser chrome only: the authority remains sealed in Rust.
@@ -836,7 +836,7 @@ pub fn on_pushlink_received(url: String, trigger: i32) -> i32 {
 /// `compact` is the phone tab: a session port replaces `DEV`.
 #[napi]
 pub fn dev_mark(compact: bool) -> String {
-    lingxia_app_context::dev_mark(compact).unwrap_or_default()
+    lingxia_host_config::dev_mark(compact).unwrap_or_default()
 }
 
 /// Get current active LxApp ID and path from Rust stack

@@ -1,6 +1,6 @@
 use crate::authorization::{self, LogicRoute};
 use crate::i18n::{js_internal_error, js_invalid_parameter_error, js_service_unavailable_error};
-use lingxia_app_context::{AppEnv, ServiceEnvSnapshot, ServiceEnvSwitch};
+use lingxia_host_config::{AppEnv, ServiceEnvSnapshot, ServiceEnvSwitch};
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use rong::{IntoJSObject, JSContext, JSObject, JSResult};
 
@@ -45,7 +45,7 @@ struct HostServiceEnvSwitchResult {
 fn service_env(ctx: JSContext) -> JSResult<HostServiceEnvState> {
     authorization::require(&ctx, LogicRoute::AppServiceEnv)?;
     Ok(state_from_snapshot(
-        lingxia_app_context::service_env_snapshot(),
+        lingxia_host_config::service_env_snapshot(),
     ))
 }
 
@@ -58,7 +58,7 @@ fn set_service_env(ctx: JSContext, env: String) -> JSResult<HostServiceEnvSwitch
     let target = AppEnv::parse(&env).ok_or_else(|| {
         js_invalid_parameter_error(format!("service env must be 'dev' or 'prod', got '{env}'"))
     })?;
-    let snapshot = match lingxia_app_context::prepare_switch(target).map_err(switch_error)? {
+    let snapshot = match lingxia_host_config::prepare_switch(target).map_err(switch_error)? {
         ServiceEnvSwitch::Unchanged(snapshot) => {
             return Ok(HostServiceEnvSwitchResult {
                 state: state_from_snapshot(snapshot),
@@ -81,13 +81,13 @@ fn set_service_env(ctx: JSContext, env: String) -> JSResult<HostServiceEnvSwitch
     })
 }
 
-fn switch_error(error: lingxia_app_context::ServiceEnvError) -> rong::RongJSError {
+fn switch_error(error: lingxia_host_config::ServiceEnvError) -> rong::RongJSError {
     match error {
-        lingxia_app_context::ServiceEnvError::NotInitialized => {
+        lingxia_host_config::ServiceEnvError::NotInitialized => {
             js_service_unavailable_error(error.to_string())
         }
-        lingxia_app_context::ServiceEnvError::Invalid(detail) => js_invalid_parameter_error(detail),
-        lingxia_app_context::ServiceEnvError::Persist(detail) => js_internal_error(detail),
+        lingxia_host_config::ServiceEnvError::Invalid(detail) => js_invalid_parameter_error(detail),
+        lingxia_host_config::ServiceEnvError::Persist(detail) => js_internal_error(detail),
     }
 }
 

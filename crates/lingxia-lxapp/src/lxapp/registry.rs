@@ -858,7 +858,7 @@ pub fn display_icon(appid: &str) -> LxAppIcon {
         return LxAppIcon::File(path);
     }
     let registry = icon_path(appid).filter(|path| !path.trim().is_empty());
-    if lingxia_app_context::home_app_id() == Some(appid) {
+    if lingxia_host_config::home_app_id() == Some(appid) {
         return LxAppIcon::Product { fallback: registry };
     }
     registry.map_or(LxAppIcon::Default, LxAppIcon::File)

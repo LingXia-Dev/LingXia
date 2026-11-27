@@ -180,7 +180,7 @@ fn handle_lxapp_command_impl(handler: &str, args: Option<Value>) -> Result<Optio
                 || lxapp::try_get(&args.appid).is_some_and(|app| app.release_type() == channel);
             // Asides are registered and shown through the app that owns the
             // window's shell, as they are for the Logic API.
-            let shell = lingxia_app_context::home_app_id().and_then(lxapp::try_get);
+            let shell = lingxia_host_config::home_app_id().and_then(lxapp::try_get);
             let app = match open_plan(lxapp::open_region(&args.appid), requested, same_channel) {
                 // Already open: show it where it is. Where the user put an
                 // app is their layout; an open only brings it into view. It

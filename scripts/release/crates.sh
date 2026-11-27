@@ -12,7 +12,7 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # gone out irreversibly.
 CRATES=(
   "lingxia"
-  "lingxia-app-context"
+  "lingxia-host-config"
   "lingxia-automation"
   "lingxia-browser"
   "lingxia-browser-shell"

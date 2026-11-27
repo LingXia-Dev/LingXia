@@ -52,7 +52,7 @@ pub(crate) fn sync_dev_bundle(
     app_id: &str,
     deadline: Instant,
 ) -> Result<DevBundleSync, String> {
-    let Some(config) = lingxia_app_context::app_config() else {
+    let Some(config) = lingxia_host_config::app_config() else {
         return Ok(DevBundleSync::Idle);
     };
     sync_from(

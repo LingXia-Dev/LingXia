@@ -85,7 +85,7 @@ fn dev_ws_url() -> Option<String> {
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
         .or_else(|| {
-            lingxia_app_context::app_config()
+            lingxia_host_config::app_config()
                 .and_then(|config| config.dev_ws_url.as_deref())
                 .map(str::trim)
                 .filter(|value| !value.is_empty())

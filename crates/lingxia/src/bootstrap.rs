@@ -31,7 +31,7 @@ fn install_global_executor() {
 
 pub(crate) fn load_bundled_app_config(
     runtime: &std::sync::Arc<lingxia_platform::Platform>,
-) -> Option<lingxia_app_context::AppConfig> {
+) -> Option<lingxia_host_config::AppConfig> {
     use lingxia_platform::traits::app_runtime::AppRuntime;
     use std::io::Read;
 
@@ -47,7 +47,7 @@ pub(crate) fn load_bundled_app_config(
         log::error!("Failed to read app.json: {}", e);
         return None;
     }
-    match lingxia_app_context::AppConfig::parse_and_validate(&content) {
+    match lingxia_host_config::AppConfig::parse_and_validate(&content) {
         Ok(mut config) => {
             if let Some(mut generated) = load_panels_from_ui_config(runtime) {
                 if let Some(existing) = config.panels.as_mut() {
@@ -77,7 +77,7 @@ pub(crate) fn load_bundled_app_config(
 
 fn load_panels_from_ui_config(
     runtime: &std::sync::Arc<lingxia_platform::Platform>,
-) -> Option<lingxia_app_context::PanelsConfig> {
+) -> Option<lingxia_host_config::PanelsConfig> {
     use lingxia_platform::traits::app_runtime::AppRuntime;
     use std::io::Read;
 
@@ -88,8 +88,8 @@ fn load_panels_from_ui_config(
     panels_from_ui_config(&ui)
 }
 
-fn panels_from_ui_config(ui: &serde_json::Value) -> Option<lingxia_app_context::PanelsConfig> {
-    use lingxia_app_context::PanelsConfig;
+fn panels_from_ui_config(ui: &serde_json::Value) -> Option<lingxia_host_config::PanelsConfig> {
+    use lingxia_host_config::PanelsConfig;
 
     let surfaces = ui.get("surfaces")?.as_array()?;
     let activators_by_surface = ui
@@ -118,8 +118,8 @@ fn panel_item_from_surface(
     surface_id: &str,
     surface: &serde_json::Value,
     activator: Option<&serde_json::Value>,
-) -> Option<lingxia_app_context::PanelItem> {
-    use lingxia_app_context::{PanelContent, PanelContentKind, PanelItem};
+) -> Option<lingxia_host_config::PanelItem> {
+    use lingxia_host_config::{PanelContent, PanelContentKind, PanelItem};
 
     if surface_id.is_empty()
         || surface.get("role").and_then(serde_json::Value::as_str) != Some("aside")
@@ -194,12 +194,12 @@ fn panel_item_from_surface(
     })
 }
 
-fn panel_position_from_edge(edge: &str) -> Option<lingxia_app_context::PanelPosition> {
+fn panel_position_from_edge(edge: &str) -> Option<lingxia_host_config::PanelPosition> {
     match edge.trim() {
-        "left" => Some(lingxia_app_context::PanelPosition::Left),
-        "top" => Some(lingxia_app_context::PanelPosition::Top),
-        "bottom" => Some(lingxia_app_context::PanelPosition::Bottom),
-        "right" => Some(lingxia_app_context::PanelPosition::Right),
+        "left" => Some(lingxia_host_config::PanelPosition::Left),
+        "top" => Some(lingxia_host_config::PanelPosition::Top),
+        "bottom" => Some(lingxia_host_config::PanelPosition::Bottom),
+        "right" => Some(lingxia_host_config::PanelPosition::Right),
         _ => None,
     }
 }
@@ -270,7 +270,7 @@ pub(crate) fn init_with_platform(
     use lingxia_platform::traits::app_runtime::AppRuntime;
 
     // Origin for cold-start timing (the splash minimum hold measures from here).
-    lingxia_app_context::mark_startup();
+    lingxia_host_config::mark_startup();
 
     crate::host_addon::run_before_init();
 
@@ -331,7 +331,7 @@ pub(crate) fn init_with_platform(
     crate::runtime::set_platform(runtime.clone());
     crate::app::set_data_dir(runtime.app_data_dir());
     if let Err(err) =
-        lingxia_app_context::service_env::install(&runtime.app_data_dir(), &app_config)
+        lingxia_host_config::service_env::install(&runtime.app_data_dir(), &app_config)
     {
         log::warn!("service env resolution failed ({err}); using build env");
     }
@@ -355,9 +355,9 @@ pub(crate) fn init_with_platform(
     );
     lxapp::initialize_host_contrast(runtime.as_ref());
     install_global_executor();
-    lingxia_app_context::set_host_build(crate::capabilities::host_build());
-    lingxia_app_context::set_product_name_locale(lxapp::display_language);
-    if let Err(err) = lingxia_app_context::set_app_config(app_config.clone()) {
+    lingxia_host_config::set_host_build(crate::capabilities::host_build());
+    lingxia_host_config::set_product_name_locale(lxapp::display_language);
+    if let Err(err) = lingxia_host_config::set_app_config(app_config.clone()) {
         return Err(crate::Error::internal(format!(
             "failed to initialize app configuration: {err}"
         )));
@@ -387,9 +387,9 @@ pub(crate) fn init_with_platform(
     // Routes and the intent store first: COM starts the exe for a cold toast
     // tap and then waits for the class object, so a register-then-install
     // order loses the token against an empty store.
-    crate::navigation::install(lingxia_app_context::app_state_dir(&runtime.app_data_dir()))?;
+    crate::navigation::install(lingxia_host_config::app_state_dir(&runtime.app_data_dir()))?;
     #[cfg(target_os = "windows")]
-    if lingxia_app_context::capability::notifications()
+    if lingxia_host_config::capability::notifications()
         && let Err(error) = lingxia_platform::ensure_toast_activator(runtime.as_ref())
     {
         log::warn!("notification taps will not reach this build: {error}");
@@ -479,7 +479,7 @@ pub(crate) fn init_with_platform(
 #[cfg(test)]
 mod tests {
     use super::{panels_from_ui_config, seed_display_language};
-    use lingxia_app_context::PanelPosition;
+    use lingxia_host_config::PanelPosition;
 
     #[test]
     fn seeds_saved_display_language_before_runtime_init() {
@@ -609,7 +609,7 @@ mod tests {
         assert_eq!(panels.items[0].position, PanelPosition::Bottom);
         assert_eq!(
             panels.items[0].content.kind,
-            lingxia_app_context::PanelContentKind::Terminal
+            lingxia_host_config::PanelContentKind::Terminal
         );
         assert!(panels.items[0].content.app_id.is_empty());
     }
@@ -654,7 +654,7 @@ mod tests {
         assert_eq!(panels.items[1].position, PanelPosition::Bottom);
         assert_eq!(
             panels.items[1].content.kind,
-            lingxia_app_context::PanelContentKind::Terminal
+            lingxia_host_config::PanelContentKind::Terminal
         );
     }
 

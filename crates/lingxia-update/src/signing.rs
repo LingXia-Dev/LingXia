@@ -8,7 +8,7 @@ use crate::error::UpdateError;
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};
-use lingxia_app_context::{AppEnv, env, service_env};
+use lingxia_host_config::{AppEnv, env, service_env};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -266,7 +266,7 @@ pub fn verify_archive_bytes(data: &[u8], expected_sha256: &str) -> Result<(), Up
 }
 
 pub fn embedded_update_public_keys() -> Vec<String> {
-    lingxia_app_context::app_config()
+    lingxia_host_config::app_config()
         .map(|config| config.update_trusted_public_keys.clone())
         .unwrap_or_default()
 }

@@ -71,7 +71,7 @@ pub fn set_relaunch_observer(observer: fn()) {
 }
 
 fn notify_home_first_ready_once(appid: &str) {
-    if lingxia_app_context::home_app_id() != Some(appid) {
+    if lingxia_host_config::home_app_id() != Some(appid) {
         return;
     }
     if HOME_FIRST_READY.swap(true, std::sync::atomic::Ordering::Relaxed) {
@@ -90,8 +90,8 @@ fn notify_home_first_ready_once(appid: &str) {
     // draw. A process that never marked a launch face — desktop, where this
     // signal reveals the first window — has nothing to hold for, and waiting
     // would only delay real content.
-    let remaining = lingxia_app_context::splash_visible_for()
-        .map(|visible| lingxia_app_context::splash_min_duration().saturating_sub(visible))
+    let remaining = lingxia_host_config::splash_visible_for()
+        .map(|visible| lingxia_host_config::splash_min_duration().saturating_sub(visible))
         .unwrap_or_default();
     if remaining.is_zero() {
         signal_home_first_ready();
@@ -112,7 +112,7 @@ fn signal_home_first_ready() {
     // time, it takes over the same layer with its own countdown; otherwise the
     // face lifts straight into the app. A campaign that is not ready by this
     // moment is dropped, never shown late over real content.
-    match lingxia_app_context::take_pending_campaign() {
+    match lingxia_host_config::take_pending_campaign() {
         Some((image_path, duration_ms)) => platform.show_splash_campaign(image_path, duration_ms),
         None => platform.notify_home_first_ready(),
     }

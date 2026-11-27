@@ -294,7 +294,7 @@ pub(crate) async fn lxapp_dev_restart(
     // Pull this app id before deciding it is live. A closed guest keeps the
     // files for its next open; a live one is retargeted before cold restart.
     sync_dev_bundle(&appid)?;
-    let home_id = lingxia_app_context::app_config()
+    let home_id = lingxia_host_config::app_config()
         .map(|config| config.home_app_id.trim().to_string())
         .unwrap_or_default();
     // A closed instance stays in the manager; it is not open either.

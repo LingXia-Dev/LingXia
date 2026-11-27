@@ -85,7 +85,7 @@ fn default_title(url: &str) -> String {
 }
 
 fn history_path(app_data_dir: &Path) -> PathBuf {
-    lingxia_app_context::app_state_file(app_data_dir, HISTORY_DB)
+    lingxia_host_config::app_state_file(app_data_dir, HISTORY_DB)
 }
 
 fn store_lock() -> &'static Mutex<()> {

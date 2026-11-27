@@ -115,7 +115,7 @@ impl JSContextService for FeatureSnapshot {
 fn autostart_supported() -> bool {
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     {
-        lingxia_app_context::autostart_enabled() && lingxia_platform::autostart_supported()
+        lingxia_host_config::autostart_enabled() && lingxia_platform::autostart_supported()
     }
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
@@ -144,18 +144,18 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
             Predicate::Terminal => focused,
             Predicate::WindowsOs => cfg!(target_os = "windows"),
             Predicate::Autostart => autostart_supported(),
-            Predicate::Notifications => lingxia_app_context::capability::notifications(),
+            Predicate::Notifications => lingxia_host_config::capability::notifications(),
             Predicate::Banner => lingxia_platform::banner_supported(),
-            Predicate::Browser => lingxia_app_context::capability::browser(),
-            Predicate::Proxy => lingxia_app_context::capability::proxy(),
-            Predicate::SelfUpdate => lingxia_app_context::update::self_update_allowed(
+            Predicate::Browser => lingxia_host_config::capability::browser(),
+            Predicate::Proxy => lingxia_host_config::capability::proxy(),
+            Predicate::SelfUpdate => lingxia_host_config::update::self_update_allowed(
                 app.runtime.self_update_supported(),
                 app.runtime.installed_from_store(),
             ),
-            Predicate::AppUse => lingxia_app_context::capability::app_use(),
-            Predicate::ComputerUse => lingxia_app_context::capability::computer_use(),
-            Predicate::BrowserUse => lingxia_app_context::capability::browser_use(),
-            Predicate::MediaCapture => lingxia_app_context::capability::media_capture(),
+            Predicate::AppUse => lingxia_host_config::capability::app_use(),
+            Predicate::ComputerUse => lingxia_host_config::capability::computer_use(),
+            Predicate::BrowserUse => lingxia_host_config::capability::browser_use(),
+            Predicate::MediaCapture => lingxia_host_config::capability::media_capture(),
             Predicate::Window => crate::surface::window_placement_available(),
             Predicate::FullChrome => crate::surface::window_full_chrome_available(),
             Predicate::Tray => cfg!(any(target_os = "macos", target_os = "windows")),
@@ -187,7 +187,7 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
                     target_env = "ohos"
                 ))
             }
-            Predicate::Automation => lingxia_app_context::capability::build::automation(),
+            Predicate::Automation => lingxia_host_config::capability::build::automation(),
         }
     })
     .map_err(js_internal_error)?;
@@ -228,7 +228,7 @@ fn stub_members(path: &str) -> impl Iterator<Item = &'static str> + '_ {
 /// Without the automation build, `lx.automation` still exists and throws, as the real one is
 /// synchronous; with it, the automation extension installs the real member.
 pub(crate) fn unsupported_automation(ctx: &JSContext) -> JSResult<()> {
-    if lingxia_app_context::capability::build::automation() {
+    if lingxia_host_config::capability::build::automation() {
         return Ok(());
     }
     let lx = ctx.global().get::<_, JSObject>("lx")?;

@@ -1,4 +1,4 @@
-use lingxia_app_context::{AppConfig, SettingsDestination};
+use lingxia_host_config::{AppConfig, SettingsDestination};
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
@@ -509,7 +509,7 @@ pub fn static_settings_destination() -> Option<&'static SettingsDestination> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lingxia_app_context::{AppEnv, CapabilitiesConfig};
+    use lingxia_host_config::{AppEnv, CapabilitiesConfig};
     use std::cell::Cell;
     use std::sync::Arc;
 

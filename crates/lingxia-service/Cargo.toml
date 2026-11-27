@@ -11,7 +11,7 @@ lingxia-transfer = { workspace = true, features = ["http-proxy"] }
 lingxia-settings = { workspace = true }
 lingxia-error = { workspace = true }
 lingxia-platform = { workspace = true }
-lingxia-app-context = { workspace = true }
+lingxia-host-config = { workspace = true }
 lingxia-update = { workspace = true }
 lingxia-provider = { workspace = true }
 lingxia-messaging = { workspace = true }

@@ -103,7 +103,7 @@ impl Fixture {
                     }
                     tokio::task::yield_now().await;
                 }
-                shutdown_app_context(&ctx).await;
+                shutdown_js_context(&ctx).await;
             });
         });
         ready_rx.recv_timeout(Duration::from_secs(5)).unwrap();

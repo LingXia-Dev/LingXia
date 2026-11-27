@@ -136,13 +136,13 @@ fn browser_bookmarks_survives_yaml_to_runtime_config() {
             webui: None,
         });
         let json = build_app_json_from_config(&config, None, None, &test_resolved_env()).unwrap();
-        let runtime = lingxia_app_context::AppConfig::parse_and_validate(&json).unwrap();
+        let runtime = lingxia_host_config::AppConfig::parse_and_validate(&json).unwrap();
         assert_eq!(runtime.browser.bookmarks, bookmarks);
     }
     config.browser = None;
     let json = build_app_json_from_config(&config, None, None, &test_resolved_env()).unwrap();
     assert!(
-        lingxia_app_context::AppConfig::parse_and_validate(&json)
+        lingxia_host_config::AppConfig::parse_and_validate(&json)
             .unwrap()
             .browser
             .bookmarks
@@ -155,7 +155,7 @@ fn browser_system_pages_follow_the_declared_webui() {
     config.capabilities.as_mut().unwrap().browser = true;
     let system_pages = |config: &LingXiaConfig| {
         let json = build_app_json_from_config(config, None, None, &test_resolved_env()).unwrap();
-        lingxia_app_context::AppConfig::parse_and_validate(&json)
+        lingxia_host_config::AppConfig::parse_and_validate(&json)
             .unwrap()
             .browser
             .system_pages
@@ -191,7 +191,7 @@ fn generated_app_json_embeds_update_trusted_public_keys() {
         value["updateTrustedPublicKeys"][0],
         "6kpsY-KcUgq-9VB7Ey7F-ZVHdq6-vnuSQh7qaRRG0iw"
     );
-    let parsed = lingxia_app_context::AppConfig::parse_and_validate(&app_json)
+    let parsed = lingxia_host_config::AppConfig::parse_and_validate(&app_json)
         .expect("runtime app.json parse");
     assert_eq!(
         parsed.update_trusted_public_keys,
@@ -205,7 +205,7 @@ fn generated_app_json_embeds_update_trusted_public_keys() {
 
 #[test]
 fn generated_app_json_embeds_update_channels() {
-    use lingxia_app_context::UpdateChannel;
+    use lingxia_host_config::UpdateChannel;
     use std::collections::BTreeMap;
 
     let mut config = LingXiaConfig::new_android("demo", "com.example.demo", "home");
@@ -224,7 +224,7 @@ fn generated_app_json_embeds_update_channels() {
     assert_eq!(value["updateChannel"], "direct");
     assert_eq!(value["updateChannels"]["android"], "direct");
     assert_eq!(value["updateChannels"]["ios"], "store");
-    let parsed = lingxia_app_context::AppConfig::parse_and_validate(&app_json)
+    let parsed = lingxia_host_config::AppConfig::parse_and_validate(&app_json)
         .expect("runtime app.json parse");
     assert_eq!(parsed.update_channel, Some(UpdateChannel::Direct));
     assert_eq!(parsed.update_check_interval_secs, Some(21_600));
@@ -263,7 +263,7 @@ fn generated_app_json_embeds_store_listing_ids() {
     let value: serde_json::Value = serde_json::from_str(&app_json).unwrap();
     assert_eq!(value["storeListingIds"]["ios"], "1234567890");
     assert_eq!(value["storeListingIds"]["macos"], "987654321");
-    let parsed = lingxia_app_context::AppConfig::parse_and_validate(&app_json)
+    let parsed = lingxia_host_config::AppConfig::parse_and_validate(&app_json)
         .expect("runtime app.json parse");
     assert_eq!(
         parsed.store_listing_ids.get("ios").map(String::as_str),
@@ -273,7 +273,7 @@ fn generated_app_json_embeds_store_listing_ids() {
 
 #[test]
 fn a_store_only_update_table_needs_no_keys() {
-    use lingxia_app_context::UpdateChannel;
+    use lingxia_host_config::UpdateChannel;
 
     let mut config = LingXiaConfig::new_android("demo", "com.example.demo", "home");
     if let Some(app) = config.app.as_mut() {
@@ -293,7 +293,7 @@ fn a_store_only_update_table_needs_no_keys() {
 
 #[test]
 fn store_channel_without_listing_id_is_reported() {
-    use lingxia_app_context::UpdateChannel;
+    use lingxia_host_config::UpdateChannel;
     use std::collections::{BTreeMap, HashMap};
 
     let mut platforms = BTreeMap::new();
@@ -726,7 +726,7 @@ fn generated_app_json_includes_normalized_theme() {
     let mut config = LingXiaConfig::new_android("demo", "com.example.demo", "demo-home");
     config.theme = Some(crate::config::ProductTheme(
         crate::config::ProductThemeFields {
-            default_appearance: Some(lingxia_app_context::AppearancePreference::Dark),
+            default_appearance: Some(lingxia_host_config::AppearancePreference::Dark),
             ..Default::default()
         },
     ));

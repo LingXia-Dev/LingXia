@@ -1,4 +1,4 @@
-use lingxia_app_context::{AppConfig, app_config, dev_mark, register_runner_host, set_app_config};
+use lingxia_host_config::{AppConfig, app_config, dev_mark, register_runner_host, set_app_config};
 
 // This integration test owns a process so registration cannot affect other tests.
 #[test]

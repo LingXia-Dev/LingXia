@@ -52,7 +52,7 @@ pub(crate) fn sync(hwnd: HWND) {
     if !is_host(hwnd) {
         return;
     }
-    let Some(label) = lingxia_app_context::dev_mark(false) else {
+    let Some(label) = lingxia_host_config::dev_mark(false) else {
         destroy(hwnd);
         return;
     };

@@ -13,7 +13,7 @@ where
     Fut: Future<Output = ControlFlow<()>>,
 {
     loop {
-        tokio::time::sleep(lingxia_app_context::update::next_check_delay(interval)).await;
+        tokio::time::sleep(lingxia_host_config::update::next_check_delay(interval)).await;
         if step().await.is_break() {
             return;
         }

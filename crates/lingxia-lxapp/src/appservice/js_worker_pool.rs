@@ -1,7 +1,7 @@
 use crate::appservice::event_bus::AppBusEvent;
 use crate::appservice::js_runtime::{
     PageSvcSource, ServiceMessage, WorkerAssignment, WorkerService, create_app_svc,
-    lxapp_service_handler, restart_app_svc, shutdown_app_context, terminate_app_svc,
+    lxapp_service_handler, restart_app_svc, shutdown_js_context, terminate_app_svc,
 };
 use crate::lifecycle::AppServiceEvent;
 use crate::lifecycle::PageLifecycleEvent;
@@ -204,7 +204,7 @@ impl LxAppWorkers {
                     }
 
                     if let Some(ctx) = current_ctx.take() {
-                        shutdown_app_context(&ctx).await;
+                        shutdown_js_context(&ctx).await;
                     }
                     Ok(())
                 })

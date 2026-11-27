@@ -9,7 +9,7 @@ repository.workspace = true
 
 [dependencies]
 lingxia-error = { workspace = true }
-lingxia-app-context = { workspace = true }
+lingxia-host-config = { workspace = true }
 dashmap = { workspace = true }
 log = { workspace = true }
 serde = { workspace = true }

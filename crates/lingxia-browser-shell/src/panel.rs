@@ -2,7 +2,7 @@ use lingxia_platform::traits::app_runtime::LxAppOpenMode;
 use lxapp::startup::LxAppStartupOptions;
 
 pub fn panel_item_for_id(panel_id: &str) -> Option<(String, String)> {
-    lingxia_app_context::app_config()
+    lingxia_host_config::app_config()
         .and_then(|config| config.panels.as_ref())
         .and_then(|panels| panels.items.iter().find(|item| item.id == panel_id))
         .filter(|item| item.content.kind.is_lxapp())
@@ -15,7 +15,7 @@ pub fn panel_item_for_id(panel_id: &str) -> Option<(String, String)> {
 }
 
 pub fn panels_config_json() -> Option<String> {
-    lingxia_app_context::app_config()
+    lingxia_host_config::app_config()
         .and_then(|config| config.panels.as_ref())
         .and_then(|panels| serde_json::to_string(panels).ok())
 }

@@ -30,7 +30,7 @@ test-runtime = ["dep:lingxia-automation", "dep:lingxia-network-dev"]
 [dependencies]
 lingxia-control-protocol = { workspace = true }
 lingxia = { workspace = true, default-features = false, features = ["devtool"] }
-lingxia-app-context = { workspace = true }
+lingxia-host-config = { workspace = true }
 lingxia-browser = { workspace = true, optional = true }
 lingxia-device-io = { workspace = true, optional = true }
 lingxia-log = { workspace = true }

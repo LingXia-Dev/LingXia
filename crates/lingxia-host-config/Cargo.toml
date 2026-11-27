@@ -1,5 +1,5 @@
 [package]
-name = "lingxia-app-context"
+name = "lingxia-host-config"
 version.workspace = true
 edition.workspace = true
 description = "Shared app/product context for LingXia crates"

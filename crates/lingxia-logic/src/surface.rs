@@ -830,7 +830,7 @@ fn surface_declared(ctx: JSContext, id: JSValue, options: Optional<JSObject>) ->
 
 /// The lxapp a `lingxia.yaml` declaration shows.
 fn declared_lxapp(id: &str) -> Option<String> {
-    lingxia_app_context::app_config()?
+    lingxia_host_config::app_config()?
         .panels
         .as_ref()?
         .items

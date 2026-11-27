@@ -228,7 +228,7 @@ fn main_workspace_add_target(switcher: &SurfaceSwitcherSnapshot) -> Option<MainW
     main_workspace_add_target_for_capabilities(
         switcher,
         browser_runtime_enabled(),
-        cfg!(feature = "terminal-runtime") && lingxia_app_context::terminal_enabled(),
+        cfg!(feature = "terminal-runtime") && lingxia_host_config::terminal_enabled(),
     )
 }
 
@@ -724,7 +724,7 @@ pub(crate) fn open_home_app_with_target(
 ) -> Result<(), String> {
     set_shell_owner_appid(appid);
     #[cfg(feature = "terminal-runtime")]
-    if lingxia_app_context::terminal_enabled() {
+    if lingxia_host_config::terminal_enabled() {
         super::terminal_panel::ensure_configuration_loaded();
     }
     let options = LxAppStartupOptions::for_page(page, query)?;
@@ -1167,7 +1167,7 @@ fn consume_suppressed_browser_tab_sync() -> bool {
 struct TerminalPanelRequest {
     panel_id: String,
     label: String,
-    position: lingxia_app_context::PanelPosition,
+    position: lingxia_host_config::PanelPosition,
 }
 
 enum PanelTarget {
@@ -1176,7 +1176,7 @@ enum PanelTarget {
         path: String,
         page: Option<String>,
         query: Option<serde_json::Value>,
-        position: lingxia_app_context::PanelPosition,
+        position: lingxia_host_config::PanelPosition,
     },
     Terminal(TerminalPanelRequest),
 }
@@ -2387,7 +2387,7 @@ fn build_address_bar_layout() -> Option<WindowsShellAddressBarLayout> {
         bookmarked,
         pinned,
         show_bookmark: cfg!(feature = "browser-shell")
-            && lingxia_app_context::browser_bookmarks_enabled(),
+            && lingxia_host_config::browser_bookmarks_enabled(),
         show_pin: cfg!(feature = "browser-shell"),
         show_page_menu: cfg!(feature = "browser-shell"),
         web,
@@ -3523,7 +3523,7 @@ fn lxapp_auxiliary_icon_path(appid: &str) -> String {
     if let Some(icon) = lxapp_icon_path(appid) {
         return icon;
     }
-    let panel_icon = lingxia_app_context::app_config()
+    let panel_icon = lingxia_host_config::app_config()
         .and_then(|config| config.panels.as_ref().cloned())
         .and_then(|panels| {
             panels.items.into_iter().find_map(|item| {
@@ -3580,7 +3580,7 @@ fn set_lxapp_pin_with_limit(owner_appid: &str, appid: &str, pinned: bool) -> boo
 }
 
 fn is_home_lxapp(appid: &str) -> bool {
-    lingxia_app_context::home_app_id().is_some_and(|home| home == appid)
+    lingxia_host_config::home_app_id().is_some_and(|home| home == appid)
         || lxapp::try_get(appid).is_some_and(|app| app.runtime_info().is_home)
 }
 
@@ -3613,7 +3613,7 @@ fn show_lxapp_unavailable_notice(status: lxapp::LxAppStatus) {
         }
         _ => return,
     };
-    let window = lingxia_app_context::home_app_id().and_then(owner_window_handle);
+    let window = lingxia_host_config::home_app_id().and_then(owner_window_handle);
     if let Some(window) = window {
         crate::window_host::show_shell_notice(window, title, message);
     }
@@ -3732,7 +3732,7 @@ static STATIC_SETTINGS_SOURCE: OnceLock<
 static HOST_RUNTIME: OnceLock<lingxia::RuntimeInfo> = OnceLock::new();
 
 pub(crate) fn configure_static_settings_source(
-    destination: Option<&lingxia_app_context::SettingsDestination>,
+    destination: Option<&lingxia_host_config::SettingsDestination>,
     runtime: &lingxia::RuntimeInfo,
 ) {
     let _ = HOST_RUNTIME.set(runtime.clone());
@@ -3859,7 +3859,7 @@ fn apply_windows_layout_plan(plan: &LayoutPresentationPlan) {
     let edge = native_slot.and_then(|slot| slot.edge);
     let overlay = native_slot.is_some_and(|slot| slot.visible && slot.overlay);
 
-    let mut native_panels = lingxia_app_context::app_config()
+    let mut native_panels = lingxia_host_config::app_config()
         .and_then(|config| config.panels.as_ref().cloned())
         .map(|panels| {
             panels
@@ -3875,7 +3875,7 @@ fn apply_windows_layout_plan(plan: &LayoutPresentationPlan) {
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default();
-    if lingxia_app_context::terminal_enabled()
+    if lingxia_host_config::terminal_enabled()
         && !native_panels
             .iter()
             .any(|request| request.panel_id == SHELL_TERMINAL_SURFACE_ID)
@@ -3883,7 +3883,7 @@ fn apply_windows_layout_plan(plan: &LayoutPresentationPlan) {
         native_panels.push(TerminalPanelRequest {
             panel_id: SHELL_TERMINAL_SURFACE_ID.to_string(),
             label: "Terminal".to_string(),
-            position: lingxia_app_context::PanelPosition::Bottom,
+            position: lingxia_host_config::PanelPosition::Bottom,
         });
     }
     if let Some(slot) = native_slot {
@@ -3892,7 +3892,7 @@ fn apply_windows_layout_plan(plan: &LayoutPresentationPlan) {
         let position = slot
             .edge
             .map(panel_position_from_edge)
-            .unwrap_or(lingxia_app_context::PanelPosition::Bottom);
+            .unwrap_or(lingxia_host_config::PanelPosition::Bottom);
         let label = lingxia_logic::i18n::t(lingxia_logic::I18nKey::TerminalTitle);
         for panel_id in &slot.children {
             if !native_panels
@@ -4077,12 +4077,12 @@ fn present_terminal_from_layout(request: TerminalPanelRequest, overlay: bool) {
     }
 }
 
-fn panel_position_from_edge(edge: Edge) -> lingxia_app_context::PanelPosition {
+fn panel_position_from_edge(edge: Edge) -> lingxia_host_config::PanelPosition {
     match edge {
-        Edge::Left => lingxia_app_context::PanelPosition::Left,
-        Edge::Right => lingxia_app_context::PanelPosition::Right,
-        Edge::Top => lingxia_app_context::PanelPosition::Top,
-        Edge::Bottom => lingxia_app_context::PanelPosition::Bottom,
+        Edge::Left => lingxia_host_config::PanelPosition::Left,
+        Edge::Right => lingxia_host_config::PanelPosition::Right,
+        Edge::Top => lingxia_host_config::PanelPosition::Top,
+        Edge::Bottom => lingxia_host_config::PanelPosition::Bottom,
     }
 }
 
@@ -6042,9 +6042,9 @@ fn show_pinned_bookmark_context_menu(appid: &str, row_id: &str, screen_x: i32, s
     };
     let mut items = vec![lingxia_logic::i18n::t(lingxia_logic::I18nKey::BrowserUnpin)];
     // The manager is the Bookmarks system page, which only a host with `browser.webui` has.
-    if lingxia_app_context::browser_system_pages_enabled() {
+    if lingxia_host_config::browser_system_pages_enabled() {
         items.push(lingxia_logic::i18n::t(
-            if lingxia_app_context::browser_bookmarks_enabled() {
+            if lingxia_host_config::browser_bookmarks_enabled() {
                 lingxia_logic::I18nKey::BrowserManageBookmarks
             } else {
                 lingxia_logic::I18nKey::BrowserManagePinnedSites
@@ -7512,11 +7512,11 @@ fn show_app_menu(appid: &str, app: &LxApp, screen_x: i32, screen_y: i32) {
         // lxapp's name/version/icon. Falls back to the lxapp's values only when
         // the app config is unavailable.
         let lxapp_info = app.get_lxapp_info();
-        let app_name = non_empty(lingxia_app_context::product_name())
+        let app_name = non_empty(lingxia_host_config::product_name())
             .or_else(|| lxapp::lxapp_display_name(&app.appid))
             .unwrap_or(lxapp_info.app_name);
         let version =
-            non_empty(lingxia_app_context::product_version()).unwrap_or(lxapp_info.version);
+            non_empty(lingxia_host_config::product_version()).unwrap_or(lxapp_info.version);
         let icon_path = crate::app_icon::current_app_icon_path()
             .map(|path| path.to_string_lossy().into_owned())
             .filter(|path| !path.is_empty())
@@ -7978,8 +7978,8 @@ fn show_browser_page_menu(appid: &str, screen_x: i32, screen_y: i32) {
             ),
         ),
     ];
-    let bookmarks_enabled = lingxia_app_context::browser_bookmarks_enabled();
-    let system_pages = lingxia_app_context::browser_system_pages_enabled();
+    let bookmarks_enabled = lingxia_host_config::browser_bookmarks_enabled();
+    let system_pages = lingxia_host_config::browser_system_pages_enabled();
     let (actions, items): (Vec<_>, Vec<_>) = items
         .into_iter()
         .filter(|(action, _)| action.is_visible(bookmarks_enabled, system_pages))
@@ -8116,7 +8116,7 @@ fn close_managed_surface_for_api(panel_id: &str, capability: &str, role: &str) -
         PanelTarget::Terminal(TerminalPanelRequest {
             panel_id: panel_id.to_string(),
             label: String::new(),
-            position: lingxia_app_context::PanelPosition::Bottom,
+            position: lingxia_host_config::PanelPosition::Bottom,
         })
     } else if capability.is_empty() {
         let Some(target) = panel_target_for_id(panel_id) else {
@@ -8287,7 +8287,7 @@ fn open_managed_native_surface(
         return false;
     };
     let position = match parse_panel_position_override(edge) {
-        Ok(position) => position.unwrap_or(lingxia_app_context::PanelPosition::Bottom),
+        Ok(position) => position.unwrap_or(lingxia_host_config::PanelPosition::Bottom),
         Err(()) => return false,
     };
     if role == "main" && crate::window_host::primary_host_window_handle().is_none() {
@@ -8460,7 +8460,7 @@ fn show_panel_target(
     appid: &str,
     panel_id: &str,
     target: PanelTarget,
-    position_override: Option<lingxia_app_context::PanelPosition>,
+    position_override: Option<lingxia_host_config::PanelPosition>,
 ) {
     let _ = show_panel_target_inner(appid, panel_id, target, position_override, None);
 }
@@ -8469,7 +8469,7 @@ fn show_panel_target_inner(
     appid: &str,
     panel_id: &str,
     target: PanelTarget,
-    position_override: Option<lingxia_app_context::PanelPosition>,
+    position_override: Option<lingxia_host_config::PanelPosition>,
     completion: Option<ManagedSurfaceCompletion>,
 ) -> bool {
     match target {
@@ -8547,7 +8547,7 @@ fn show_lxapp_panel(
     path: &str,
     page: Option<&str>,
     query: Option<&serde_json::Value>,
-    position: lingxia_app_context::PanelPosition,
+    position: lingxia_host_config::PanelPosition,
     has_position_override: bool,
     completion: Option<ManagedSurfaceCompletion>,
 ) -> bool {
@@ -8630,7 +8630,7 @@ fn show_lxapp_panel(
 }
 
 fn panel_target_for_id(panel_id: &str) -> Option<PanelTarget> {
-    let configured = lingxia_app_context::app_config()
+    let configured = lingxia_host_config::app_config()
         .and_then(|config| config.panels.as_ref().cloned())
         .and_then(|panels| panels.items.into_iter().find(|item| item.id == panel_id));
 
@@ -8661,15 +8661,15 @@ fn panel_target_for_id(panel_id: &str) -> Option<PanelTarget> {
                 path: String::new(),
                 page: None,
                 query: None,
-                position: lingxia_app_context::PanelPosition::Right,
+                position: lingxia_host_config::PanelPosition::Right,
             })
     })
 }
 
 fn panel_item_for_lxapp(
     appid: &str,
-) -> Option<(String, String, lingxia_app_context::PanelPosition)> {
-    lingxia_app_context::app_config()
+) -> Option<(String, String, lingxia_host_config::PanelPosition)> {
+    lingxia_host_config::app_config()
         .and_then(|config| config.panels.as_ref().cloned())
         .and_then(|panels| {
             panels.items.into_iter().find_map(|item| {
@@ -8729,7 +8729,7 @@ fn sync_shell_owner_host_layout(appid: &str) {
 fn register_managed_aside(
     appid: &str,
     panel_id: &str,
-    position: lingxia_app_context::PanelPosition,
+    position: lingxia_host_config::PanelPosition,
 ) {
     if let Some(app) = lxapp::try_get(appid) {
         app.register_host_aside(panel_id, panel_edge(position));
@@ -8739,7 +8739,7 @@ fn register_managed_aside(
 fn register_managed_native_aside(
     appid: &str,
     panel_id: &str,
-    position: lingxia_app_context::PanelPosition,
+    position: lingxia_host_config::PanelPosition,
 ) {
     if let Some(app) = lxapp::try_get(appid) {
         app.register_host_aside_content(panel_id, "terminal", panel_edge(position));
@@ -8754,26 +8754,26 @@ fn unregister_managed_aside(appid: &str, panel_id: &str) {
 
 fn parse_panel_position_override(
     edge: &str,
-) -> Result<Option<lingxia_app_context::PanelPosition>, ()> {
+) -> Result<Option<lingxia_host_config::PanelPosition>, ()> {
     let edge = edge.trim();
     if edge.is_empty() {
         return Ok(None);
     }
     match edge {
-        "left" => Ok(Some(lingxia_app_context::PanelPosition::Left)),
-        "right" => Ok(Some(lingxia_app_context::PanelPosition::Right)),
-        "top" => Ok(Some(lingxia_app_context::PanelPosition::Top)),
-        "bottom" => Ok(Some(lingxia_app_context::PanelPosition::Bottom)),
+        "left" => Ok(Some(lingxia_host_config::PanelPosition::Left)),
+        "right" => Ok(Some(lingxia_host_config::PanelPosition::Right)),
+        "top" => Ok(Some(lingxia_host_config::PanelPosition::Top)),
+        "bottom" => Ok(Some(lingxia_host_config::PanelPosition::Bottom)),
         _ => Err(()),
     }
 }
 
-fn panel_edge(position: lingxia_app_context::PanelPosition) -> &'static str {
+fn panel_edge(position: lingxia_host_config::PanelPosition) -> &'static str {
     match position {
-        lingxia_app_context::PanelPosition::Left => "left",
-        lingxia_app_context::PanelPosition::Right => "right",
-        lingxia_app_context::PanelPosition::Top => "top",
-        lingxia_app_context::PanelPosition::Bottom => "bottom",
+        lingxia_host_config::PanelPosition::Left => "left",
+        lingxia_host_config::PanelPosition::Right => "right",
+        lingxia_host_config::PanelPosition::Top => "top",
+        lingxia_host_config::PanelPosition::Bottom => "bottom",
     }
 }
 
@@ -8798,12 +8798,12 @@ async fn open_panel_lxapp(
     Ok(())
 }
 
-fn panel_position(position: lingxia_app_context::PanelPosition) -> WindowsPanelPosition {
+fn panel_position(position: lingxia_host_config::PanelPosition) -> WindowsPanelPosition {
     match position {
-        lingxia_app_context::PanelPosition::Left => WindowsPanelPosition::Left,
-        lingxia_app_context::PanelPosition::Right => WindowsPanelPosition::Right,
-        lingxia_app_context::PanelPosition::Top => WindowsPanelPosition::Top,
-        lingxia_app_context::PanelPosition::Bottom => WindowsPanelPosition::Bottom,
+        lingxia_host_config::PanelPosition::Left => WindowsPanelPosition::Left,
+        lingxia_host_config::PanelPosition::Right => WindowsPanelPosition::Right,
+        lingxia_host_config::PanelPosition::Top => WindowsPanelPosition::Top,
+        lingxia_host_config::PanelPosition::Bottom => WindowsPanelPosition::Bottom,
     }
 }
 

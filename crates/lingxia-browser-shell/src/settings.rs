@@ -1,5 +1,5 @@
 use crate::host::{HostCancel, await_or_cancel};
-use lingxia_app_context::app_config;
+use lingxia_host_config::app_config;
 use lingxia_service::file::PickDirectoryRequest;
 use lxapp::LxApp;
 use serde::Serialize;
@@ -45,7 +45,7 @@ fn get_app_info(_app: Arc<LxApp>) -> lingxia_error::Result<AppInfo> {
         // same way the launcher entry does. `productName` is the fallback
         // inside `productNames`, not the string to show.
         Some(cfg) => (
-            lingxia_app_context::product_name()
+            lingxia_host_config::product_name()
                 .unwrap_or(cfg.product_name.as_str())
                 .to_string(),
             cfg.product_version.clone(),

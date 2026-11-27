@@ -85,11 +85,11 @@ pub struct UpdateSigningConfig {
     /// Omit to keep each platform's compile default (`direct` except
     /// iOS / HarmonyOS, which are `store`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub channel: Option<lingxia_app_context::UpdateChannel>,
+    pub channel: Option<lingxia_host_config::UpdateChannel>,
     /// Per-platform `store` | `direct`. Locks this *build*, not the product:
     /// flip Android to `store` on the Play-signed package after listing.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub platforms: BTreeMap<String, lingxia_app_context::UpdateChannel>,
+    pub platforms: BTreeMap<String, lingxia_host_config::UpdateChannel>,
     /// How often a running process re-checks the host app and home lxapp,
     /// such as `30m`, `6h` or `1d`. A failed check also waits this long.
     /// Omit to check once per process.
@@ -204,7 +204,7 @@ impl Default for FeaturesConfig {
 
 // One shared definition with the runtime (which reads it back from app.json),
 // so a capability can never exist on one side only.
-pub use lingxia_app_context::{CapabilitiesConfig, SettingsDestination, ThemeConfig};
+pub use lingxia_host_config::{CapabilitiesConfig, SettingsDestination, ThemeConfig};
 
 /// `theme` in lingxia.yaml: a theme id (`theme: ocean`), or a map with `id` and
 /// `defaultAppearance`. The id may be left out when `themes/` holds one file.
@@ -214,7 +214,7 @@ pub struct ProductThemeFields {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub default_appearance: Option<lingxia_app_context::AppearancePreference>,
+    pub default_appearance: Option<lingxia_host_config::AppearancePreference>,
     #[serde(default, skip_serializing)]
     pub light: Option<ColoursInThemeFiles>,
     #[serde(default, skip_serializing)]
@@ -2313,11 +2313,11 @@ impl LingXiaConfig {
             if let Some(update) = self.update.as_ref()
                 && update.trusted_public_keys.is_empty()
                 && app_platforms.iter().any(|platform| {
-                    lingxia_app_context::update::resolve_update_channel(
+                    lingxia_host_config::update::resolve_update_channel(
                         update.channel,
                         &update.platforms,
                         platform,
-                    ) == lingxia_app_context::UpdateChannel::Direct
+                    ) == lingxia_host_config::UpdateChannel::Direct
                 })
             {
                 return Err(anyhow!(
@@ -3210,11 +3210,11 @@ update:
         assert_eq!(update.check_interval_secs().unwrap(), Some(21_600));
         assert_eq!(
             update.channel,
-            Some(lingxia_app_context::UpdateChannel::Direct)
+            Some(lingxia_host_config::UpdateChannel::Direct)
         );
         assert_eq!(
             update.platforms.get("ios").copied(),
-            Some(lingxia_app_context::UpdateChannel::Store)
+            Some(lingxia_host_config::UpdateChannel::Store)
         );
     }
 
@@ -3300,12 +3300,12 @@ update:
     fn store_update_config_allows_no_trusted_keys() {
         let mut config = LingXiaConfig::new_android("demo", "com.example.demo", "demo");
         config.update = Some(UpdateSigningConfig {
-            channel: Some(lingxia_app_context::UpdateChannel::Store),
+            channel: Some(lingxia_host_config::UpdateChannel::Store),
             ..Default::default()
         });
         assert!(config.validate().is_ok());
 
-        config.update.as_mut().unwrap().channel = Some(lingxia_app_context::UpdateChannel::Direct);
+        config.update.as_mut().unwrap().channel = Some(lingxia_host_config::UpdateChannel::Direct);
         let error = config.validate().unwrap_err().to_string();
         assert!(error.contains("update.trustedPublicKeys"), "{error}");
     }

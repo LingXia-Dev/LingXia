@@ -29,7 +29,7 @@ pub fn install(
 }
 
 pub fn home_appid() -> Result<&'static str, NavigationError> {
-    lingxia_app_context::home_app_id()
+    lingxia_host_config::home_app_id()
         .filter(|id| !id.is_empty())
         .ok_or_else(|| NavigationError::invalid("this product has no home lxapp"))
 }

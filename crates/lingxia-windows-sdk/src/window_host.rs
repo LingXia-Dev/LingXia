@@ -7096,14 +7096,14 @@ fn panel_position_for_id(panel_id: &str) -> WindowsPanelPosition {
     if let Some(position) = panel_position_override(panel_id) {
         return position;
     }
-    lingxia_app_context::app_config()
+    lingxia_host_config::app_config()
         .and_then(|config| config.panels.as_ref().cloned())
         .and_then(|panels| panels.items.into_iter().find(|item| item.id == panel_id))
         .map(|item| match item.position {
-            lingxia_app_context::PanelPosition::Left => WindowsPanelPosition::Left,
-            lingxia_app_context::PanelPosition::Right => WindowsPanelPosition::Right,
-            lingxia_app_context::PanelPosition::Top => WindowsPanelPosition::Top,
-            lingxia_app_context::PanelPosition::Bottom => WindowsPanelPosition::Bottom,
+            lingxia_host_config::PanelPosition::Left => WindowsPanelPosition::Left,
+            lingxia_host_config::PanelPosition::Right => WindowsPanelPosition::Right,
+            lingxia_host_config::PanelPosition::Top => WindowsPanelPosition::Top,
+            lingxia_host_config::PanelPosition::Bottom => WindowsPanelPosition::Bottom,
         })
         .unwrap_or(WindowsPanelPosition::Right)
 }

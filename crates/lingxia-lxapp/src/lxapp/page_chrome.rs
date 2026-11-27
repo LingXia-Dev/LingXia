@@ -7,7 +7,7 @@ use lingxia_platform::traits::ui::{Appearance, UIUpdate};
 use lingxia_webview::WebViewController;
 
 /// Defined with the app config, where `theme.defaultAppearance` also uses it.
-pub use lingxia_app_context::AppearancePreference;
+pub use lingxia_host_config::AppearancePreference;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]

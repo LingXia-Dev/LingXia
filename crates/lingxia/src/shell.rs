@@ -14,7 +14,7 @@ pub(crate) fn initialize(platform: Arc<Platform>) -> ShellResult<()> {
     let root = platform.app_data_dir();
     lingxia_shell::initialize(root, Arc::new(HostShell { platform }))?;
     let manager = lingxia_shell::manager()?;
-    if let Some(home_appid) = lingxia_app_context::home_app_id() {
+    if let Some(home_appid) = lingxia_host_config::home_app_id() {
         let target = ShellPinTarget::Lxapp {
             key: home_appid.to_string(),
         };
@@ -56,14 +56,14 @@ impl ShellHost for HostShell {
     }
 
     fn apply_pins(&self, items: &[lingxia_shell::ShellPin]) -> ShellResult<()> {
-        let visible = visible_shell_pins(items, lingxia_app_context::home_app_id());
+        let visible = visible_shell_pins(items, lingxia_host_config::home_app_id());
         self.platform
             .set_shell_pins(&visible)
             .map_err(|error| ShellError::Host(error.to_string()))
     }
 
     fn activate(&self, intent: SidebarActionIntent) -> ShellResult<()> {
-        let owner = lingxia_app_context::home_app_id().ok_or(ShellError::NotInitialized)?;
+        let owner = lingxia_host_config::home_app_id().ok_or(ShellError::NotInitialized)?;
         let event = format!(
             "lx.shell.sidebarActions:{}:{}",
             intent.generation, intent.id
@@ -103,7 +103,7 @@ pub(crate) fn visible_shell_pins(items: &[ShellPin], home_appid: Option<&str>) -
 }
 
 fn shell_owner() -> Option<Arc<lxapp::LxApp>> {
-    lingxia_app_context::home_app_id().and_then(lxapp::try_get)
+    lingxia_host_config::home_app_id().and_then(lxapp::try_get)
 }
 
 #[cfg(test)]

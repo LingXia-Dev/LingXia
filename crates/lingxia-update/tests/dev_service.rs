@@ -1,4 +1,4 @@
-use lingxia_app_context::{AppConfig, AppEnv, service_env, set_app_config};
+use lingxia_host_config::{AppConfig, AppEnv, service_env, set_app_config};
 use lingxia_update::{
     Channel, UpdatePackageInfo, UpdateVerifyTarget, check_package_update_enabled,
     check_update_enabled, default_channel, verify_checked_update,
@@ -46,8 +46,8 @@ fn prod_host_on_the_dev_service_opens_unsigned_packages_without_update_keys() {
         r#"{"serviceEnv":"dev"}"#,
     )
     .unwrap();
-    lingxia_app_context::service_env::install(&data_dir, &config).unwrap();
-    assert_eq!(lingxia_app_context::env(), AppEnv::Prod);
+    lingxia_host_config::service_env::install(&data_dir, &config).unwrap();
+    assert_eq!(lingxia_host_config::env(), AppEnv::Prod);
     assert_eq!(service_env(), AppEnv::Dev);
     assert_eq!(default_channel(), Channel::Release);
     for kind in ["lxapp", "lxplugin"] {

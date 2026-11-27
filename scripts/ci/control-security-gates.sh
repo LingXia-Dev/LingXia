@@ -16,7 +16,7 @@ verify_inputs() {
     crates/lingxia-browser/Cargo.toml
     crates/lingxia-lxapp/Cargo.toml
     crates/lingxia-logic/Cargo.toml
-    crates/lingxia-app-context/Cargo.toml
+    crates/lingxia-host-config/Cargo.toml
     crates/lingxia-settings/Cargo.toml
     crates/lingxia-transfer/Cargo.toml
     crates/lingxia/Cargo.toml
@@ -52,7 +52,7 @@ case "$profile" in
       -p lingxia-webview \
       -p lingxia-lxapp \
       -p lingxia-logic \
-      -p lingxia-app-context \
+      -p lingxia-host-config \
       -p lingxia-settings \
       -p lingxia-update \
       --lib

@@ -183,10 +183,10 @@ fn runner_process() -> bool {
 }
 
 fn host_allowed(host: &str) -> bool {
-    if lingxia_app_context::app_config().is_none() {
+    if lingxia_host_config::app_config().is_none() {
         return true;
     }
-    let hosts = lingxia_app_context::service_app_link_hosts();
+    let hosts = lingxia_host_config::service_app_link_hosts();
     host_allowed_for(host, &hosts, runner_process())
 }
 

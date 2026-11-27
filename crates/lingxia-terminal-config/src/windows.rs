@@ -144,7 +144,7 @@ fn architecture() -> Result<Architecture, ConptyInstallError> {
 }
 
 fn root(app_data_dir: &Path) -> PathBuf {
-    lingxia_app_context::app_state_dir(app_data_dir)
+    lingxia_host_config::app_state_dir(app_data_dir)
         .join("terminal")
         .join("conpty")
 }

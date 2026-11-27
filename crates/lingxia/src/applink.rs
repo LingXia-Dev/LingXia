@@ -56,5 +56,5 @@ fn resolve_target_appid(target: &AppLinkTarget) -> Option<String> {
     if !appid.is_empty() {
         return Some(appid.to_string());
     }
-    lingxia_app_context::home_app_id().map(str::to_string)
+    lingxia_host_config::home_app_id().map(str::to_string)
 }

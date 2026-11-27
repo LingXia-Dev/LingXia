@@ -510,7 +510,7 @@ fn open_side_panel_page(url: &str, owner: Option<&str>) -> Result<Value, String>
     let owner = owner
         .map(str::trim)
         .filter(|owner| !owner.is_empty())
-        .or_else(|| lingxia_app_context::home_app_id())
+        .or_else(|| lingxia_host_config::home_app_id())
         .and_then(lxapp::try_get)
         .ok_or_else(|| "no running lxapp to own the side-panel page".to_string())?;
     if owner.aside_browser_is_compact() {

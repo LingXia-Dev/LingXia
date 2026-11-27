@@ -1,6 +1,6 @@
 use crate::authorization::{self, LogicRoute};
 use crate::i18n::{js_error, js_service_unavailable_error};
-use lingxia_app_context::{app_config, env};
+use lingxia_host_config::{app_config, env};
 use lingxia_error::Error;
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use rong::{IntoJSObject, JSContext, JSFunc, JSObject, JSResult, JSValue, function::Optional};
@@ -43,7 +43,7 @@ fn host_info() -> JSResult<HostInfo> {
         app_config().ok_or_else(|| js_service_unavailable_error("app config not available"))?;
     Ok(HostInfo {
         os: lingxia_platform::os_id().to_string(),
-        product_name: lingxia_app_context::product_name()
+        product_name: lingxia_host_config::product_name()
             .unwrap_or(app_cfg.product_name.as_str())
             .to_string(),
         version: app_cfg.product_version.clone(),

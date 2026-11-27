@@ -21,7 +21,7 @@ lxapp = { workspace = true, default-features = false, features = ["standard"] }
 lingxia-service = { workspace = true }
 lingxia-transfer = { workspace = true }
 lingxia-media = { workspace = true }
-lingxia-app-context = { workspace = true }
+lingxia-host-config = { workspace = true }
 lingxia-platform = { workspace = true }
 lingxia-surface = { workspace = true }
 lingxia-shell = { workspace = true }

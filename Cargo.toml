@@ -5,7 +5,7 @@ members = [
     "crates/lingxia-view-apple",
     "crates/lingxia-view-harmony",
     "crates/lingxia-view-windows",
-    "crates/lingxia-app-context",
+    "crates/lingxia-host-config",
     "crates/lingxia-theme",
     "crates/lingxia-i18n",
     "crates/lingxia-error",
@@ -100,7 +100,7 @@ lingxia-control-commands = { path = "crates/lingxia-control-commands", version =
 lingxia-log = { path = "crates/lingxia-log", version = "0.30.0" }
 lingxia-provider = { path = "crates/lingxia-provider", version = "0.30.0" }
 lingxia-update = { path = "crates/lingxia-update", version = "0.30.0" }
-lingxia-app-context = { path = "crates/lingxia-app-context", version = "0.30.0" }
+lingxia-host-config = { path = "crates/lingxia-host-config", version = "0.30.0" }
 lingxia-theme = { path = "crates/lingxia-theme", version = "0.30.0" }
 lingxia-i18n = { path = "crates/lingxia-i18n", version = "0.30.0" }
 lingxia-error = { path = "crates/lingxia-error", version = "0.30.0" }

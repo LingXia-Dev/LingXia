@@ -201,7 +201,7 @@ pub fn mark_launch_face(dark: bool) {
     // Android's bootstrap activity draws the face from resources before the
     // native library even loads, which is why its overlay re-measures the hold
     // from the face's own first draw.
-    lingxia_app_context::mark_splash_visible();
+    lingxia_host_config::mark_splash_visible();
     LAUNCH_DARK.store(i8::from(dark), std::sync::atomic::Ordering::Relaxed);
 }
 
@@ -261,7 +261,7 @@ fn resolve_campaign_now(dark: bool, data_dir: PathBuf) {
         .duration_ms
         .unwrap_or(DEFAULT_CAMPAIGN_MS)
         .min(MAX_CAMPAIGN_MS);
-    if lingxia_app_context::set_pending_campaign(path.to_string_lossy().into_owned(), duration) {
+    if lingxia_host_config::set_pending_campaign(path.to_string_lossy().into_owned(), duration) {
         log::info!("campaign ready: {} for {duration}ms", path.display());
     } else {
         log::info!("campaign resolved after home was ready; skipping this launch");

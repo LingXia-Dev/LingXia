@@ -1,6 +1,6 @@
 #![cfg_attr(target_os = "windows", allow(dead_code))]
 
-use lingxia_app_context::{HostBuild, capability};
+use lingxia_host_config::{HostBuild, capability};
 
 pub const CAP_BROWSER: u32 = 0x1;
 pub const CAP_NOTIFICATIONS: u32 = 0x2;
@@ -25,7 +25,7 @@ pub(crate) fn app_capabilities() -> u32 {
     // only fires if a future caller asks earlier — and answering 0 silently
     // would look like a host that simply has no capabilities.
     debug_assert!(
-        lingxia_app_context::host_build_recorded(),
+        lingxia_host_config::host_build_recorded(),
         "app_capabilities() read before set_host_build()"
     );
     let mut caps = 0;
@@ -34,7 +34,7 @@ pub(crate) fn app_capabilities() -> u32 {
     }
     if capability::notifications()
         || (cfg!(any(target_os = "ios", target_env = "ohos"))
-            && lingxia_app_context::notifications_enabled())
+            && lingxia_host_config::notifications_enabled())
     {
         caps |= CAP_NOTIFICATIONS;
     }

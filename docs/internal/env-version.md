@@ -49,7 +49,7 @@ stays the build-selected default.
 
 ## Runtime service env
 
-Owned by `lingxia-app-context` (core state) and `lingxia-logic` (JS surface).
+Owned by `lingxia-host-config` (core state) and `lingxia-logic` (JS surface).
 
 A `prod` build can switch its service env between configured `dev` and `prod`
 servers; a `dev` build cannot switch. Bootstrap reads

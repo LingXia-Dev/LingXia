@@ -77,7 +77,7 @@ pub fn resolve_lxapp(raw: &str) -> Result<Arc<LxApp>, String> {
     let trimmed = raw.trim();
     let appid = if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("current") {
         let (current, _, _) = crate::lxapp::get_current_lxapp();
-        current_or_home(current, lingxia_app_context::home_app_id())?
+        current_or_home(current, lingxia_host_config::home_app_id())?
     } else {
         trimmed.to_string()
     };

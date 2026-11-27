@@ -74,7 +74,7 @@ pub struct ThemeStore {
 impl ThemeStore {
     pub fn new(app_data_dir: &Path) -> Self {
         Self {
-            directory: lingxia_app_context::app_state_file(app_data_dir, THEME_DIR),
+            directory: lingxia_host_config::app_state_file(app_data_dir, THEME_DIR),
         }
     }
 

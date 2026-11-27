@@ -70,7 +70,7 @@ pub fn move_browser_tab_to_side_panel(tab_id: &str) -> crate::Result<String> {
         .ok_or_else(|| crate::Error::not_found(format!("browser tab {tab_id}")))?
         .current_url
         .unwrap_or_default();
-    let owner = lingxia_app_context::home_app_id()
+    let owner = lingxia_host_config::home_app_id()
         .and_then(lxapp::try_get)
         .ok_or_else(|| crate::Error::not_found("shell owner lxapp"))?;
     lingxia_browser::demote_tab_to_standalone(tab_id, &owner.appid, owner.session_id())?;

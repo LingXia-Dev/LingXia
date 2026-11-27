@@ -86,7 +86,7 @@ fn target_appid(explicit: Option<&str>) -> Result<String, String> {
     if let Some(appid) = explicit.map(str::trim).filter(|appid| !appid.is_empty()) {
         return Ok(appid.to_string());
     }
-    if let Some(home) = lingxia_app_context::home_app_id() {
+    if let Some(home) = lingxia_host_config::home_app_id() {
         return Ok(home.to_string());
     }
     let (current, _, _) = lxapp::get_current_lxapp();

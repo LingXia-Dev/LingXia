@@ -38,7 +38,7 @@ pub use lxapp::host::{ChannelContext, ChannelMessage, PageState, Progress};
 pub use lxapp::register_runner_host;
 // Required by expansions of `#[lingxia::native]`; host applications should
 // receive it through macro-generated parameters rather than orchestrate it.
-pub use lingxia_app_context::SettingsDestination;
+pub use lingxia_host_config::SettingsDestination;
 #[doc(hidden)]
 pub use lxapp::{AppSessionClass, LxApp};
 pub use lxapp::{

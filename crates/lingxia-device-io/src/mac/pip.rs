@@ -455,7 +455,7 @@ fn target_mode(watch: &ActivityTarget) -> Result<ViewerMode> {
 }
 
 fn controller_identity() -> String {
-    lingxia_app_context::product_name()
+    lingxia_host_config::product_name()
         .map(str::to_owned)
         .or_else(super::responsible_app_name)
         .or_else(|| {

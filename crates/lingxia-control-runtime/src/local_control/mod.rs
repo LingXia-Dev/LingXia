@@ -459,7 +459,7 @@ fn refuse_unless_declared(method: &str) -> Option<String> {
     // configuration has not loaded yet, or one carrying a namespace nobody has
     // added a row for, must refuse rather than hand a local process the whole
     // automation surface on the strength of a missing file.
-    let Some(config) = lingxia_app_context::app_config() else {
+    let Some(config) = lingxia_host_config::app_config() else {
         return Some("this product has no configuration to declare capabilities in".to_string());
     };
     refuse_for_product(method, config.capabilities.as_ref())
@@ -469,7 +469,7 @@ fn refuse_unless_declared(method: &str) -> Option<String> {
 /// The dev websocket dispatches directly and deliberately never calls this.
 fn refuse_for_product(
     method: &str,
-    capabilities: Option<&lingxia_app_context::CapabilitiesConfig>,
+    capabilities: Option<&lingxia_host_config::CapabilitiesConfig>,
 ) -> Option<String> {
     use lingxia_control_protocol::methods;
 
@@ -637,7 +637,7 @@ mod tests {
         });
         assert!(registration.is_err());
 
-        let capabilities = lingxia_app_context::CapabilitiesConfig::default();
+        let capabilities = lingxia_host_config::CapabilitiesConfig::default();
         assert!(
             refuse_for_product(
                 lingxia_control_protocol::methods::desktop::pointer::CLICK,
@@ -651,7 +651,7 @@ mod tests {
     fn product_control_exposes_only_explicit_host_app_methods() {
         use lingxia_control_protocol::methods;
 
-        let capabilities = lingxia_app_context::CapabilitiesConfig {
+        let capabilities = lingxia_host_config::CapabilitiesConfig {
             app_use: true,
             ..Default::default()
         };

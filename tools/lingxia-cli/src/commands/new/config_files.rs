@@ -5,8 +5,8 @@ use crate::config::HOST_CONFIG_FILE;
 #[cfg(test)]
 use crate::config::LingXiaConfig;
 use anyhow::Result;
-use lingxia_app_context::UpdateChannel;
-use lingxia_app_context::update::default_update_channel;
+use lingxia_host_config::UpdateChannel;
+use lingxia_host_config::update::default_update_channel;
 use std::{collections::HashMap, fs};
 
 const HOST_CONFIG_TEMPLATE: &str = include_str!("../../../templates/host-config/lingxia.yaml");

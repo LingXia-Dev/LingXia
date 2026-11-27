@@ -17,7 +17,7 @@ pub fn host_role(role: Role, dark: bool) -> Option<Rgba> {
 /// The host theme's looks; the pack never changes once the config is set.
 pub fn host_looks() -> Option<Arc<ThemeLooks>> {
     static LOOKS: OnceLock<Arc<ThemeLooks>> = OnceLock::new();
-    let pack = lingxia_app_context::host_theme_pack()?;
+    let pack = lingxia_host_config::host_theme_pack()?;
     Some(LOOKS.get_or_init(|| looks(Some(pack))).clone())
 }
 

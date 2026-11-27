@@ -18,7 +18,7 @@ proxy = ["dep:lingxia-proxy"]
 [dependencies]
 lingxia-error = { workspace = true }
 lxapp = { workspace = true, default-features = false }
-lingxia-app-context = { workspace = true }
+lingxia-host-config = { workspace = true }
 lingxia-browser = { workspace = true }
 lingxia-service = { workspace = true }
 lingxia-webview = { workspace = true }

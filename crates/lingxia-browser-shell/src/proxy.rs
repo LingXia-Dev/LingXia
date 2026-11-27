@@ -427,7 +427,7 @@ fn build_upstream_config(settings: &ProxySettings) -> UpstreamConfig {
 }
 
 fn gfwlist_cache_path(app_data_dir: &Path) -> PathBuf {
-    lingxia_app_context::app_state_file(app_data_dir, "proxy-gfwlist.json")
+    lingxia_host_config::app_state_file(app_data_dir, "proxy-gfwlist.json")
 }
 
 fn load_gfwlist_cache(app_data_dir: &Path) -> Result<Option<GfwListCache>, lingxia_error::Error> {

@@ -257,7 +257,7 @@ pub(super) fn store_platforms_missing_listing_id(
     update: &UpdateSigningConfig,
     listing_ids: &HashMap<String, String>,
 ) -> Vec<String> {
-    use lingxia_app_context::update::{UpdateChannel, resolve_update_channel};
+    use lingxia_host_config::update::{UpdateChannel, resolve_update_channel};
 
     app_platforms
         .iter()

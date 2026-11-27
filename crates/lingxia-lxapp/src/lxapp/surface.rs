@@ -2564,7 +2564,7 @@ impl LxApp {
             && (window_controller(PRIMARY_WINDOW, &self.runtime)
                 .native_declaration_capability(id)
                 .is_some()
-                || lingxia_app_context::app_config()
+                || lingxia_host_config::app_config()
                     .and_then(|config| config.panels.as_ref())
                     .is_some_and(|panels| panels.items.iter().any(|item| item.id == id)))
     }

@@ -394,7 +394,7 @@ fn resolve_surface_lxapp_target(
 fn product_name_tooltip() -> Option<&'static str> {
     #[cfg(feature = "shell-chrome")]
     {
-        lingxia_app_context::product_name()
+        lingxia_host_config::product_name()
             .map(str::trim)
             .filter(|value| !value.is_empty())
     }

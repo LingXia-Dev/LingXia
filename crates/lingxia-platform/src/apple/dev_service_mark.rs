@@ -6,7 +6,7 @@
 /// buffer writes nothing.
 #[unsafe(no_mangle)]
 pub extern "C" fn lingxia_dev_mark(compact: i32, out: *mut u8, out_len: i32) -> i32 {
-    let Some(label) = lingxia_app_context::dev_mark(compact != 0) else {
+    let Some(label) = lingxia_host_config::dev_mark(compact != 0) else {
         return -1;
     };
     let bytes = label.as_bytes();

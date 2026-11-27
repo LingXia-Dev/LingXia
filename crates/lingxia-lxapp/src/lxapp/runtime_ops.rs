@@ -164,7 +164,7 @@ pub fn open_control_lxapp_page(
             "control app bootstrap requires the live native host authority",
         ));
     }
-    let expected = lingxia_app_context::home_app_id()
+    let expected = lingxia_host_config::home_app_id()
         .ok_or_else(|| lingxia_error::Error::internal("control app identity is not initialized"))?;
     if appid != expected {
         return Err(lingxia_error::Error::invalid_arg(format!(

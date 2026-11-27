@@ -35,8 +35,8 @@ async fn check_surface() {
         .map(|member| member["path"].as_str().unwrap())
         .filter(|path| path.starts_with("lx."))
         .collect();
-    lingxia_app_context::set_app_config(
-        lingxia_app_context::AppConfig::parse_and_validate(
+    lingxia_host_config::set_app_config(
+        lingxia_host_config::AppConfig::parse_and_validate(
             r#"{"productName":"Surface","productVersion":"1.0.0"}"#,
         )
         .unwrap(),

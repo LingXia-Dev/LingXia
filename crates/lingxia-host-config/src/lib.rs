@@ -51,7 +51,7 @@ pub enum AppContextError {
 /// This is the build-time axis (`dev` | `prod`): which server, package-id
 /// suffix, publish token, and self-update endpoint the host uses. It is
 /// **not** the lxapp publish channel (`release` | `draft`).
-/// Defined locally here (rather than imported) to keep `lingxia-app-context`
+/// Defined locally here (rather than imported) to keep `lingxia-host-config`
 /// free of additional crate dependencies; the JSON contract is what callers
 /// rely on.
 ///

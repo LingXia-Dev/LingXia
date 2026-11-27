@@ -74,7 +74,7 @@ use std::sync::{Once, OnceLock};
 
 use lingxia_platform::traits::app_runtime::AppRuntime;
 
-pub use lingxia_app_context::{AppEnv, ServiceEnvSnapshot as ServiceEnvState};
+pub use lingxia_host_config::{AppEnv, ServiceEnvSnapshot as ServiceEnvState};
 pub use lxapp::page_chrome::{AppearancePreference, ResolvedAppearance};
 pub use lxapp::{
     DisplayLanguageEffectiveSource, DisplayLanguagePreference, DisplayLanguageState, LanguageTag,
@@ -93,27 +93,27 @@ pub(crate) fn set_data_dir(path: PathBuf) {
 
 /// Returns the host app's display name from the initialized app config.
 pub fn product_name() -> Option<&'static str> {
-    lingxia_app_context::product_name()
+    lingxia_host_config::product_name()
 }
 
 /// Returns the host app version from the initialized app config.
 pub fn product_version() -> Option<&'static str> {
-    lingxia_app_context::product_version()
+    lingxia_host_config::product_version()
 }
 
 /// Returns the host deployment environment baked into the running product.
 pub fn env() -> AppEnv {
-    lingxia_app_context::env()
+    lingxia_host_config::env()
 }
 
 /// Effective service environment for this process (override or build env).
 pub fn service_env() -> AppEnv {
-    lingxia_app_context::service_env()
+    lingxia_host_config::service_env()
 }
 
 /// Current and next-launch service environments, with available targets.
 pub fn service_env_state() -> ServiceEnvState {
-    lingxia_app_context::service_env_snapshot()
+    lingxia_host_config::service_env_snapshot()
 }
 
 /// The environment is saved for the next launch even if requesting exit fails.
@@ -129,7 +129,7 @@ pub struct ToggleServiceEnvResult {
 /// Retrying after an exit failure keeps the same target until the next launch.
 /// Inspect `exit_error` to offer a manual restart when the platform cannot exit.
 pub fn toggle_service_env() -> crate::Result<ToggleServiceEnvResult> {
-    let state = lingxia_app_context::prepare_toggle().map_err(service_env_error)?;
+    let state = lingxia_host_config::prepare_toggle().map_err(service_env_error)?;
     let exit_error = exit().err().map(|err| err.to_string());
     Ok(ToggleServiceEnvResult {
         state,
@@ -138,19 +138,19 @@ pub fn toggle_service_env() -> crate::Result<ToggleServiceEnvResult> {
     })
 }
 
-fn service_env_error(error: lingxia_app_context::ServiceEnvError) -> crate::Error {
+fn service_env_error(error: lingxia_host_config::ServiceEnvError) -> crate::Error {
     match error {
-        lingxia_app_context::ServiceEnvError::NotInitialized => {
+        lingxia_host_config::ServiceEnvError::NotInitialized => {
             crate::Error::internal(error.to_string())
         }
-        lingxia_app_context::ServiceEnvError::Invalid(detail) => crate::Error::invalid_arg(detail),
-        lingxia_app_context::ServiceEnvError::Persist(detail) => crate::Error::internal(detail),
+        lingxia_host_config::ServiceEnvError::Invalid(detail) => crate::Error::invalid_arg(detail),
+        lingxia_host_config::ServiceEnvError::Persist(detail) => crate::Error::internal(detail),
     }
 }
 
 /// Returns the configured home LxApp id from the initialized app config.
 pub fn home_app_id() -> Option<&'static str> {
-    lingxia_app_context::home_app_id()
+    lingxia_host_config::home_app_id()
 }
 
 #[cfg(any(target_os = "ios", target_os = "macos", target_os = "windows"))]
@@ -167,12 +167,12 @@ pub(crate) fn launch_home_control_logic() -> crate::Result<()> {
 
 /// Returns the configured LingXia host identifier, if any.
 pub fn lingxia_id() -> Option<&'static str> {
-    lingxia_app_context::lingxia_id()
+    lingxia_host_config::lingxia_id()
 }
 
 /// Reports whether push-notification capability is enabled for the host app.
 pub fn notifications_enabled() -> bool {
-    lingxia_app_context::notifications_enabled()
+    lingxia_host_config::notifications_enabled()
 }
 
 // One delivery thread per area, started on first use: a foreground callback
@@ -380,7 +380,7 @@ pub(crate) fn data_dir() -> crate::Result<PathBuf> {
 
 /// Returns the host-owned state directory.
 pub fn state_dir() -> crate::Result<PathBuf> {
-    Ok(lingxia_app_context::app_state_dir(&data_dir()?))
+    Ok(lingxia_host_config::app_state_dir(&data_dir()?))
 }
 
 /// Returns the full path to a file inside the host-owned state directory.
@@ -390,7 +390,7 @@ pub fn state_file(name: &str) -> crate::Result<PathBuf> {
 
 /// Returns the state directory for a specific running [`crate::LxApp`].
 pub fn state_dir_for(app: &crate::LxApp) -> PathBuf {
-    lingxia_app_context::app_state_dir(&app.user_data_dir)
+    lingxia_host_config::app_state_dir(&app.user_data_dir)
 }
 
 /// Returns a file path inside an [`crate::LxApp`]'s state directory.
@@ -459,7 +459,7 @@ pub mod notification {
     /// declare `capabilities.notifications` has no notification API at all,
     /// in Rust or in Logic.
     fn require_capability() -> crate::Result<()> {
-        if lingxia_app_context::capability::notifications() {
+        if lingxia_host_config::capability::notifications() {
             return Ok(());
         }
         Err(crate::Error::invalid_arg(
@@ -577,7 +577,7 @@ pub fn exit() -> crate::Result<()> {
 
 fn state_file_in(root: impl AsRef<Path>, name: &str) -> crate::Result<PathBuf> {
     validate_state_file_name(name)?;
-    Ok(lingxia_app_context::app_state_file(root.as_ref(), name))
+    Ok(lingxia_host_config::app_state_file(root.as_ref(), name))
 }
 
 fn validate_state_file_name(name: &str) -> crate::Result<()> {

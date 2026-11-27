@@ -22,7 +22,7 @@ CLI_FINGERPRINT_PATHS=(
   design/icons/svg
   design/app-icon
   i18n/permission/cli
-  crates/lingxia-app-context
+  crates/lingxia-host-config
   docs/skill
   crates/lingxia-control-commands
   crates/lingxia-control-protocol

@@ -138,7 +138,7 @@ pub fn register_runtime() {
 /// `browser.webui` has no system pages to register.
 #[doc(hidden)]
 pub fn register_bundled_assets() {
-    if !lingxia_app_context::browser_system_pages_enabled() {
+    if !lingxia_host_config::browser_system_pages_enabled() {
         return;
     }
     if let Err(err) = read_browser_asset_text(BROWSER_WEBUI_MANIFEST_ASSET_PATH)

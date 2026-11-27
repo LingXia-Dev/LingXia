@@ -7,7 +7,7 @@ license = "MIT"
 repository.workspace = true
 
 [dependencies]
-lingxia-app-context = { workspace = true }
+lingxia-host-config = { workspace = true }
 lingxia-terminal = { workspace = true }
 log = { workspace = true }
 serde = { workspace = true }

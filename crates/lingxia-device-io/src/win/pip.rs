@@ -1027,7 +1027,7 @@ fn identity_label(target: &ActivityTarget) -> String {
 }
 
 fn controller_identity() -> String {
-    lingxia_app_context::product_name()
+    lingxia_host_config::product_name()
         .map(str::to_owned)
         .or_else(|| {
             std::env::current_exe()

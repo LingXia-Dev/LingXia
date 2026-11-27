@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 /// copies of the runtime.
 pub const SDK_CRATES: &[&str] = &[
     "lingxia",
-    "lingxia-app-context",
+    "lingxia-host-config",
     "lingxia-automation",
     "lingxia-browser",
     "lingxia-browser-shell",

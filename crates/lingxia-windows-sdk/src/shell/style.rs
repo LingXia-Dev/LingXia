@@ -154,7 +154,7 @@ struct HostRoles {
 /// `None` without a host theme: the shell keeps Fluent colours and the system accent.
 fn host_roles(dark: bool) -> Option<HostRoles> {
     use lingxia_theme::Role;
-    let pack = lingxia_app_context::host_theme_pack()?;
+    let pack = lingxia_host_config::host_theme_pack()?;
     let looks = lingxia_theme::looks(Some(pack));
     let rgb = |role| {
         let [r, g, b, _] = looks.role(role, dark, false).0;

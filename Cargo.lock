@@ -3949,12 +3949,12 @@ dependencies = [
  "futures",
  "futures-core",
  "jni",
- "lingxia-app-context",
  "lingxia-automation",
  "lingxia-browser",
  "lingxia-browser-shell",
  "lingxia-control-commands",
  "lingxia-error",
+ "lingxia-host-config",
  "lingxia-log",
  "lingxia-logic",
  "lingxia-lxapp",
@@ -3994,17 +3994,6 @@ dependencies = [
  "thiserror 2.0.20",
  "tokio",
  "zstd",
-]
-
-[[package]]
-name = "lingxia-app-context"
-version = "0.30.0"
-dependencies = [
- "language-tags",
- "semver",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -4066,9 +4055,9 @@ dependencies = [
  "futures",
  "html5ever",
  "http",
- "lingxia-app-context",
  "lingxia-browser",
  "lingxia-error",
+ "lingxia-host-config",
  "lingxia-lxapp",
  "lingxia-native-codegen",
  "lingxia-native-macros",
@@ -4119,8 +4108,8 @@ dependencies = [
  "junction",
  "language-tags",
  "libc",
- "lingxia-app-context",
  "lingxia-control-protocol",
+ "lingxia-host-config",
  "lingxia-i18n",
  "lingxia-log",
  "lingxia-native-codegen",
@@ -4217,11 +4206,11 @@ dependencies = [
  "base64 0.23.1",
  "libc",
  "lingxia",
- "lingxia-app-context",
  "lingxia-automation",
  "lingxia-browser",
  "lingxia-control-protocol",
  "lingxia-device-io",
+ "lingxia-host-config",
  "lingxia-log",
  "lingxia-lxapp",
  "lingxia-network-dev",
@@ -4244,7 +4233,7 @@ dependencies = [
  "dispatch2",
  "image",
  "libc",
- "lingxia-app-context",
+ "lingxia-host-config",
  "lingxia-platform",
  "log",
  "objc2",
@@ -4303,6 +4292,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "lingxia-host-config"
+version = "0.30.0"
+dependencies = [
+ "language-tags",
+ "semver",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "lingxia-i18n"
 version = "0.30.0"
 dependencies = [
@@ -4329,8 +4329,8 @@ version = "0.30.0"
 dependencies = [
  "base64 0.23.1",
  "futures",
- "lingxia-app-context",
  "lingxia-error",
+ "lingxia-host-config",
  "lingxia-lxapp",
  "lingxia-media",
  "lingxia-messaging",
@@ -4369,8 +4369,8 @@ dependencies = [
  "http-body-util",
  "image",
  "language-tags",
- "lingxia-app-context",
  "lingxia-error",
+ "lingxia-host-config",
  "lingxia-i18n",
  "lingxia-log",
  "lingxia-media",
@@ -4481,8 +4481,8 @@ dependencies = [
  "imagesize 0.15.0",
  "jni",
  "libc",
- "lingxia-app-context",
  "lingxia-error",
+ "lingxia-host-config",
  "lingxia-messaging",
  "lingxia-shell",
  "lingxia-surface",
@@ -4586,8 +4586,8 @@ name = "lingxia-service"
 version = "0.30.0"
 dependencies = [
  "http",
- "lingxia-app-context",
  "lingxia-error",
+ "lingxia-host-config",
  "lingxia-messaging",
  "lingxia-platform",
  "lingxia-provider",
@@ -4608,8 +4608,8 @@ name = "lingxia-settings"
 version = "0.30.0"
 dependencies = [
  "dashmap 6.2.1",
- "lingxia-app-context",
  "lingxia-error",
+ "lingxia-host-config",
  "log",
  "serde",
  "serde_json",
@@ -4658,7 +4658,7 @@ dependencies = [
 name = "lingxia-terminal-config"
 version = "0.30.0"
 dependencies = [
- "lingxia-app-context",
+ "lingxia-host-config",
  "lingxia-terminal",
  "log",
  "serde",
@@ -4707,8 +4707,8 @@ version = "0.30.0"
 dependencies = [
  "base64 0.23.1",
  "ed25519-dalek",
- "lingxia-app-context",
  "lingxia-error",
+ "lingxia-host-config",
  "lingxia-provider",
  "serde",
  "serde_json",
@@ -4861,10 +4861,10 @@ version = "0.30.0"
 dependencies = [
  "image",
  "lingxia",
- "lingxia-app-context",
  "lingxia-browser",
  "lingxia-browser-shell",
  "lingxia-error",
+ "lingxia-host-config",
  "lingxia-logic",
  "lingxia-lxapp",
  "lingxia-messaging",

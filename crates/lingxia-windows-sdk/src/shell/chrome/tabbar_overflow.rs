@@ -173,7 +173,7 @@ pub(crate) fn tabbar_overflow_hit(
 /// colour rather than guessing a page colour on the app's behalf.
 pub(super) fn declared_page_background() -> Option<u32> {
     let dark = crate::shell::theme::chrome_is_dark();
-    let declared = lingxia_app_context::page_background_color(dark)?;
+    let declared = lingxia_host_config::page_background_color(dark)?;
     let hex = declared.trim().trim_start_matches('#');
     if hex.len() != 6 {
         return None;

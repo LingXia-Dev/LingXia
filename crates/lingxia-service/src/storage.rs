@@ -136,7 +136,7 @@ pub fn ensure_userdata_quota_with_removed(
     incoming_bytes: u64,
     removed_source: Option<&Path>,
 ) -> Result<(), StorageQuotaError> {
-    let max = lingxia_app_context::data_max_size_bytes();
+    let max = lingxia_host_config::data_max_size_bytes();
     let removed = removed_source
         .filter(|source| source.starts_with(user_data_dir) && *source != destination)
         .map(path_size)
@@ -176,7 +176,7 @@ pub fn ensure_usercache_quota_preserving(
     removed_source: Option<&Path>,
     preserve: &[&Path],
 ) -> Result<(), StorageQuotaError> {
-    let max = lingxia_app_context::cache_max_size_bytes();
+    let max = lingxia_host_config::cache_max_size_bytes();
     if max == 0 {
         return Ok(());
     }
@@ -254,7 +254,7 @@ pub fn ensure_app_storage_quota_preserving_many(
     incoming_bytes: u64,
     preserve_cache_paths: &[&Path],
 ) -> Result<(), StorageQuotaError> {
-    let max = lingxia_app_context::app_storage_max_size_bytes();
+    let max = lingxia_host_config::app_storage_max_size_bytes();
     if max == 0 {
         return Ok(());
     }
@@ -266,7 +266,7 @@ pub fn ensure_app_storage_quota_preserving_many(
 
     cleanup_all_cache_dirs_preserving_many(
         user_cache_dir,
-        lingxia_app_context::cache_max_size_bytes(),
+        lingxia_host_config::cache_max_size_bytes(),
         preserve_cache_paths,
     );
     if app_storage_projected_size(user_data_dir, user_cache_dir, destination, incoming_bytes) <= max
@@ -294,7 +294,7 @@ pub fn ensure_temp_quota(
     keep: &Path,
     incoming_bytes: u64,
 ) -> Result<(), StorageQuotaError> {
-    let max_bytes = lingxia_app_context::temp_max_size_bytes();
+    let max_bytes = lingxia_host_config::temp_max_size_bytes();
     if max_bytes == 0 {
         return Ok(());
     }
@@ -343,7 +343,7 @@ pub fn cleanup_cache_dir(cache_dir: &Path, max_bytes: u64) {
 pub fn cleanup_usercache_preserving(user_cache_dir: &Path, preserve: Option<&Path>) {
     cleanup_cache_dir_preserving(
         user_cache_dir,
-        lingxia_app_context::cache_max_size_bytes(),
+        lingxia_host_config::cache_max_size_bytes(),
         preserve,
     )
 }

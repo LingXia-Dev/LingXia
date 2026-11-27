@@ -300,7 +300,7 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_splashMinDurationMs(
     _env: EnvUnowned,
     _class: JClass,
 ) -> jlong {
-    jlong::try_from(lingxia_app_context::splash_min_duration().as_millis()).unwrap_or(jlong::MAX)
+    jlong::try_from(lingxia_host_config::splash_min_duration().as_millis()).unwrap_or(jlong::MAX)
 }
 
 /// Touch-through dev mark text. Empty when the mark stays hidden.
@@ -311,7 +311,7 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_devMark<'a>(
     _class: JClass<'a>,
     compact: jboolean,
 ) -> JString<'a> {
-    let label = lingxia_app_context::dev_mark(compact).unwrap_or_default();
+    let label = lingxia_host_config::dev_mark(compact).unwrap_or_default();
     env.with_env(|env| env.new_string(label))
         .resolve::<LogErrorAndDefault>()
 }
@@ -1579,7 +1579,7 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_browserSystemPagesEnabled(
     _env: EnvUnowned,
     _class: JClass,
 ) -> jboolean {
-    lingxia_app_context::browser_system_pages_enabled()
+    lingxia_host_config::browser_system_pages_enabled()
 }
 
 /// Native browser chrome only: the authority remains sealed in Rust.

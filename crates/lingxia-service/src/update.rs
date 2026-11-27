@@ -89,7 +89,7 @@ impl HostAppUpdateService {
     /// Whether this process may download and self-install. False when the
     /// platform cannot, yaml says `store`, or the OS reports a store install.
     pub fn self_update_supported(&self) -> bool {
-        lingxia_app_context::update::self_update_allowed(
+        lingxia_host_config::update::self_update_allowed(
             self.runtime.self_update_supported(),
             self.runtime.installed_from_store(),
         )
@@ -216,7 +216,7 @@ pub fn store_update_info_json(update: &UpdatePackageInfo, package_id: Option<&st
         "size": update.size,
         "releaseNotes": update.release_notes,
         "openStore": true,
-        "storeUrl": lingxia_app_context::update::store_update_url(package_id),
+        "storeUrl": lingxia_host_config::update::store_update_url(package_id),
     })
     .to_string()
 }
@@ -402,7 +402,7 @@ fn app_update_filename(url: &str, version: &str) -> String {
 }
 
 fn resolve_required_app_version() -> Result<&'static str, UpdateError> {
-    let product_version = lingxia_app_context::product_version()
+    let product_version = lingxia_host_config::product_version()
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .ok_or_else(|| {

@@ -172,7 +172,7 @@ pub mod host_app {
             return;
         }
 
-        if let Some(interval) = lingxia_app_context::update::check_interval() {
+        if let Some(interval) = lingxia_host_config::update::check_interval() {
             std::mem::drop(lingxia::task::spawn(poll_loop(runtime, interval)));
         }
     }

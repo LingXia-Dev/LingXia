@@ -623,7 +623,7 @@ impl LxApps {
     /// surface while the ControlApp keeps one open — so it is inherited.
     fn session_class_for(&self, appid: &str) -> AppSessionClass {
         let live = self.lxapps.get(appid).map(|app| app.app_session_class());
-        Self::session_class_for_identity(appid, lingxia_app_context::home_app_id(), live)
+        Self::session_class_for_identity(appid, lingxia_host_config::home_app_id(), live)
     }
 
     fn session_class_for_identity(
@@ -646,7 +646,7 @@ impl LxApps {
         let _admission = self.admission.enter(&appid)?;
         let transition_appid = appid.clone();
         self.with_session_transition(&transition_appid, move || {
-            if lingxia_app_context::home_app_id() != Some(appid.as_str()) {
+            if lingxia_host_config::home_app_id() != Some(appid.as_str()) {
                 return Err(lingxia_error::Error::invalid_arg(format!(
                     "control app identity mismatch: {appid} is not the native-sealed home app"
                 )));
@@ -677,7 +677,7 @@ impl LxApps {
         let _admission = self.admission.enter(&appid)?;
         let transition_appid = appid.clone();
         self.with_session_transition(&transition_appid, move || {
-            if lingxia_app_context::home_app_id() == Some(appid.as_str()) {
+            if lingxia_host_config::home_app_id() == Some(appid.as_str()) {
                 return Err(lingxia_error::Error::invalid_arg(format!(
                     "control surface identity mismatch: {appid} is the home app"
                 )));
@@ -2991,7 +2991,7 @@ impl LxApp {
     /// lxapp's own theme was completed from the LingXia default, never from the host's.
     pub fn theme_pack(&self) -> Option<String> {
         self.read_theme_pack()
-            .or_else(|| lingxia_app_context::host_theme_pack().map(str::to_owned))
+            .or_else(|| lingxia_host_config::host_theme_pack().map(str::to_owned))
     }
 
     /// The theme the lxapp bundles (`theme.json`, completed by `lingxia build`).
@@ -4604,17 +4604,17 @@ fn has_uri_scheme(value: &str) -> bool {
 }
 
 /// Service env whose installs and data are in use; each env keeps its own.
-pub(crate) fn service_env_scope() -> lingxia_app_context::AppEnv {
+pub(crate) fn service_env_scope() -> lingxia_host_config::AppEnv {
     #[cfg(test)]
     if let Some(scope) = test_service_env_scope::current() {
         return scope;
     }
-    lingxia_app_context::service_env()
+    lingxia_host_config::service_env()
 }
 
 #[cfg(test)]
 pub(crate) mod test_service_env_scope {
-    use lingxia_app_context::AppEnv;
+    use lingxia_host_config::AppEnv;
     use std::cell::Cell;
 
     thread_local! {
@@ -4651,7 +4651,7 @@ fn fingermark_of(
     lxappid: &str,
     release_type: Channel,
     device_fp: &str,
-    scope: lingxia_app_context::AppEnv,
+    scope: lingxia_host_config::AppEnv,
 ) -> String {
     let combined = format!(
         "{}|{}|{}|{}",
@@ -4668,7 +4668,7 @@ fn fingermark_of(
 #[cfg(test)]
 mod fingermark_tests {
     use super::*;
-    use lingxia_app_context::AppEnv;
+    use lingxia_host_config::AppEnv;
 
     #[test]
     fn each_service_env_gets_its_own_fingermark() {

@@ -13,7 +13,7 @@ use lingxia_platform::traits::app_runtime::AppRuntime;
 pub fn is_supported() -> bool {
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     {
-        lingxia_app_context::autostart_enabled() && lingxia_platform::autostart_supported()
+        lingxia_host_config::autostart_enabled() && lingxia_platform::autostart_supported()
     }
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
@@ -22,7 +22,7 @@ pub fn is_supported() -> bool {
 }
 
 fn require_support() -> crate::Result<()> {
-    if !lingxia_app_context::autostart_enabled() {
+    if !lingxia_host_config::autostart_enabled() {
         return Err(crate::Error::invalid_arg(
             "this host did not declare capabilities.autostart",
         ));

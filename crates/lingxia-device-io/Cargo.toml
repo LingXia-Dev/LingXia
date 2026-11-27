@@ -38,7 +38,7 @@ realtime-capture-provider = [
     "dep:lingxia-platform",
     "lingxia-platform/capture-contract",
 ]
-supervision = ["snapshot", "dep:lingxia-app-context"]
+supervision = ["snapshot", "dep:lingxia-host-config"]
 window = ["native"]
 wire = []
 # Target bindings shared by the concrete desktop capabilities above. This is
@@ -63,7 +63,7 @@ serde = { workspace = true }
 base64 = { workspace = true }
 thiserror = { workspace = true }
 log = { workspace = true, optional = true }
-lingxia-app-context = { workspace = true, optional = true }
+lingxia-host-config = { workspace = true, optional = true }
 lingxia-platform = { workspace = true, optional = true }
 image = { version = "0.25.10", optional = true, default-features = false, features = ["png"] }
 

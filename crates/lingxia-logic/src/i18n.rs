@@ -23,7 +23,7 @@ use std::collections::BTreeMap;
 pub fn t(key: I18nKey) -> String {
     // The host has narrowed it to a product language; one the SDK lacks reads in English.
     let language = lxapp::display_language();
-    if let Some(text) = lingxia_app_context::app_config()
+    if let Some(text) = lingxia_host_config::app_config()
         .and_then(|config| config.sdk_text.get(&language))
         .and_then(|words| words.get(key.name()))
     {

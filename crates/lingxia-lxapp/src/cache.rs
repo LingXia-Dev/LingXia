@@ -507,7 +507,7 @@ pub mod product {
         #[test]
         fn package_sweep_keeps_installs_of_every_service_env() {
             use crate::lxapp::test_service_env_scope::with;
-            use lingxia_app_context::AppEnv;
+            use lingxia_host_config::AppEnv;
             use lingxia_update::{Channel, SemanticVersion};
 
             metadata::init_for_tests();

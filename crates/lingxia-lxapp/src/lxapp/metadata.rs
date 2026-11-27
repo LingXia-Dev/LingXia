@@ -625,7 +625,7 @@ pub(crate) fn init_for_tests() {
 mod tests {
     use super::*;
     use crate::lxapp::test_service_env_scope::with;
-    use lingxia_app_context::AppEnv;
+    use lingxia_host_config::AppEnv;
 
     fn record(appid: &str, install_path: &str) -> LxAppRecord {
         LxAppRecord::new(

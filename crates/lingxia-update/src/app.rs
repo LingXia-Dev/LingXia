@@ -191,7 +191,7 @@ fn emit_app_update_event(event: AppUpdateEvent) {
 pub async fn check_app_update<H: AppUpdateHost>(
     host: &H,
 ) -> Result<Option<UpdatePackageInfo>, UpdateError> {
-    let target_id = lingxia_app_context::app_config()
+    let target_id = lingxia_host_config::app_config()
         .and_then(|config| config.lingxia_id.clone())
         .filter(|id| !id.is_empty())
         .unwrap_or_default();
@@ -315,7 +315,7 @@ mod tests {
     use super::*;
     use crate::signing::{SignRequest, archive_sha256_hex, public_key_base64url, sign_package};
     use crate::{UpdateAuthentication, UpdatePackageInfo};
-    use lingxia_app_context::{AppConfig, AppEnv};
+    use lingxia_host_config::{AppConfig, AppEnv};
     use std::path::PathBuf;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -417,7 +417,7 @@ mod tests {
             update_check_interval_secs: None,
             store_listing_ids: Default::default(),
         };
-        lingxia_app_context::set_app_config(config).expect("install host verify config");
+        lingxia_host_config::set_app_config(config).expect("install host verify config");
     }
 
     fn signed_package(version: &str, auth: Option<UpdateAuthentication>) -> UpdatePackageInfo {

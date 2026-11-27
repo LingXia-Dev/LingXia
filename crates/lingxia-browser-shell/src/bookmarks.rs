@@ -115,7 +115,7 @@ fn default_title(url: &str) -> String {
 // MARK: - Store
 
 fn bookmarks_path(app_data_dir: &Path) -> PathBuf {
-    lingxia_app_context::app_state_file(app_data_dir, BOOKMARKS_FILE)
+    lingxia_host_config::app_state_file(app_data_dir, BOOKMARKS_FILE)
 }
 
 fn store_lock() -> &'static Mutex<()> {

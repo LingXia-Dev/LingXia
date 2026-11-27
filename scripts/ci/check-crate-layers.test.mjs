@@ -13,7 +13,7 @@ function pkg(name, deps = [], dir = "crates") {
 test("a crate may depend on its own layer and below", () => {
   const metadata = {
     packages: [
-      pkg("lingxia-lxapp", ["lingxia-service", "lingxia-webview", "lingxia-app-context"]),
+      pkg("lingxia-lxapp", ["lingxia-service", "lingxia-webview", "lingxia-host-config"]),
       pkg("lingxia", ["lingxia-lxapp", "lingxia-native-macros"]),
     ],
   };

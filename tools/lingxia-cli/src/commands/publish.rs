@@ -945,8 +945,8 @@ fn signed_multipart_fields(
     req: &lingxia_update::SignRequest<'_>,
 ) -> Result<Vec<(String, String)>> {
     let env = match env {
-        AppEnv::Dev => lingxia_app_context::AppEnv::Dev,
-        AppEnv::Prod => lingxia_app_context::AppEnv::Prod,
+        AppEnv::Dev => lingxia_host_config::AppEnv::Dev,
+        AppEnv::Prod => lingxia_host_config::AppEnv::Prod,
     };
     match lingxia_update::sign_package_from_key(env, key, req)
         .map_err(|e| anyhow::anyhow!("{e}"))?
