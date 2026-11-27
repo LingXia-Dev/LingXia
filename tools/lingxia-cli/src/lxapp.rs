@@ -81,6 +81,28 @@ pub(crate) fn dev_typecheck(dir: &Path) -> Option<Result<String>> {
     })
 }
 
+/// The `src/` of the crate whose routes the lxapp at `dir` calls.
+pub(crate) fn native_route_source(dir: &Path) -> Option<std::path::PathBuf> {
+    native_client::route_source(dir).ok().flatten()
+}
+
+/// Rewrites the lxapp's native clients from its crate's routes; true when they changed.
+pub(crate) fn regenerate_native_clients(dir: &Path) -> Result<bool> {
+    let project = Project::discover(dir)?;
+    let out = dir.join(".lingxia");
+    let read = || {
+        [
+            lingxia_native_codegen::LOGIC_CLIENT,
+            lingxia_native_codegen::ViewClient::TypeScript.file_name(),
+            lingxia_native_codegen::ViewClient::BrowserGlobal.file_name(),
+        ]
+        .map(|name| std::fs::read(out.join(name)).ok())
+    };
+    let before = read();
+    native_client::generate(&project)?;
+    Ok(read() != before)
+}
+
 /// Where a session's build of an lxapp records its GPU pages' inputs: beside that build.
 pub(crate) fn session_inputs_record(build_dir: &Path) -> std::path::PathBuf {
     let name = build_dir

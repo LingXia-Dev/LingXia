@@ -1,8 +1,10 @@
 # Auto-reload
 
 `lingxia dev` watches lxapp sources. A save rebuilds that lxapp and reloads
-it by app id. Host native code (`lingxia.yaml`, Rust, platform projects) is
-not watched; run `lingxia dev` again.
+it by app id. A saved `.rs` in the route crate's `src/` regenerates the native
+clients and type-checks the pages against them; the running host keeps the old
+routes until you run `lingxia dev` again. `lingxia.yaml` and platform projects
+are not watched.
 
 ## What is watched
 

@@ -6,6 +6,8 @@
 //! its connection; that root leaves when the connection closes. Build outputs
 //! (the session's under `.lingxia`, a `lingxia build`'s `dist`, `node_modules`, …) are not
 //! watched, so a rebuild cannot loop; neither are the lxapp's specs in `tests/`.
+//! The `src/` of each lxapp's route crate is watched too: a saved `.rs` regenerates the native
+//! clients and type-checks the pages against them, without cargo.
 
 use super::server::{DevServerState, RestartOutcome};
 use anyhow::{Context, Result};
@@ -400,6 +402,10 @@ fn run_watch(
         &mut external,
         &mut external_dirs,
     );
+    // Each route crate's `src/`, with the apps that call it.
+    let mut native_srcs: NativeSources = Default::default();
+    refresh_native_sources(&mut watcher, &roots, &mut native_srcs);
+    let mut native_dirty: BTreeSet<String> = BTreeSet::new();
     // Saves under `mocks/` reload the mocks only: no rebuild, no restart.
     let mut mocks_dirty: BTreeSet<String> = BTreeSet::new();
     let mut deferred = false;
@@ -424,6 +430,7 @@ fn run_watch(
             applied = true;
         }
         if applied {
+            refresh_native_sources(&mut watcher, &roots, &mut native_srcs);
             refresh_external(
                 &mut watcher,
                 &roots,
@@ -442,7 +449,7 @@ fn run_watch(
                         super::gpu_swap::plan(&root.path, &record(root), paths).is_some()
                     })
             });
-        let timeout = if dirty.is_empty() && mocks_dirty.is_empty() {
+        let timeout = if dirty.is_empty() && mocks_dirty.is_empty() && native_dirty.is_empty() {
             IDLE_POLL
         } else if swaps_only {
             SWAP_DEBOUNCE
@@ -468,6 +475,10 @@ fn run_watch(
                 }
                 for path in paths {
                     if is_output(strip_verbatim_prefix(&path), &outputs) {
+                        continue;
+                    }
+                    if let Some(app_ids) = native_srcs.callers(&path) {
+                        native_dirty.extend(app_ids.iter().cloned());
                         continue;
                     }
                     if let Some(change) = subtree_change(&roots, &subtrees, &path) {
@@ -520,6 +531,11 @@ fn run_watch(
                     state.catch_up_current();
                 }
                 was_paused = paused;
+                for app_id in std::mem::take(&mut native_dirty) {
+                    if let Some(root) = roots.iter().find(|root| root.app_id == app_id) {
+                        regenerate_native(&app_id, &root.path, &mut type_checks);
+                    }
+                }
                 if (dirty.is_empty() && mocks_dirty.is_empty()) || stop_flag.load(Ordering::Acquire)
                 {
                     continue;
@@ -927,6 +943,82 @@ fn external_inputs(
     external
 }
 
+/// The `src/` of each route crate the roots call, and the apps that call it.
+#[derive(Default)]
+struct NativeSources(std::collections::BTreeMap<PathBuf, Vec<String>>);
+
+impl NativeSources {
+    /// The apps a saved `.rs` file under a route crate's `src/` feeds.
+    fn callers(&self, path: &Path) -> Option<&[String]> {
+        if path.extension().is_none_or(|ext| ext != "rs") || is_ignored_path(path) {
+            return None;
+        }
+        let path = super::gpu_swap::canonical(strip_verbatim_prefix(path));
+        self.0
+            .iter()
+            .find(|(src, _)| path.starts_with(src))
+            .map(|(_, apps)| apps.as_slice())
+    }
+}
+
+fn native_sources(roots: &[WatchRoot]) -> NativeSources {
+    let mut sources = NativeSources::default();
+    for root in roots {
+        if let Some(src) = crate::lxapp::native_route_source(&root.path) {
+            let apps = sources
+                .0
+                .entry(super::gpu_swap::canonical(&src))
+                .or_default();
+            if !apps.contains(&root.app_id) {
+                apps.push(root.app_id.clone());
+            }
+        }
+    }
+    sources
+}
+
+fn refresh_native_sources(
+    watcher: &mut RecommendedWatcher,
+    roots: &[WatchRoot],
+    sources: &mut NativeSources,
+) {
+    let next = native_sources(roots);
+    for src in sources.0.keys().filter(|src| !next.0.contains_key(*src)) {
+        let _ = watcher.unwatch(src);
+    }
+    for src in next.0.keys().filter(|src| !sources.0.contains_key(*src)) {
+        if let Err(err) = watcher.watch(src, RecursiveMode::Recursive) {
+            eprintln!("⚠ lxapp watch: {}: {err}", src.display());
+        }
+    }
+    *sources = next;
+}
+
+/// A route crate changed: rewrite the app's clients, type-check its pages against them, and
+/// say that the running host still serves the old routes.
+fn regenerate_native(app_id: &str, dir: &Path, type_checks: &mut TypeChecks) {
+    match crate::lxapp::regenerate_native_clients(dir) {
+        Ok(true) => {
+            println!(
+                "  {} {}: native routes changed, clients regenerated; restart `lingxia dev` to rebuild the host",
+                "•".yellow(),
+                app_id.cyan()
+            );
+            type_checks.schedule(app_id, dir);
+        }
+        Ok(false) => println!(
+            "  {} {}: native code changed; restart `lingxia dev` to rebuild the host",
+            "•".yellow(),
+            app_id.cyan()
+        ),
+        Err(err) => println!(
+            "  {} {}: native clients not regenerated: {err:#}",
+            "⚠".yellow(),
+            app_id.cyan()
+        ),
+    }
+}
+
 fn is_reload_event(kind: EventKind) -> bool {
     !matches!(kind, EventKind::Access(_) | EventKind::Other)
 }
@@ -1011,6 +1103,36 @@ mod tests {
         // A manifest mid-save is not a relaunch: the next save decides.
         write(&manifest, r#"{"appId":"#);
         assert_eq!(relaunch_keys(&root), None);
+    }
+
+    #[test]
+    fn a_saved_rust_file_in_the_route_crate_is_a_native_edit_of_its_callers() {
+        let temp = tempfile::tempdir().unwrap();
+        write(
+            &temp.path().join("Cargo.toml"),
+            "[package]\nname = \"demo\"\n",
+        );
+        write(&temp.path().join("src/lib.rs"), "");
+        write(
+            &temp.path().join("app/lxapp.json"),
+            r#"{"appId":"demo","appName":"Demo","version":"1.0.0","pages":[]}"#,
+        );
+        let roots = vec![WatchRoot {
+            app_id: "demo".into(),
+            path: temp.path().join("app"),
+        }];
+        let sources = native_sources(&roots);
+        let demo = ["demo".to_string()];
+        assert_eq!(
+            sources.callers(&temp.path().join("src/notes/mod.rs")),
+            Some(&demo[..])
+        );
+        assert_eq!(sources.callers(&temp.path().join("src/notes.txt")), None);
+        assert_eq!(
+            sources.callers(&temp.path().join("app/pages/home.rs")),
+            None
+        );
+        assert_eq!(sources.callers(&temp.path().join("src/lib.rs~")), None);
     }
 
     #[test]
