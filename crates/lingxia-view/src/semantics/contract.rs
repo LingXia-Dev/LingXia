@@ -13,7 +13,7 @@ use std::collections::HashSet;
 pub enum Rule {
     /// A control or named container without an accessible name.
     Name,
-    /// A composite holding none of its items.
+    /// A composite holding none of its items, or a grid whose rows hold no cells.
     Items,
     /// An item outside the composite its role belongs to.
     Owner,
@@ -128,7 +128,11 @@ pub fn check(projection: &Projection) -> Vec<Violation> {
         }
     }
     distinct(frame, &nodes, &mut found);
-    tab_stops(frame, &composites_of(frame, &nodes), &mut found);
+    tab_stops(
+        frame,
+        &composites_of(frame, &composites, &nodes),
+        &mut found,
+    );
     found
 }
 
@@ -304,6 +308,21 @@ fn items(
         Composite::Menu | Composite::TabList | Composite::RadioGroup | Composite::Toolbar
     );
     if members.is_empty() {
+        // Rows without cells: assistive tech hears a grid that arrows cannot move through.
+        let rows = kind == Composite::Grid
+            && nodes.iter().any(|node| {
+                authored(frame, node) == Some("row") && descends(frame, node.index, container.index)
+            });
+        if rows {
+            found.push(violation(
+                frame,
+                container,
+                Rule::Items,
+                "a grid's rows need role=\"gridcell\" cells; a read-only table is not a grid"
+                    .into(),
+            ));
+            return;
+        }
         if !never_empty {
             return;
         }
@@ -387,15 +406,24 @@ fn descends(frame: &PresentedFrame, index: usize, ancestor: usize) -> bool {
         && node.as_bytes()[ancestor.len()] == b'/'
 }
 
-/// The published composites, with their kind. Menus keep every item a stop, so they are left out.
+/// The published composites that hold items, with their kind. Without items the engine does not
+/// rove there, and menus keep every item a stop, so both are left out.
 fn composites_of<'a>(
     frame: &PresentedFrame,
+    composites: &Composites,
     nodes: &'a [SemanticNode],
 ) -> Vec<(&'a SemanticNode, Composite)> {
     nodes
         .iter()
         .filter_map(|node| Composite::of(&frame.nodes[node.index]).map(|kind| (node, kind)))
         .filter(|(_, kind)| *kind != Composite::Menu)
+        .filter(|(container, _)| {
+            nodes.iter().any(|node| {
+                composites
+                    .container_of(node.index)
+                    .is_some_and(|(owner, _)| owner == container.index)
+            })
+        })
         .collect()
 }
 

@@ -133,3 +133,12 @@ fn rule_codes_match_their_serialized_names() {
         assert_eq!(serde_json::to_value(rule).unwrap(), rule.as_str());
     }
 }
+
+#[test]
+fn a_grid_of_rows_without_cells_is_reported_once() {
+    let found = violations(
+        "h('view',{},h('view',{role:'grid','aria-label':'Orders','data-testid':'table'},h('view',{role:'row',style:{flexDirection:'row'}},h('text',{},'#1'),h('button',{onClick(){}},'Open')),h('view',{role:'row',style:{flexDirection:'row'}},h('text',{},'#2'),h('button',{onClick(){}},'Refund'))))",
+    );
+    assert!(has(&found, Rule::Items, "table"), "{found:?}");
+    assert!(!has(&found, Rule::TabStops, "table"), "{found:?}");
+}
