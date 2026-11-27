@@ -697,8 +697,8 @@ mod mac {
         .await
     }
 
-    /// Pressable shell chrome of the key window: controls and sidebar rows,
-    /// labelled by their accessibility label, else their title or text.
+    /// Shell chrome of the key window: controls and sidebar rows, labelled by their
+    /// accessibility label, else their title or text, and window text as `text`.
     /// Page views (WebKit, GPU) are not searched, except the host recovery panel over a GPU page.
     pub(super) async fn chrome_elements(
         scope: Option<String>,
@@ -798,7 +798,10 @@ mod mac {
                     if label.trim().is_empty() {
                         label = texts(view);
                     }
-                    if !label.trim().is_empty() && name != "NSTextField" {
+                    // Text the host draws outside pages and bars (the recovery panel's message).
+                    let text = name == "NSTextField";
+                    let editable: bool = text && msg_send![view, isEditable];
+                    if !label.trim().is_empty() && (!text || (here == "window" && !editable)) {
                         let bounds: NSRect = msg_send![view, bounds];
                         let rect: NSRect = msg_send![view, convertRect: bounds, toView: content];
                         let top = if flipped {
@@ -807,9 +810,16 @@ mod mac {
                             content_height - (rect.origin.y + rect.size.height)
                         };
                         let selected: bool = msg_send![view, isAccessibilitySelected];
+                        let role = if text {
+                            "text"
+                        } else if row {
+                            "tab"
+                        } else {
+                            "button"
+                        };
                         out.push(ChromeElement {
                             label: label.trim().to_owned(),
-                            role: if row { "tab".into() } else { "button".into() },
+                            role: role.into(),
                             scope: here.into(),
                             selected,
                             bounds: [rect.origin.x, top, rect.size.width, rect.size.height],
