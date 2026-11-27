@@ -75,8 +75,11 @@ test("apply navigationBar title, home button, and reset", {
 }, async (t) => {
   const { app, defer } = bindFixture(t, "UI-NAVBAR-001");
   defer(async () => {
+    // A GPU page's title is page data (`<page title>`); the bar patch takes only the home button.
     await app.logic.eval(async ({ currentPage }) => {
-      await currentPage()!.navigationBar.update({ title: null, homeButton: 'auto' });
+      const page = currentPage()!;
+      page.update((d) => { (d as { navTitle: string | null }).navTitle = null; });
+      await page.navigationBar.update({ homeButton: 'auto' });
     }).catch(() => undefined);
   });
 
