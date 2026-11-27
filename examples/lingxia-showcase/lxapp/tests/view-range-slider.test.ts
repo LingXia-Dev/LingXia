@@ -25,6 +25,8 @@ test('a slider with two thumbs moves the nearer one, stops at the other, and rep
   // The box is wider than the thumb's travel, so a share of it is not that share of the range.
   // Each press ends, so the pair it left is reported.
   const read = async () => /^low=(\d+) high=(\d+) done=(\S+)$/.exec((await state.getAttribute('data-state')) ?? '')!.slice(1);
+  // Raw touches skip actionability: on a tall window the track may sit in the system gesture zone.
+  await lower.scrollIntoView();
   const track = await lower.boundingBox();
   const y = track.y + track.height / 2;
   await (await view.touch([track.x + track.width * 0.8, y])).up();
