@@ -5,10 +5,41 @@
 
 use super::axui::{AxEl, require_trusted};
 use super::window_ops::ax_window_for_id;
+use super::{parse_window_id, window_record};
 use crate::error::{Error, Result};
 use crate::model::{Ack, AxNode, AxQuery, Rect};
 
 const DEFAULT_MAX_NODES: usize = 2000;
+
+/// Runs `work` on the main thread when the window is this process's own: AX answers an
+/// in-process query on the calling thread, and AppKit and WebKit allow only the main one.
+fn on_owner_thread<T: Send>(
+    window_id: Option<&str>,
+    work: impl FnOnce() -> Result<T> + Send,
+) -> Result<T> {
+    let own = match window_id {
+        Some(id) => {
+            window_record(parse_window_id(id)?).is_some_and(|w| w.pid == std::process::id())
+        }
+        // A screen point may land on any app's window, this one's included.
+        None => true,
+    };
+    if !own || unsafe { libc::pthread_main_np() } != 0 {
+        return work();
+    }
+    let mut work = Some(work);
+    let mut out = None;
+    dispatch2::DispatchQueue::main().exec_sync(|| {
+        if let Some(work) = work.take() {
+            out = Some(work());
+        }
+    });
+    out.unwrap_or_else(|| {
+        Err(Error::Failed(
+            "the main thread did not run the accessibility read".into(),
+        ))
+    })
+}
 
 /// Normalize an AX role ("AXButton") to the contract's lowercase form ("button").
 fn role_name(role: Option<String>) -> String {
@@ -113,6 +144,10 @@ fn collect_flat(
 }
 
 pub fn tree(window_id: &str, depth: Option<u32>, max_nodes: Option<usize>) -> Result<AxNode> {
+    on_owner_thread(Some(window_id), || tree_here(window_id, depth, max_nodes))
+}
+
+fn tree_here(window_id: &str, depth: Option<u32>, max_nodes: Option<usize>) -> Result<AxNode> {
     require_trusted()?;
     let root = ax_window_for_id(window_id)?;
     let mut count = 0;
@@ -126,10 +161,12 @@ pub fn tree(window_id: &str, depth: Option<u32>, max_nodes: Option<usize>) -> Re
 }
 
 pub fn hit_test(x: i32, y: i32) -> Result<AxNode> {
-    require_trusted()?;
-    let sys = AxEl::system_wide()?;
-    let el = sys.element_at(x as f32, y as f32)?;
-    Ok(node_data(&el, format!("ax:@{x},{y}")))
+    on_owner_thread(None, || {
+        require_trusted()?;
+        let sys = AxEl::system_wide()?;
+        let el = sys.element_at(x as f32, y as f32)?;
+        Ok(node_data(&el, format!("ax:@{x},{y}")))
+    })
 }
 
 fn flat(window_id: &str) -> Result<Vec<(AxNode, AxEl)>> {
@@ -148,9 +185,8 @@ fn flat(window_id: &str) -> Result<Vec<(AxNode, AxEl)>> {
 }
 
 pub fn query(window_id: &str, q: &AxQuery, all: bool, index: Option<usize>) -> Result<Vec<AxNode>> {
-    let nodes: Vec<AxNode> = flat(window_id)?
+    let nodes: Vec<AxNode> = flat_nodes(window_id)?
         .into_iter()
-        .map(|(n, _)| n)
         .filter(|n| q.is_empty() || q.matches(n))
         .collect();
     if all {
@@ -172,6 +208,18 @@ pub fn query(window_id: &str, q: &AxQuery, all: bool, index: Option<usize>) -> R
     }
 }
 
+/// The flat tree's node data, read where the window's owner allows.
+fn flat_nodes(window_id: &str) -> Result<Vec<AxNode>> {
+    on_owner_thread(Some(window_id), || {
+        Ok(flat(window_id)?.into_iter().map(|(n, _)| n).collect())
+    })
+}
+
+/// Match exactly one live element and act on it, where the window's owner allows.
+fn act(window_id: &str, q: &AxQuery, action: impl FnOnce(AxEl) -> Result<()> + Send) -> Result<()> {
+    on_owner_thread(Some(window_id), || action(resolve_one(window_id, q)?))
+}
+
 /// Resolve exactly one live element for an action (atomic match-and-act).
 fn resolve_one(window_id: &str, q: &AxQuery) -> Result<AxEl> {
     let mut matches: Vec<AxEl> = flat(window_id)?
@@ -189,37 +237,37 @@ fn resolve_one(window_id: &str, q: &AxQuery) -> Result<AxEl> {
 }
 
 pub fn invoke(window_id: &str, q: &AxQuery) -> Result<Ack> {
-    resolve_one(window_id, q)?.perform("AXPress")?;
+    act(window_id, q, |el| el.perform("AXPress"))?;
     Ok(Ack::new("ax.invoke"))
 }
 
 pub fn focus(window_id: &str, q: &AxQuery) -> Result<Ack> {
-    resolve_one(window_id, q)?.set_bool("AXFocused", true)?;
+    act(window_id, q, |el| el.set_bool("AXFocused", true))?;
     Ok(Ack::new("ax.focus"))
 }
 
 pub fn set_value(window_id: &str, q: &AxQuery, value: &str) -> Result<Ack> {
-    resolve_one(window_id, q)?.set_string("AXValue", value)?;
+    act(window_id, q, |el| el.set_string("AXValue", value))?;
     Ok(Ack::new("ax.set-value"))
 }
 
 pub fn select(window_id: &str, q: &AxQuery) -> Result<Ack> {
-    resolve_one(window_id, q)?.set_bool("AXSelected", true)?;
+    act(window_id, q, |el| el.set_bool("AXSelected", true))?;
     Ok(Ack::new("ax.select"))
 }
 
 pub fn expand(window_id: &str, q: &AxQuery) -> Result<Ack> {
-    resolve_one(window_id, q)?.set_bool("AXDisclosing", true)?;
+    act(window_id, q, |el| el.set_bool("AXDisclosing", true))?;
     Ok(Ack::new("ax.expand"))
 }
 
 pub fn collapse(window_id: &str, q: &AxQuery) -> Result<Ack> {
-    resolve_one(window_id, q)?.set_bool("AXDisclosing", false)?;
+    act(window_id, q, |el| el.set_bool("AXDisclosing", false))?;
     Ok(Ack::new("ax.collapse"))
 }
 
 pub fn scroll_into_view(window_id: &str, q: &AxQuery) -> Result<Ack> {
-    resolve_one(window_id, q)?.perform("AXScrollToVisible")?;
+    act(window_id, q, |el| el.perform("AXScrollToVisible"))?;
     Ok(Ack::new("ax.scroll-into-view"))
 }
 
@@ -233,9 +281,8 @@ pub fn wait(window_id: &str, q: &AxQuery, state: &str, timeout_ms: u64) -> Resul
     }
     let deadline = std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms);
     loop {
-        let nodes: Vec<AxNode> = flat(window_id)?
+        let nodes: Vec<AxNode> = flat_nodes(window_id)?
             .into_iter()
-            .map(|(n, _)| n)
             .filter(|n| q.matches(n))
             .collect();
         let satisfied = match state {
