@@ -41,7 +41,10 @@ impl AppScreenshot for Platform {
     }
 
     async fn take_app_screenshot(&self, window_id: Option<&str>) -> Result<Vec<u8>, Error> {
-        let _ = window_id;
+        // One window: an id that is not its own is refused, not ignored.
+        if window_id.is_some() {
+            self.resolve_app_window(window_id).await?;
+        }
         let envelope_json = crate::rt::native_call(|callback_id| {
             let id = callback_id.to_string();
             lingxia_webview::platform::harmony::tsfn::call_arkts("captureAppScreenshot", &[&id])

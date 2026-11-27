@@ -72,8 +72,10 @@ impl AppScreenshot for Platform {
     async fn take_app_screenshot(&self, window_id: Option<&str>) -> Result<Vec<u8>, Error> {
         #[cfg(target_os = "ios")]
         {
-            // iOS apps are effectively single-window; ignore selector.
-            let _ = window_id;
+            // One window: an id that is not its own is refused, not ignored.
+            if window_id.is_some() {
+                self.resolve_app_window(window_id).await?;
+            }
             take_app_screenshot_ios().await
         }
         #[cfg(target_os = "macos")]

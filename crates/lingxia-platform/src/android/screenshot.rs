@@ -43,8 +43,10 @@ impl AppScreenshot for Platform {
     }
 
     async fn take_app_screenshot(&self, window_id: Option<&str>) -> Result<Vec<u8>, Error> {
-        // Mobile is single-window; selector is informational only.
-        let _ = window_id;
+        // One window: an id that is not its own is refused, not ignored.
+        if window_id.is_some() {
+            self.resolve_app_window(window_id).await?;
+        }
         let envelope_json = crate::rt::native_call(|callback_id| {
             let screenshot_class: &JClass =
                 super::get_cached_class(super::CachedClass::AppScreenshot)
