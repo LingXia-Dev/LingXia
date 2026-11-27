@@ -19,6 +19,8 @@ export function render({ data, actions, env }: View) {
   return (
     <page data-testid="home-page" className="bg-canvas">
       {Boolean(data.imageUrl) && <image data-testid="home-background" src={data.imageUrl} alt="" className="absolute inset-0 object-cover" onLoad={() => photo.set(true)} onError={() => photo.set(false)} />}
+      {/* In dark the photo's bright sky would sit under light status-bar glyphs: dim it toward the canvas. */}
+      {photo.value && env.appearance === 'dark' && <view data-testid="home-background-dim" className="absolute inset-0 bg-canvas/55" />}
       {photo.value && <view data-testid="home-background-overlay" className="absolute inset-0 bg-linear-to-b from-transparent via-transparent to-scrim" />}
       <scroll data-testid="home-scroll" className="grow basis-0">
         <view className="min-h-full px-5 py-10 items-center justify-center gap-4">
