@@ -1132,42 +1132,53 @@ pub async fn page_scroll_to_index(
 /// transition, not a count of frames, which pipelined pages present several times faster.
 const REVEAL_WAIT: std::time::Duration = std::time::Duration::from_millis(600);
 
+/// The longest a reveal follows a page that keeps presenting frames: a slow device runs one
+/// sheet's exit and the next one's entrance well past `REVEAL_WAIT`.
+const REVEAL_MOTION_CAP: std::time::Duration = std::time::Duration::from_secs(3);
+
 /// Reveal on a GPU page. A match the newest View just added (an expanded section) can still
 /// lie beyond the presented frame's scroll extent; the frames that follow carry it, so a
-/// failed reveal waits for the next presented frame and tries again before giving up.
-async fn gpu_reveal(
+/// failed reveal waits for the next presented frame and tries again before giving up. The
+/// feedback layer reveals the same way: its sheet slides in after it is first matched.
+pub async fn gpu_reveal(
     page: &dyn gpu::GpuPageAutomation,
     selector: &str,
     index: Option<usize>,
 ) -> Result<(), String> {
     let started = std::time::Instant::now();
     let mut attempt = 0;
+    let mut moving = true;
     loop {
         match page
             .act(selector, index, gpu::GpuAction::ScrollIntoView)
             .await
         {
-            Err(error) if error.contains("no scroll brings") && started.elapsed() < REVEAL_WAIT => {
+            Err(error)
+                if error.contains("no scroll brings")
+                    && (started.elapsed() < REVEAL_WAIT
+                        || (moving && started.elapsed() < REVEAL_MOTION_CAP)) =>
+            {
                 attempt += 1;
                 debug!("page reveal retry {attempt} on the next frame: {error}");
-                next_presented_frame(page).await;
+                moving = next_presented_frame(page).await;
             }
             done => return done,
         }
     }
 }
 
-/// Wait until the page presents another frame, at most ~100 ms.
-async fn next_presented_frame(page: &dyn gpu::GpuPageAutomation) {
+/// Wait until the page presents another frame, at most ~100 ms; false when none came.
+async fn next_presented_frame(page: &dyn gpu::GpuPageAutomation) -> bool {
     let frames = |value: Value| value["frames"].as_u64();
     let before = page.frame().await.ok().and_then(frames);
     for _ in 0..12 {
         tokio::time::sleep(std::time::Duration::from_millis(8)).await;
         let now = page.frame().await.ok().and_then(frames);
         if before.is_none() || now != before {
-            return;
+            return true;
         }
     }
+    false
 }
 
 // ===================== DOM query script =====================
@@ -1315,11 +1326,12 @@ mod tests {
     use super::*;
     use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
-    /// A page whose first reveals miss and whose frame counter moves on every read.
+    /// A page whose first reveals miss and whose frame counter moves on every read, or never.
     struct Revealing {
         misses: AtomicUsize,
         attempts: AtomicUsize,
         frames: AtomicU64,
+        moving: bool,
     }
 
     impl gpu::GpuPageAutomation for Revealing {
@@ -1353,7 +1365,9 @@ mod tests {
             Box::pin(async { Err("unused".to_owned()) })
         }
         fn frame(&self) -> gpu::GpuFuture<Value> {
-            let frames = self.frames.fetch_add(1, Ordering::SeqCst);
+            let frames = self
+                .frames
+                .fetch_add(u64::from(self.moving), Ordering::SeqCst);
             Box::pin(async move { Ok(serde_json::json!({ "frames": frames })) })
         }
     }
@@ -1444,6 +1458,7 @@ mod tests {
             misses: AtomicUsize::new(misses),
             attempts: AtomicUsize::new(0),
             frames: AtomicU64::new(0),
+            moving: true,
         }
     }
 
@@ -1505,15 +1520,30 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_reveal_that_never_lands_fails_once_its_wait_is_over() {
+    async fn a_reveal_on_a_still_page_fails_once_its_wait_is_over() {
+        let page = Revealing {
+            moving: false,
+            ..page(usize::MAX)
+        };
+        let started = std::time::Instant::now();
+        let error = gpu_reveal(&page, "[data-testid=row]", None)
+            .await
+            .unwrap_err();
+        assert!(error.contains("no scroll brings"));
+        let waited = started.elapsed();
+        assert!(waited >= REVEAL_WAIT && waited < REVEAL_MOTION_CAP);
+        assert!(page.attempts.load(Ordering::SeqCst) > 1);
+    }
+
+    #[tokio::test]
+    async fn a_reveal_follows_a_moving_page_up_to_its_cap() {
         let page = page(usize::MAX);
         let started = std::time::Instant::now();
         let error = gpu_reveal(&page, "[data-testid=row]", None)
             .await
             .unwrap_err();
         assert!(error.contains("no scroll brings"));
-        assert!(started.elapsed() >= REVEAL_WAIT);
-        assert!(page.attempts.load(Ordering::SeqCst) > 1);
+        assert!(started.elapsed() >= REVEAL_MOTION_CAP);
     }
 
     #[test]

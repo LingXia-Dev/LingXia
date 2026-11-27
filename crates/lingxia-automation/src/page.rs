@@ -1098,13 +1098,9 @@ impl JSFeedbackDriver {
     #[js_method(rename = "scrollTo")]
     async fn scroll_to(&self, ctx: JSContext, options: JSScrollToOptions) -> JSResult<()> {
         let layer = self.layer(&ctx, &options.page)?;
-        act_on(
-            layer,
-            &options.css,
-            options.index,
-            auto::gpu::GpuAction::ScrollIntoView,
-        )
-        .await
+        auto::gpu_reveal(layer.as_ref(), &options.css, options.index)
+            .await
+            .map_err(auto_err)
     }
 
     #[js_method]
