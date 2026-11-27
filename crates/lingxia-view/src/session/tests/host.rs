@@ -8299,8 +8299,9 @@ fn a_page_title_reaches_the_host_while_its_target_declines_every_frame() {
     let platform = Platform::new(&[&worker]);
     let host = platform.host(
         &worker,
-        &(source("function render({data}){return h('page',{title:data.title},h('text',{},data.title))}")
-            + "\nglobalThis.__lingxiaActionCatalog={__names:[],__modes:{}};"),
+        &(source(
+            "function render({data}){return h('page',{title:data.title},h('text',{},data.title))}",
+        ) + "\nglobalThis.__lingxiaActionCatalog={__names:[],__modes:{}};"),
         true,
     );
     // No drawable: a locked screen or an attaching target declines every frame.
