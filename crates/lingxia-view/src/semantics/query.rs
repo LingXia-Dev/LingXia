@@ -413,7 +413,13 @@ fn text_content(nodes: &[NodeSnapshot], index: usize) -> String {
             .get(at + 1)
             .is_some_and(|next| next.identity.starts_with(&prefix))
     };
-    // A leaf control keeps its snapshot text: its content is not kept apart from its label.
+    // A labelled leaf control reads its own content, not the name that replaced it.
+    if named_by_label(node)
+        && !has_descendants(index)
+        && let Some(content) = &node.content
+    {
+        return content.clone();
+    }
     if (!named_by_label(node) || !has_descendants(index))
         && node.input.is_none()
         && !node.text.is_empty()
@@ -438,12 +444,13 @@ fn text_content(nodes: &[NodeSnapshot], index: usize) -> String {
         if named_by_label(child) && has_descendants(index + 1 + offset) {
             continue;
         }
+        let text = child.content.as_deref().unwrap_or(&child.text);
         if child.input.is_none()
-            && !child.text.is_empty()
+            && !text.is_empty()
             && child.bounds[2] > 0.0
             && child.bounds[3] > 0.0
         {
-            parts.push(child.text.as_str());
+            parts.push(text);
             covered = Some(format!("{}/", child.identity));
         }
     }

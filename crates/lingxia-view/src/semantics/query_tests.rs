@@ -631,6 +631,34 @@ fn a_labelled_button_reads_its_children_as_text_and_keeps_its_label_as_name() {
 }
 
 #[test]
+fn a_labelled_leaf_control_reads_its_content_as_text_and_its_label_as_name() {
+    let i = interaction(
+        "h('view',{'data-testid':'bar'},h('text',{},'Title'),h('button',{'data-testid':'close','aria-label':'Close',onClick(){}},'X'))",
+    );
+    let close = i
+        .automation_query("[data-testid=\"close\"]", None, false, None)
+        .unwrap();
+    assert_eq!(close["text"], "X", "textContent, as the DOM reads it");
+    assert_eq!(close["attributes"]["aria-label"], "Close");
+    assert_eq!(
+        i.automation_query("[aria-label=\"Close\"]", None, true, None)
+            .unwrap()["count"],
+        1,
+        "the name stays the label"
+    );
+    let bar = i
+        .automation_query("[data-testid=\"bar\"]", None, false, None)
+        .unwrap();
+    assert_eq!(bar["text"], "Title X");
+    // Unlabelled, the content is the name and the text alike.
+    let i = interaction("h('button',{'data-testid':'save',onClick(){}},'Save')");
+    let save = i
+        .automation_query("[data-testid=\"save\"]", None, false, None)
+        .unwrap();
+    assert_eq!(save["text"], "Save");
+}
+
+#[test]
 fn data_props_answer_attribute_selectors_and_reads_but_not_semantics() {
     let i = interaction(
         "h('view',{},h('button',{'data-testid':'mode','data-mode':'dark','data-selected':true,onClick(){}},'Dark'),h('button',{'data-testid':'light','data-mode':'light',onClick(){}},'Light'))",

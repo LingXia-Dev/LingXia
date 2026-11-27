@@ -47,6 +47,7 @@ pub(crate) fn node(identity: &str, tag: &'static str, bounds: [f32; 4]) -> NodeS
         tag,
         test_id: String::new(),
         text: String::new(),
+        content: None,
         bounds,
         visible_bounds: bounds,
         hit_rects: Vec::new(),

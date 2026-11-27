@@ -1990,6 +1990,17 @@ impl Renderer {
                 tag: crate::protocol::TAGS[record.tag],
                 test_id: record.test_id.clone(),
                 // Semantics read the authored text; transforms and truncation are paint-only.
+                content: matches!(
+                    record.tag,
+                    tag::BUTTON | tag::LINK_BOX | tag::CHECKBOX | tag::SWITCH
+                )
+                .then(|| {
+                    record
+                        .string(field::ACCESSIBILITY_LABEL)
+                        .or_else(|| groups.names.get(&index).map(String::as_str))
+                })
+                .flatten()
+                .map(|_| record.text.clone()),
                 text: if matches!(
                     record.tag,
                     tag::BUTTON | tag::LINK_BOX | tag::CHECKBOX | tag::SWITCH

@@ -206,6 +206,10 @@ pub struct NodeSnapshot {
     pub tag: &'static str,
     pub test_id: String,
     pub text: String,
+    /// A labelled leaf control's own content text, which `text` (its accessible name) replaces;
+    /// `textContent` reads it, as the DOM does.
+    #[serde(skip)]
+    pub content: Option<String>,
     pub bounds: [f32; 4],
     pub visible_bounds: [f32; 4],
     /// `text` or `all` when the text may be selected by long press.
