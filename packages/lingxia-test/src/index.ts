@@ -1,5 +1,7 @@
 export { test, expect } from "./runtime.js";
 export { AssertionError } from "./expect.js";
+export type { ShowContentOptions } from "./expect.js";
+export type { PixelRegion } from "./png.js";
 export { TimeoutError } from "./fixture.js";
 export { TEST_ERROR_CODES } from "./errors.js";
 export type {

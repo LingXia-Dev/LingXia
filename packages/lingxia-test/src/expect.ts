@@ -2,8 +2,29 @@ import { isEqual, objectContaining } from "./equal.js";
 import { firstDifference, formatValue } from "./format.js";
 import { activeOpenApi, type SchemaTarget } from "./openapi.js";
 import { formatIssues } from "./schema.js";
+import { decodePng, dominantColour, type PixelRegion } from "./png.js";
 import { displayLocation, parseFrames, resolveOrigin } from "./ids.js";
 import type { Expect, ExpectOptions, FunctionMatchers, Locator, LocatorMatchers, Matchers, RetryMatchers } from "./types.js";
+
+/** `toShowContent` options. */
+export interface ShowContentOptions {
+  /** The part of the screenshot to read, in its pixels; default the whole of it. */
+  region?: PixelRegion;
+  /** Fails when at least this share of the region is one colour (default 0.995). */
+  maxShare?: number;
+  /** Per-channel distance (0-255) still counted as the dominant colour (default 10). */
+  tolerance?: number;
+}
+
+declare module "./types.js" {
+  interface Matchers<T> {
+    /**
+     * A screenshot (`{ base64 }` of an 8-bit RGB/RGBA PNG) shows more than one colour in
+     * `region`: a blank or single-colour page fails, naming the colour and its share. Await it.
+     */
+    toShowContent(options?: ShowContentOptions): Promise<void>;
+  }
+}
 
 export interface LoggedAssertion {
   matcher: string;
@@ -167,6 +188,61 @@ function fail(
   );
 }
 
+const hex = (rgb: number[]) => `#${rgb.map((value) => value.toString(16).padStart(2, "0")).join("")}`;
+const percent = (share: number) => `${(Math.floor(share * 1000) / 10).toFixed(1)}%`;
+
+async function showContent(
+  actual: unknown,
+  inverted: boolean,
+  options: ShowContentOptions = {},
+  meta: typeof assertionMeta,
+): Promise<void> {
+  const matcher = "toShowContent";
+  // Recorded after the decode, when the authored call's meta is no longer current.
+  const note = (entry: LoggedAssertion) => {
+    const previous = assertionMeta;
+    assertionMeta = meta;
+    try {
+      recordAssertion(entry);
+    } finally {
+      assertionMeta = previous;
+    }
+  };
+  const maxShare = options.maxShare ?? 0.995;
+  const tolerance = options.tolerance ?? 10;
+  const base64 = (actual as { base64?: unknown } | null | undefined)?.base64;
+  let reading: ReturnType<typeof dominantColour> | undefined;
+  let broken: string | undefined;
+  if (typeof base64 !== "string") broken = "received value must be a screenshot: { base64 } of a PNG";
+  else if (!(maxShare > 0 && maxShare <= 1)) broken = "maxShare must be in (0, 1]";
+  else {
+    try {
+      reading = dominantColour(await decodePng(base64), options.region, tolerance);
+    } catch (error) {
+      broken = error instanceof Error ? error.message : String(error);
+    }
+  }
+  const region = options.region ? `region ${JSON.stringify(options.region)}` : "the screenshot";
+  const expected = `${region} not one colour (under ${percent(maxShare)} within ${tolerance})`;
+  if (!reading) {
+    // An unreadable picture is a broken assertion: it fails under `.not` too.
+    note({ matcher: inverted ? `not.${matcher}` : matcher, expected, actual: broken ?? "", passed: false });
+    throw new AssertionError(inverted ? `not.${matcher}` : matcher, actual, expected, `expect(received).${matcher}: ${broken}`);
+  }
+  const { colour, share, samples } = reading;
+  const shown = `${percent(share)} of ${samples} sampled pixels are rgb(${colour.join(", ")}) ${hex(colour)}`;
+  const pass = share < maxShare;
+  note({ matcher: inverted ? `not.${matcher}` : matcher, expected: inverted ? `not ${expected}` : expected, actual: shown, passed: pass !== inverted });
+  if (pass === inverted) {
+    throw new AssertionError(inverted ? `not.${matcher}` : matcher, shown, expected, [
+      inverted ? `expect(received).not.${matcher}` : `expect(received).${matcher}`,
+      inverted ? `${region} shows content` : `${region} is blank: one colour, rgb(${colour.join(", ")}) ${hex(colour)}`,
+      `Expected: ${inverted ? "" : "under "}${percent(maxShare)} of it within ${tolerance} of one colour${inverted ? " or more" : ""}`,
+      `Received: ${shown}`,
+    ].join("\n"));
+  }
+}
+
 function isComparable(value: unknown): value is number {
   return typeof value === "number" && !Number.isNaN(value);
 }
@@ -280,6 +356,14 @@ function createMatchers<T>(actual: T, inverted: boolean): Matchers<T> {
       const label = `${result.pointer} in ${result.document}`;
       const detail = result.issues.length > 0 ? `Schema mismatches:\n${formatIssues(result.issues)}` : undefined;
       settle("toMatchSchema", actual, label, inverted, result.issues.length === 0, detail);
+    },
+    toShowContent(options?: ShowContentOptions) {
+      // The authored call's location and message, read before the decode lets other code run.
+      const meta = assertionMeta;
+      return showContent(actual, inverted, options, meta).catch((error: unknown) => {
+        if (meta?.message && error instanceof AssertionError) error.message = `${meta.message}\n${error.message}`;
+        throw error;
+      });
     },
     toThrow(expected?: unknown) {
       if (typeof actual !== "function") {
