@@ -288,6 +288,12 @@ impl<A: PlatformAdapter> Inner<A> {
                 .as_ref()
                 .and_then(|metrics| metrics.get(key).cloned())
         };
+        let epoch_ms = |at: std::time::Duration| {
+            let wall = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default();
+            wall.saturating_sub(now.saturating_sub(at)).as_millis() as u64
+        };
         serde_json::json!({
             "composite": presenter("composite"),
             "backdropCache": presenter("backdropCache"),
@@ -300,6 +306,9 @@ impl<A: PlatformAdapter> Inner<A> {
             "page": self.lifecycle.page().get().to_string(),
             "commit": telemetry.commit,
             "firstPresentAt": telemetry.since_open(telemetry.first_present),
+            // On Logic's clock, so a spec times a Logic call to the frame that shows it.
+            "firstPresentEpochMs": telemetry.first_present.map(epoch_ms),
+            "lastPresentEpochMs": telemetry.last_present.map(epoch_ms),
             "lastPresentAt": telemetry.since_open(telemetry.last_present),
             "frames": telemetry.frames,
             "held": telemetry.held,
@@ -329,6 +338,22 @@ impl<A: PlatformAdapter> Inner<A> {
                 .map(|environment| environment.value.pointer.as_str()),
             // The bar-snapshot generation the presented frame draws under its top layer; 0 when none.
             "chromeSnapshot": main.snapshot.as_ref().map_or(0, |snapshot| snapshot.metrics.chrome_snapshot),
+            // The page clear of system bars and host chrome, in page points, and the floor it
+            // paints when empty: a window shot of a blank page is that colour there.
+            "content": main.presented_environment.as_ref().zip(main.chrome).map(|(environment, chrome)| {
+                let insets = &environment.value.insets;
+                let scale = f64::from(environment.scale).max(f64::MIN_POSITIVE);
+                let [r, g, b, _] = chrome.canvas;
+                serde_json::json!({
+                    "area": {
+                        "left": insets.left,
+                        "top": insets.top,
+                        "width": (f64::from(environment.width) / scale - insets.left - insets.right).max(0.0),
+                        "height": (f64::from(environment.height) / scale - insets.top - insets.bottom).max(0.0),
+                    },
+                    "canvas": format!("#{r:02x}{g:02x}{b:02x}"),
+                })
+            }),
             // Nodes the presented frame laid out: a virtual list mounts only rows near the viewport.
             "nodes": main.snapshot.as_ref().map(|snapshot| snapshot.metrics.nodes),
             "pacing": telemetry

@@ -100,35 +100,57 @@ test("dominantColour measures the share of one colour, within a tolerance", asyn
   assert.throws(() => dominantColour(decoded, { x: 50, y: 0, width: 60, height: 10 }), RangeError);
 });
 
-test("toShowContent fails a blank screenshot, naming its colour and share", async () => {
+test("toShowContent fails a blank screenshot, naming its colour and its ink", async () => {
   const blank = shot(encodePng(image(200, 300, 4, () => [255, 255, 255, 255]), { filters: [2] }));
-  const error = await expect(blank).toShowContent().then(() => null, (error) => error);
+  const error = await expect(blank).toShowContent({ scale: 1 }).then(() => null, (error) => error);
   assert.ok(error instanceof AssertionError, String(error));
   assert.match(error.message, /blank: one colour, rgb\(255, 255, 255\) #ffffff/);
-  assert.match(error.message, /Received: 100\.0% of 60000 sampled pixels are rgb\(255, 255, 255\)/);
-  await expect(blank).not.toShowContent();
+  assert.match(error.message, /Expected: at least 1500 pt² off one colour/);
+  assert.match(error.message, /Received: 0 pt² off rgb\(255, 255, 255\) #ffffff, which is 100\.0% of 60000 sampled pixels/);
+  await expect(blank).not.toShowContent({ scale: 1 });
 });
 
 test("toShowContent passes content, and reads only its region", async () => {
   const page = shot(encodePng(image(200, 300, 3, (x, y) => (y < 100 ? noisy(x, y) : [255, 255, 255]))));
-  await expect(page).toShowContent();
-  await expect(page).toShowContent({ region: { x: 0, y: 0, width: 200, height: 100 } });
-  const error = await expect(page).toShowContent({ region: { x: 0, y: 100, width: 200, height: 200 } }).then(() => null, (error) => error);
+  await expect(page).toShowContent({ scale: 1 });
+  await expect(page).toShowContent({ scale: 1, region: { x: 0, y: 0, width: 200, height: 100 } });
+  const error = await expect(page).toShowContent({ scale: 1, region: { x: 0, y: 100, width: 200, height: 200 } }).then(() => null, (error) => error);
   assert.match(error?.message ?? "", /region \{"x":0,"y":100,"width":200,"height":200\} is blank/);
 });
 
+test("toShowContent measures ink in points, so a sparse page passes in any window", async () => {
+  // One 40x40 pt mark (1600 pt²) on a blank window, at 1x and 3x, in a small and a large window.
+  const page = (side, scale) => shot(encodePng(image(side * scale, side * scale, 3,
+    (x, y) => (x < 40 * scale && y < 40 * scale ? [30, 30, 30] : [246, 247, 251]))));
+  await expect(page(400, 1)).toShowContent({ scale: 1 });
+  await expect(page(400, 3)).toShowContent({ scale: 3 });
+  await expect(page(800, 3)).toShowContent({ scale: 3 });
+  // The same pixels read at 3 px/pt are a ninth of the area.
+  await assert.rejects(expect(page(400, 1)).toShowContent({ scale: 3 }), /178 pt² off rgb\(246, 247, 251\)/);
+  await assert.rejects(expect(page(400, 1)).toShowContent({ scale: 1, minInk: 2000 }), /at least 2000 pt²/);
+});
+
+test("toShowContent fails a blank dark page once the region leaves out the bars over it", async () => {
+  // A 200x300 pt window at 2 px/pt: a 60 pt bar in a lighter dark tone over an empty dark canvas.
+  const window = shot(encodePng(image(400, 600, 3, (x, y) => (y < 120 ? [27, 31, 42] : (y === 120 ? [58, 64, 80] : [17, 19, 26])))));
+  await expect(window).toShowContent({ scale: 2 });
+  const content = { x: 0, y: 122, width: 400, height: 478 };
+  await assert.rejects(expect(window).toShowContent({ scale: 2, region: content }), /blank: one colour, rgb\(17, 19, 26\)[\s\S]*Received: 0 pt²/);
+});
+
 test("toShowContent still fails a blank page under a small badge or anti-aliased edges", async () => {
-  // A 10x10 badge is 0.17% of the page: not content.
+  // A 10x10 badge is 100 pt²: not content.
   const badge = shot(encodePng(image(200, 300, 3, (x, y) => (x < 10 && y < 10 ? [220, 40, 40] : [255, 255, 255]))));
-  await assert.rejects(expect(badge).toShowContent(), AssertionError);
+  await assert.rejects(expect(badge).toShowContent({ scale: 1 }), AssertionError);
   // Near-white noise within the tolerance is still the one colour.
   const dither = shot(encodePng(image(200, 300, 3, (x, y) => [250 + ((x + y) % 5), 252, 255])));
-  await assert.rejects(expect(dither).toShowContent(), /rgb\(25\d, 252, 255\)/);
+  await assert.rejects(expect(dither).toShowContent({ scale: 1 }), /rgb\(25\d, 252, 255\)/);
 });
 
 test("toShowContent fails what is not a readable screenshot, even under .not", async () => {
-  await assert.rejects(expect({ width: 1 }).toShowContent(), /must be a screenshot/);
-  await assert.rejects(expect({ base64: "AAAA" }).not.toShowContent(), /not a PNG/);
+  await assert.rejects(expect({ width: 1 }).toShowContent({ scale: 1 }), /must be a screenshot/);
+  await assert.rejects(expect({ base64: "AAAA" }).not.toShowContent({ scale: 1 }), /not a PNG/);
   const page = shot(encodePng(image(10, 10, 3, noisy)));
-  await assert.rejects(expect(page).toShowContent({ region: { x: 5, y: 5, width: 10, height: 10 } }), /not a non-empty rectangle/);
+  await assert.rejects(expect(page).toShowContent({ scale: 1, region: { x: 5, y: 5, width: 10, height: 10 } }), /not a non-empty rectangle/);
+  await assert.rejects(expect(page).toShowContent(), /scale must be the screenshot's pixels per point/);
 });

@@ -912,8 +912,12 @@ public final class GpuFrame {
         public long commit() { return json.optLong("commit"); }
         /** `firstPresentAt`: u64? */
         public Long firstPresentAt() { if (json.isNull("firstPresentAt")) return null; return json.optLong("firstPresentAt"); }
+        /** `firstPresentEpochMs`: u64? */
+        public Long firstPresentEpochMs() { if (json.isNull("firstPresentEpochMs")) return null; return json.optLong("firstPresentEpochMs"); }
         /** `lastPresentAt`: u64? */
         public Long lastPresentAt() { if (json.isNull("lastPresentAt")) return null; return json.optLong("lastPresentAt"); }
+        /** `lastPresentEpochMs`: u64? */
+        public Long lastPresentEpochMs() { if (json.isNull("lastPresentEpochMs")) return null; return json.optLong("lastPresentEpochMs"); }
         /** `frames`: u64 */
         public long frames() { return json.optLong("frames"); }
         /** `workerQueueUs`: QueueTimes */
@@ -964,6 +968,17 @@ public final class GpuFrame {
         public TransitionMetrics transition() { JSONObject o = json.optJSONObject("transition"); return o == null ? null : new TransitionMetrics(o); }
         /** `video`: any?. Raw: the GPU video players' diagnostics (first-frame phases, rebinds, quality switches); its shape follows the video renderer, and no adapter reads it. */
         public Object video() { return json.isNull("video") ? null : json.opt("video"); }
+        /** `content`: AutomationContent? */
+        public AutomationContent content() { JSONObject o = json.optJSONObject("content"); return o == null ? null : new AutomationContent(o); }
+    }
+
+    public static final class AutomationContent {
+        public final JSONObject json;
+        public AutomationContent(JSONObject json) { this.json = json; }
+        /** `area`: AutomationArea */
+        public AutomationArea area() { JSONObject o = json.optJSONObject("area"); return o == null ? null : new AutomationArea(o); }
+        /** `canvas`: string */
+        public String canvas() { return json.isNull("canvas") ? null : json.optString("canvas", null); }
     }
 
     public static final class FrameBudget {
@@ -1446,6 +1461,7 @@ public final class GpuFrame {
             case "AutomationElement": return AutomationElement.class;
             case "AutomationQueryAll": return AutomationQueryAll.class;
             case "AutomationFrame": return AutomationFrame.class;
+            case "AutomationContent": return AutomationContent.class;
             case "FrameBudget": return FrameBudget.class;
             case "StageMedians": return StageMedians.class;
             case "PhaseMedians": return PhaseMedians.class;
@@ -1506,6 +1522,7 @@ public final class GpuFrame {
             case "AutomationElement": return new AutomationElement(json);
             case "AutomationQueryAll": return new AutomationQueryAll(json);
             case "AutomationFrame": return new AutomationFrame(json);
+            case "AutomationContent": return new AutomationContent(json);
             case "FrameBudget": return new FrameBudget(json);
             case "StageMedians": return new StageMedians(json);
             case "PhaseMedians": return new PhaseMedians(json);

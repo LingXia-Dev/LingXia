@@ -474,6 +474,12 @@ export interface PageUiFrame {
   commit: number;
   /** Milliseconds since the page opened; `null` until it first presents. */
   firstPresentAt: number | null;
+  /** The first present on the device's wall clock (Unix ms, as Logic's `Date.now()`). */
+  firstPresentEpochMs?: number | null;
+  /** `lastPresentAt` on the same wall clock as `firstPresentEpochMs`. */
+  lastPresentEpochMs?: number | null;
+  /** The page clear of system bars and host chrome, in page points, and the floor colour (`#rrggbb`) it shows there when empty. */
+  content?: { area: { left: number; top: number; width: number; height: number }; canvas: string } | null;
   lastPresentAt: number | null;
   frames: number;
   workerQueueUs: { last: number; p50: number; max: number };

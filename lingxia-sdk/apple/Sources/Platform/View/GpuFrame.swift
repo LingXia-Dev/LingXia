@@ -930,7 +930,9 @@ public struct GpuFrameAutomationFrame: Decodable, Sendable {
     public let page: String
     public let commit: UInt64
     public let firstPresentAt: UInt64?
+    public let firstPresentEpochMs: UInt64?
     public let lastPresentAt: UInt64?
+    public let lastPresentEpochMs: UInt64?
     public let frames: UInt64
     public let workerQueueUs: GpuFrameQueueTimes
     public let evalMs: GpuFrameEvalTimes
@@ -959,13 +961,16 @@ public struct GpuFrameAutomationFrame: Decodable, Sendable {
     public let transition: GpuFrameTransitionMetrics?
     /// Raw: the GPU video players' diagnostics (first-frame phases, rebinds, quality switches); its shape follows the video renderer, and no adapter reads it.
     public let video: GpuJSON?
+    public let content: GpuFrameAutomationContent?
 
     enum CodingKeys: String, CodingKey {
         case renderer = "renderer"
         case page = "page"
         case commit = "commit"
         case firstPresentAt = "firstPresentAt"
+        case firstPresentEpochMs = "firstPresentEpochMs"
         case lastPresentAt = "lastPresentAt"
+        case lastPresentEpochMs = "lastPresentEpochMs"
         case frames = "frames"
         case workerQueueUs = "workerQueueUs"
         case evalMs = "evalMs"
@@ -991,6 +996,18 @@ public struct GpuFrameAutomationFrame: Decodable, Sendable {
         case stagesMs = "stagesMs"
         case transition = "transition"
         case video = "video"
+        case content = "content"
+    }
+}
+
+/// `AutomationContent` in the frame contract.
+public struct GpuFrameAutomationContent: Decodable, Sendable {
+    public let area: GpuFrameAutomationArea
+    public let canvas: String
+
+    enum CodingKeys: String, CodingKey {
+        case area = "area"
+        case canvas = "canvas"
     }
 }
 

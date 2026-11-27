@@ -3049,6 +3049,33 @@ fn a_page_that_never_presents_is_revealed_held_by_the_watchdog() {
 }
 
 #[test]
+fn the_automation_frame_reports_the_page_clear_of_bars_and_its_canvas() {
+    let worker = ViewWorker::spawn("test-automation-content").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(&worker, &source("function render(){return h('text',null,'Hi')}"), false);
+    let (width, height, scale) = {
+        let mut environment = host.adapter().environment.lock().unwrap();
+        let environment = environment.as_mut().unwrap();
+        environment.value.insets = crate::protocol::env::Edges { top: 50.0, bottom: 40.0, left: 0.0, right: 10.0 };
+        (environment.width, environment.height, f64::from(environment.scale))
+    };
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    let frame = host.automation_request(&serde_json::json!({"op": "frame"})).unwrap();
+    let content = &frame["content"];
+    let near = |key: &str, want: f64| {
+        let got = content["area"][key].as_f64().unwrap();
+        assert!((got - want).abs() < 1e-3, "{key}: {got} != {want} in {content}");
+    };
+    near("left", 0.0);
+    near("top", 50.0);
+    near("width", f64::from(width) / scale - 10.0);
+    near("height", f64::from(height) / scale - 90.0);
+    let canvas = content["canvas"].as_str().unwrap();
+    assert!(canvas.len() == 7 && canvas.starts_with('#'), "{content}");
+}
+
+#[test]
 fn automation_requests_query_and_act_through_the_core_driver() {
     let worker = ViewWorker::spawn("test-automation-request").unwrap();
     let platform = Platform::new(&[&worker]);

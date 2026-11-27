@@ -18,11 +18,11 @@ const FIXTURES: Record<string, string> = {
 };
 
 /**
- * The part of the window shot the page covers wherever the host placed it: the page lies inside
- * the window, so it covers the overlap of all its possible placements. The reason instead when that
- * cannot be known.
+ * The part of the window shot that shows the page clear of bars and host chrome, wherever the host
+ * placed the page: the overlap of all its possible placements, and the shot's pixels per point. The
+ * reason instead when that cannot be known.
  */
-async function pageRegion(t: Fixture, shot: Shot): Promise<PixelRegion | string> {
+async function pageRegion(t: Fixture, shot: Shot, name: string): Promise<{ region: PixelRegion; scale: number } | string> {
   const window = await t.app.chrome.viewport().catch(() => null);
   if (!window) return 'the host does not report its window size';
   const page = await t.app.view.viewport();
@@ -33,14 +33,18 @@ async function pageRegion(t: Fixture, shot: Shot): Promise<PixelRegion | string>
   if (page.width > window.width + 1 || page.height > window.height + 1) {
     return `the page (${page.width}x${page.height}) is larger than the window (${window.width}x${window.height}): a device frame scales it`;
   }
-  const left = Math.ceil(Math.max(0, window.width - page.width) * scale);
-  const top = Math.ceil(Math.max(0, window.height - page.height) * scale);
-  const right = Math.floor(Math.min(window.width, page.width) * scale);
-  const bottom = Math.floor(Math.min(window.height, page.height) * scale);
-  if (right - left < page.width * scale / 4 || bottom - top < page.height * scale / 4) {
+  const content = (await t.app.metrics({ page: name })).content;
+  if (!content) return 'the host reports no content area for the page';
+  const { area } = content;
+  // The page sits anywhere from the window's origin to its far edge: keep what every placement shows.
+  const left = Math.ceil((Math.max(0, window.width - page.width) + area.left) * scale);
+  const top = Math.ceil((Math.max(0, window.height - page.height) + area.top) * scale);
+  const right = Math.floor(Math.min(window.width, area.left + area.width) * scale);
+  const bottom = Math.floor(Math.min(window.height, area.top + area.height) * scale);
+  if (right - left < area.width * scale / 4 || bottom - top < area.height * scale / 4) {
     return `the page (${page.width}x${page.height}) covers too little of the window (${window.width}x${window.height}) to place it without its frame`;
   }
-  return { x: left, y: top, width: right - left, height: bottom - top };
+  return { region: { x: left, y: top, width: right - left, height: bottom - top }, scale };
 }
 
 /**
@@ -71,9 +75,9 @@ for (const { name } of app.pages) {
     } catch (error) {
       return t.skip(`the host has no window screenshot: ${String(error)}`);
     }
-    const placed = await pageRegion(t, probe);
-    if (typeof placed === 'string') return t.skip(placed);
     await t.waitFor(() => t.app.metrics({ page: name }), { until: m => m.firstPresentAt !== null, timeout: 20_000 });
+    const placed = await pageRegion(t, probe, name);
+    if (typeof placed === 'string') return t.skip(placed);
 
     const preference = await t.app.logic.eval(({ lx }) => lx.host.appearancePreference.get() ?? null);
     if (preference !== null) t.defer(() => t.app.logic.eval(({ lx }, look) => lx.host.appearancePreference.set(look), preference));
@@ -81,11 +85,11 @@ for (const { name } of app.pages) {
     for (const look of preference === null ? ['as set'] : ['light', 'dark']) {
       if (preference !== null) await t.app.logic.eval(({ lx }, look) => lx.host.appearancePreference.set(look as 'light' | 'dark'), look);
       const shot = await settledShot(t, previous);
-      const area = await pageRegion(t, shot);
+      const area = await pageRegion(t, shot, name);
       if (typeof area === 'string') throw new Error(`${look}: the page area is unknown: ${area}`);
       previous = shot.base64;
       try {
-        await expect(shot, `${name}, ${look}: the page area of the window`).toShowContent({ region: area });
+        await expect(shot, `${name}, ${look}: the page's content area in the window`).toShowContent(area);
       } catch (error) {
         await t.attach(`window-${name}-${look}.png`, { mimeType: 'image/png', base64: shot.base64 });
         throw error;

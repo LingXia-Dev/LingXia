@@ -1153,6 +1153,8 @@ export interface TestMetrics extends PageFramePacing {
   stagesMs: PageStageMedians | null;
   /** The host's latest push or pop slide of this page; `null` before one. */
   transition: PageTransition | null;
+  /** The page clear of system bars and host chrome, in page points, and the floor colour it shows there when empty; `null` before the first frame. */
+  content: { area: { left: number; top: number; width: number; height: number }; canvas: string } | null;
 }
 
 /** A checkpoint of the app's isolated data. */

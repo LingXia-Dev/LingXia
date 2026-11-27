@@ -573,7 +573,9 @@ export interface GpuFrameAutomationFrame {
   page: string;
   commit: number;
   firstPresentAt?: number | null;
+  firstPresentEpochMs?: number | null;
   lastPresentAt?: number | null;
+  lastPresentEpochMs?: number | null;
   frames: number;
   workerQueueUs: GpuFrameQueueTimes;
   evalMs: GpuFrameEvalTimes;
@@ -602,6 +604,13 @@ export interface GpuFrameAutomationFrame {
   transition?: GpuFrameTransitionMetrics | null;
   /** Raw: the GPU video players' diagnostics (first-frame phases, rebinds, quality switches); its shape follows the video renderer, and no adapter reads it. */
   video?: Object | null;
+  content?: GpuFrameAutomationContent | null;
+}
+
+/** `AutomationContent` in the frame contract. */
+export interface GpuFrameAutomationContent {
+  area: GpuFrameAutomationArea;
+  canvas: string;
 }
 
 /** `FrameBudget` in the frame contract. */

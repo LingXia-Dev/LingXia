@@ -10,8 +10,10 @@ import type { Expect, ExpectOptions, FunctionMatchers, Locator, LocatorMatchers,
 export interface ShowContentOptions {
   /** The part of the screenshot to read, in its pixels; default the whole of it. */
   region?: PixelRegion;
-  /** Fails when at least this share of the region is one colour (default 0.995). */
-  maxShare?: number;
+  /** The screenshot's pixels per point: ink is an area the user sees, whatever the window's size. */
+  scale: number;
+  /** Fails under this much area, in square points, off the region's main colour (default 1500). */
+  minInk?: number;
   /** Per-channel distance (0-255) still counted as the dominant colour (default 10). */
   tolerance?: number;
 }
@@ -19,10 +21,10 @@ export interface ShowContentOptions {
 declare module "./types.js" {
   interface Matchers<T> {
     /**
-     * A screenshot (`{ base64 }` of an 8-bit RGB/RGBA PNG) shows more than one colour in
-     * `region`: a blank or single-colour page fails, naming the colour and its share. Await it.
+     * A screenshot (`{ base64 }` of an 8-bit RGB/RGBA PNG) shows content in `region`: at least
+     * `minInk` square points off its main colour. A blank page fails, naming that colour. Await it.
      */
-    toShowContent(options?: ShowContentOptions): Promise<void>;
+    toShowContent(options: ShowContentOptions): Promise<void>;
   }
 }
 
@@ -194,7 +196,7 @@ const percent = (share: number) => `${(Math.floor(share * 1000) / 10).toFixed(1)
 async function showContent(
   actual: unknown,
   inverted: boolean,
-  options: ShowContentOptions = {},
+  options: ShowContentOptions | undefined,
   meta: typeof assertionMeta,
 ): Promise<void> {
   const matcher = "toShowContent";
@@ -208,36 +210,45 @@ async function showContent(
       assertionMeta = previous;
     }
   };
-  const maxShare = options.maxShare ?? 0.995;
-  const tolerance = options.tolerance ?? 10;
+  // About two words of body text: a sparse page's single line passes, a blank page under the
+  // host's own navigation bar (its title and divider, ~1100 pt²) does not.
+  const minInk = options?.minInk ?? 1500;
+  const scale = options?.scale;
+  const tolerance = options?.tolerance ?? 10;
   const base64 = (actual as { base64?: unknown } | null | undefined)?.base64;
   let reading: ReturnType<typeof dominantColour> | undefined;
+  let pixels = 0;
   let broken: string | undefined;
   if (typeof base64 !== "string") broken = "received value must be a screenshot: { base64 } of a PNG";
-  else if (!(maxShare > 0 && maxShare <= 1)) broken = "maxShare must be in (0, 1]";
+  else if (!(typeof scale === "number" && scale > 0 && Number.isFinite(scale))) broken = "scale must be the screenshot's pixels per point";
+  else if (!(minInk > 0 && Number.isFinite(minInk))) broken = "minInk must be a positive area in square points";
   else {
     try {
-      reading = dominantColour(await decodePng(base64), options.region, tolerance);
+      const image = await decodePng(base64);
+      const area = options?.region;
+      reading = dominantColour(image, area, tolerance);
+      pixels = area ? area.width * area.height : image.width * image.height;
     } catch (error) {
       broken = error instanceof Error ? error.message : String(error);
     }
   }
-  const region = options.region ? `region ${JSON.stringify(options.region)}` : "the screenshot";
-  const expected = `${region} not one colour (under ${percent(maxShare)} within ${tolerance})`;
+  const region = options?.region ? `region ${JSON.stringify(options.region)}` : "the screenshot";
+  const expected = `${region} with ${minInk} pt² or more off one colour (within ${tolerance})`;
   if (!reading) {
     // An unreadable picture is a broken assertion: it fails under `.not` too.
     note({ matcher: inverted ? `not.${matcher}` : matcher, expected, actual: broken ?? "", passed: false });
     throw new AssertionError(inverted ? `not.${matcher}` : matcher, actual, expected, `expect(received).${matcher}: ${broken}`);
   }
   const { colour, share, samples } = reading;
-  const shown = `${percent(share)} of ${samples} sampled pixels are rgb(${colour.join(", ")}) ${hex(colour)}`;
-  const pass = share < maxShare;
+  const ink = Math.round((1 - share) * pixels / (scale! * scale!));
+  const shown = `${ink} pt² off rgb(${colour.join(", ")}) ${hex(colour)}, which is ${percent(share)} of ${samples} sampled pixels`;
+  const pass = ink >= minInk;
   note({ matcher: inverted ? `not.${matcher}` : matcher, expected: inverted ? `not ${expected}` : expected, actual: shown, passed: pass !== inverted });
   if (pass === inverted) {
     throw new AssertionError(inverted ? `not.${matcher}` : matcher, shown, expected, [
       inverted ? `expect(received).not.${matcher}` : `expect(received).${matcher}`,
       inverted ? `${region} shows content` : `${region} is blank: one colour, rgb(${colour.join(", ")}) ${hex(colour)}`,
-      `Expected: ${inverted ? "" : "under "}${percent(maxShare)} of it within ${tolerance} of one colour${inverted ? " or more" : ""}`,
+      `Expected: ${inverted ? "under" : "at least"} ${minInk} pt² off one colour (within ${tolerance})`,
       `Received: ${shown}`,
     ].join("\n"));
   }
