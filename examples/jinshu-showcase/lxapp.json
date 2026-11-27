@@ -1,0 +1,19 @@
+{
+  "appId": "jinshu-showcase",
+  "appName": "Jinshu Showcase",
+  "version": "0.1.0",
+  "minRuntime": "0.30.0",
+  "languages": [
+    "zh"
+  ],
+  "pages": [
+    {
+      "name": "home",
+      "path": "pages/home/index"
+    },
+    {
+      "name": "doc",
+      "path": "pages/doc/index"
+    }
+  ]
+}

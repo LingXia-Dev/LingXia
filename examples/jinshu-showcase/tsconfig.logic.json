@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2020"],
+    "types": ["@lingxia/types", "@lingxia/types/logic-globals"],
+    "strict": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "resolveJsonModule": true,
+    "composite": true,
+    "emitDeclarationOnly": true,
+    "declarationDir": "./.lingxia/logic-decl",
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.logic.tsbuildinfo"
+  },
+  "include": ["lxapp.ts", "pages/**/*.ts", "shared/agent.ts", "shared/fieldNotes.ts", "shared/fixtures.ts", "shared/store.ts"],
+  "exclude": ["pages/**/entry.ts"]
+}

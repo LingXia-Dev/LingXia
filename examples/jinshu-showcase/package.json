@@ -1,0 +1,21 @@
+{
+  "name": "jinshu-showcase",
+  "private": true,
+  "description": "Jinshu (锦书) showcase lxapp: a document app built on @liulidesign/jinshu — library, reading, editing, changes, and an agent drill over the registered jinshu_* tools.",
+  "type": "module",
+  "scripts": {
+    "build": "lingxia build",
+    "test": "node --import ../../packages/liuli/jinshu/scripts/ts-resolve.mjs --test pages.test.mjs tests/format.test.mjs tests/interactions.test.mjs tests/fixtures-size.test.mjs tests/store.test.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.logic.json"
+  },
+  "dependencies": {
+    "@lingxia/view": "file:../../packages/lingxia-view",
+    "@liulidesign/core": "file:../../packages/liuli/core",
+    "@liulidesign/jinshu": "file:../../packages/liuli/jinshu"
+  },
+  "devDependencies": {
+    "@lingxia/logic": "file:../../packages/lingxia-logic",
+    "@lingxia/types": "file:../../packages/lingxia-types",
+    "typescript": "^5.7.2"
+  }
+}
