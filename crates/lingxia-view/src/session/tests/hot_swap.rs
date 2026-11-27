@@ -218,6 +218,14 @@ fn minified(module: &str, keep_names: bool) -> String {
     format!("{header}\n{}", String::from_utf8(out.stdout).unwrap())
 }
 
+/// The whole Controls page; its progress spinner animates, so the frame is scheduled on a shown
+/// surface.
+fn controls_layout(page: &mut ViewSession) -> Result<crate::DisplayList, String> {
+    let now = std::time::Duration::ZERO;
+    page.set_animation_surface(Some(crate::session::lifecycle::SurfaceTicket::new(1)), now)?;
+    page.prepare_view_animated(400, 3000, 1.0, true, None, now, Ok)
+}
+
 #[test]
 fn a_packaged_view_keeps_its_state_through_the_first_dev_swap() {
     let dev = showcase_page_module("view-controls");
@@ -232,7 +240,7 @@ fn a_packaged_view_keeps_its_state_through_the_first_dev_swap() {
                 .cloned()
                 .unwrap()
         };
-        let display = page.layout(400, 3000, 1.0).unwrap();
+        let display = controls_layout(&mut page).unwrap();
         let plan = find(&display, "lab-input-plan");
         assert!(
             page.select_option(page.generation(), &plan.identity, 2)
@@ -240,7 +248,7 @@ fn a_packaged_view_keeps_its_state_through_the_first_dev_swap() {
         );
         // The swap lands before a frame commits the choice: pending state carries over too.
         page.swap_module(&dev).unwrap();
-        let display = page.layout(400, 3000, 1.0).unwrap();
+        let display = controls_layout(&mut page).unwrap();
         let values = find(&display, "lab-select-values").text;
         assert_eq!(
             values.contains("Plan: yearly"),
@@ -275,14 +283,14 @@ fn a_showcase_select_keeps_a_chosen_plan_across_a_swap() {
             .cloned()
             .unwrap()
     };
-    let display = page.layout(400, 3000, 1.0).unwrap();
+    let display = controls_layout(&mut page).unwrap();
     let plan = find(&display, "lab-input-plan");
     assert!(
         page.select_option(page.generation(), &plan.identity, 2)
             .unwrap()
     );
     let values = |page: &mut ViewSession| {
-        let display = page.layout(400, 3000, 1.0).unwrap();
+        let display = controls_layout(page).unwrap();
         find(&display, "lab-select-values").text
     };
     assert!(values(&mut page).contains("Plan: yearly"));
@@ -304,7 +312,7 @@ fn a_showcase_select_keeps_a_chosen_plan_across_a_swap() {
         values(&mut page).contains("Plan: yearly"),
         "and a second swap"
     );
-    let display = page.layout(400, 3000, 1.0).unwrap();
+    let display = controls_layout(&mut page).unwrap();
     let plan = find(&display, "lab-input-plan");
     assert!(
         page.select_option(page.generation(), &plan.identity, 0)
