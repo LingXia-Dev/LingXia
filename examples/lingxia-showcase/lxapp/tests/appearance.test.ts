@@ -5,7 +5,7 @@ const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 
 // A theme change repaints without running a View that never read the appearance; one that reads
 // it, even from a later render on, runs again and shows the new theme.
-test('a page that starts reading the theme runs again on the next theme change', { covers: ['view:environment'], start: openDemo('theme') }, async (t) => {
+test('a theme change repaints a page that never read the theme, and runs one that starts reading it', { covers: ['view:environment'], start: openDemo('theme') }, async (t) => {
   const view = t.app.view;
   const state = view.testId('lab-appearance-runs');
   const runs = async () => Number(/runs=(\d+)/.exec((await state.getAttribute('data-state')) ?? '')?.[1]);
@@ -13,6 +13,12 @@ test('a page that starts reading the theme runs again on the next theme change',
   try {
     await view.environment({ appearance: 'light' });
     await pause(400);
+    const unread = await runs();
+    await view.environment({ appearance: 'dark' });
+    await pause(400);
+    await view.environment({ appearance: 'light' });
+    await pause(400);
+    expect(await runs()).toBe(unread);
     await view.testId('lab-appearance-toggle').click();
     await expect(state).toHaveAttribute('data-state', /theme=light$/);
     const reading = await runs();

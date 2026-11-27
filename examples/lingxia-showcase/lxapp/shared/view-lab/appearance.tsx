@@ -5,14 +5,16 @@ import { Readout, useSay } from './demo';
 import { labels, readouts } from './text';
 import { ScreenDemo } from './screen';
 
-// Counts this page's View runs: a theme change repaints a page that never read the theme
-// without running it, and runs one that did.
-let runs = 0;
+// Counts this page instance's View runs (keyed by a local's binding: the module outlives the page).
+// A theme change repaints a page that never read the theme without running it, and runs one that did.
+const runsByPage = new WeakMap<object, number>();
 export function ThemeDemo() {
   const reads = useLocal('lab-appearance-reads', false);
+  const instance = useLocal('lab-appearance-instance', 0);
   const { env } = useView();
   const t = useSay();
-  runs += 1;
+  const runs = (runsByPage.get(instance) ?? 0) + 1;
+  runsByPage.set(instance, runs);
   const theme = reads.value ? env.appearance : null;
   return (
     <>
