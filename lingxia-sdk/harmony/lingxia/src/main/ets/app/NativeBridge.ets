@@ -289,8 +289,6 @@ class NativeBridge {
       return completeWebFileChooserRequest(requestId, selectedJson);
     });
 
-    });
-
     this.register('presentSurface', (
       id: string,
       appId: string,
