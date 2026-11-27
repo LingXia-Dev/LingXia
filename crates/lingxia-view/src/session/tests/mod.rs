@@ -2423,6 +2423,16 @@ fn spinning_page() -> Option<(ViewSession, f64)> {
     Some((session, probe as f64 / spent.max(0.001)))
 }
 
+thread_local! {
+    /// This thread's interrupt limit, so a spec of the interrupt does not spin to the real one.
+    pub(crate) static LIMIT: std::cell::Cell<Option<std::time::Duration>> = const { std::cell::Cell::new(None) };
+}
+
+/// Interrupts this thread's runs at four budgets, the scale the interrupt specs spin to.
+pub(crate) fn short_limit() {
+    LIMIT.set(Some(super::eval_budget() * 4));
+}
+
 /// Render `budgets` of the frame budget in CPU time; each run refines the iteration rate, since
 /// a loaded host (shared cores) changes how much work a CPU millisecond does.
 fn spin_for(
@@ -2523,8 +2533,9 @@ fn overrunning_frames_in_a_row_discard_the_page() {
 
 #[test]
 fn a_run_past_the_limit_is_interrupted_at_once_and_a_first_render_gets_the_warm_up_budget() {
-    use crate::protocol::limits::{EVAL_LIMIT_MULTIPLIER, EVAL_WARMUP_MULTIPLIER};
-    assert_eq!((EVAL_WARMUP_MULTIPLIER, EVAL_LIMIT_MULTIPLIER), (2, 4));
+    use crate::protocol::limits::{EVAL_LIMIT_MS, EVAL_WARMUP_MULTIPLIER};
+    assert_eq!((EVAL_WARMUP_MULTIPLIER, EVAL_LIMIT_MS), (2, 3000));
+    short_limit();
     let Some((_, mut per_ms)) = spinning_page() else {
         return;
     };
@@ -2541,6 +2552,20 @@ fn a_run_past_the_limit_is_interrupted_at_once_and_a_first_render_gets_the_warm_
     assert!(
         error.starts_with("UI_TIMEOUT:") && error.contains("execution limit"),
         "{error}"
+    );
+}
+
+#[test]
+fn a_slow_render_far_past_its_budget_drops_its_frame_and_keeps_the_page() {
+    let Some((mut page, mut per_ms)) = spinning_page() else {
+        return;
+    };
+    // Five budgets: what a slow phone takes for a long render. Only a hang reaches the limit.
+    let error = spin_for(&mut page, &mut per_ms, 5.0, 1, "slow").unwrap_err();
+    assert!(error.starts_with(super::OVERRUN), "{error}");
+    assert_eq!(
+        spin_for(&mut page, &mut per_ms, 0.2, 2, "quick").unwrap(),
+        "quick"
     );
 }
 
@@ -2592,7 +2617,7 @@ fn a_render_an_environment_change_caused_gets_the_warm_up_budget_once() {
 
 #[test]
 fn a_render_that_throws_and_then_passes_the_limit_reports_its_own_error() {
-    use crate::protocol::limits::EVAL_LIMIT_MULTIPLIER;
+    short_limit();
     let Some(clock) = crate::engine::thread_clock::ThreadClock::current() else {
         return;
     };
@@ -2611,7 +2636,7 @@ fn a_render_that_throws_and_then_passes_the_limit_reports_its_own_error() {
     let ordinary = session.render(300, 500, 1.0).err().unwrap();
     assert!(ordinary.starts_with("UI_KEY"), "{ordinary}");
     // The same throw, with the time limit passing while it unwinds outside the render.
-    let limit = super::eval_budget() * EVAL_LIMIT_MULTIPLIER as u32;
+    let limit = super::eval_limit();
     let late = session
         .execute_frame(|| {
             let thrown = session

@@ -233,6 +233,21 @@ pub(crate) fn eval_budget() -> Duration {
     Duration::from_millis((EVAL_BUDGET_MS * scale) as u64)
 }
 
+/// The CPU time at which a render or callback is interrupted and the page discarded.
+pub(crate) fn eval_limit() -> Duration {
+    use crate::protocol::limits::{EVAL_BUDGET_DEBUG_MULTIPLIER, EVAL_LIMIT_MS};
+    #[cfg(test)]
+    if let Some(limit) = tests::LIMIT.get() {
+        return limit;
+    }
+    let scale = if cfg!(debug_assertions) {
+        EVAL_BUDGET_DEBUG_MULTIPLIER
+    } else {
+        1
+    };
+    Duration::from_millis((EVAL_LIMIT_MS * scale) as u64)
+}
+
 /// The CPU-time limit for evaluating a page's module, scaled like `eval_budget` so an
 /// unoptimized build does not discard a large page on a slow machine.
 fn module_limit() -> Duration {
@@ -632,9 +647,7 @@ impl ViewSession {
         frame: bool,
         work: impl FnOnce() -> Result<T, String>,
     ) -> Result<T, String> {
-        use crate::protocol::limits::{
-            EVAL_LIMIT_MULTIPLIER, EVAL_OVERRUN_FRAMES, EVAL_WARMUP_MULTIPLIER,
-        };
+        use crate::protocol::limits::{EVAL_OVERRUN_FRAMES, EVAL_WARMUP_MULTIPLIER};
         if self.poisoned.get() {
             return Err("UI_TIMEOUT: discard the interrupted page before reusing it".into());
         }
@@ -643,7 +656,7 @@ impl ViewSession {
         } else {
             eval_budget()
         };
-        let limit = eval_budget() * EVAL_LIMIT_MULTIPLIER as u32;
+        let limit = eval_limit();
         let (result, overrun) = self.budget.run(budget, limit, || {
             let value = work()?;
             <crate::engine::Active as crate::engine::Engine>::drain_jobs(&self.context)?;

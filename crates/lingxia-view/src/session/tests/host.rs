@@ -757,6 +757,7 @@ fn a_module_refused_at_load_asks_for_an_update_and_a_connection_keeps_it() {
 
 #[test]
 fn removed_images_cancel_their_transport_and_failures_stop_input() {
+    super::short_limit();
     let worker = ViewWorker::spawn("test-view").unwrap();
     let platform = Platform::new(&[&worker]);
     let host = platform.host(

@@ -686,7 +686,7 @@ pub mod limits {
     pub const EVAL_BUDGET_MS: usize = 100;
     pub const EVAL_BUDGET_DEBUG_MULTIPLIER: usize = 8;
     pub const EVAL_WARMUP_MULTIPLIER: usize = 2;
-    pub const EVAL_LIMIT_MULTIPLIER: usize = 4;
+    pub const EVAL_LIMIT_MS: usize = 3000;
     pub const EVAL_OVERRUN_FRAMES: usize = 3;
     pub const EDITOR_TEXT_BYTES: usize = 65536;
     pub const INPUT_REQUEST_BYTES: usize = 524288;
