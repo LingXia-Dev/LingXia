@@ -358,3 +358,215 @@ describe('stale batches', () => {
     assert.equal(two.sent.filter(m => m.t === 'reject')[0]?.problems[0].code, 'STALE_BLOCK');
   });
 });
+
+describe('history replays what happened', () => {
+  const AGENT = { kind: 'agent', id: 'codex', label: 'Codex' };
+
+  it('undoing an earlier unrelated batch keeps the ids later batches minted and built on', () => {
+    const source = createJinshuSource({ key: 'w3', initialDoc: lesson(), guardLargeAgentEdits: false });
+    const rev = () => source.getState().revision;
+    source.apply({ batchId: 'h1', origin: HUMAN, base: rev(), ops: [{ op: 'edit', id: 'p1', find: 'First', replace: 'Opening' }] });
+    source.apply({ batchId: 'a1', origin: AGENT, base: rev(), ops: [{ op: 'insert', at: { after: 'p2' }, markup: '<p>Agent line.</p>' }] });
+    const added = source.getState().doc.blocks.at(-1).id;
+    source.apply({ batchId: 'h2', origin: HUMAN, base: rev(), ops: [{ op: 'edit', id: added, find: 'Agent', replace: 'Kept' }] });
+    const res = source.undo('h1');
+    assert.deepEqual(res.problems, []);
+    const blocks = source.getState().doc.blocks;
+    assert.equal(blocks.at(-1).id, added);
+    assert.equal(plainText(blocks.at(-1).runs), 'Kept line.');
+    assert.equal(plainText(blocks[1].runs), 'First paragraph.');
+  });
+
+  it('redo restores the same ids, rows included', () => {
+    const source = createJinshuSource({ key: 'w3', initialDoc: lesson() });
+    source.apply({ batchId: 'i', origin: HUMAN, base: 1, ops: [{ op: 'insert', at: { after: 'p2' }, markup: '<table id="t"><tr><td>a</td></tr></table>' }] });
+    source.apply({ batchId: 'r', origin: HUMAN, base: source.getState().revision, ops: [{ op: 'tableRow', id: 't', action: 'insert' }] });
+    const before = source.getState().doc;
+    source.undo();
+    source.undo();
+    source.redo();
+    source.redo();
+    assert.deepEqual(source.getState().doc, before);
+  });
+});
+
+describe('an upload finishing never brings back the local file', () => {
+  const uploading = () => {
+    let finish;
+    const source = createJinshuSource({
+      key: 'w3',
+      initialDoc: lesson(),
+      media: {
+        pick: async () => ({ file: { path: 'lx://temp/a.png', name: 'a.png', size: 10, type: 'image/png' } }),
+        upload: () => new Promise(resolve => (finish = resolve)),
+      },
+    });
+    const ch = fakeChannel();
+    source.serve(ch, { role: 'editor' });
+    return { source, ch, done: src => finish({ src, width: 4, height: 3 }) };
+  };
+  const srcs = source => source.getState().doc.blocks.filter(b => b.type === 'image').map(b => b.src);
+
+  it('undo then redo restores the uploaded src', async () => {
+    const { source, ch, done } = uploading();
+    ch.emit({ t: 'media', action: 'pick', kind: 'image', at: { after: 'p2' } });
+    await wait(0);
+    done('https://cdn.example/a.png');
+    await wait(0);
+    source.undo();
+    source.redo();
+    assert.deepEqual(srcs(source), ['https://cdn.example/a.png']);
+  });
+
+  it('undoing an earlier batch replays the uploaded src', async () => {
+    const { source, ch, done } = uploading();
+    source.apply({ batchId: 'e', origin: HUMAN, base: 1, ops: [{ op: 'edit', id: 'p1', find: 'First', replace: 'Opening' }] });
+    ch.emit({ t: 'media', action: 'pick', kind: 'image', at: { after: 'p2' } });
+    await wait(0);
+    done('https://cdn.example/a.png');
+    await wait(0);
+    assert.deepEqual(source.undo('e').problems, []);
+    assert.deepEqual(srcs(source), ['https://cdn.example/a.png']);
+  });
+
+  it('a replacement undone while uploading stays undone, and redo brings the upload', async () => {
+    const { source, ch, done } = uploading();
+    source.apply({ batchId: 'i', origin: HUMAN, base: 1, ops: [{ op: 'insert', at: { after: 'p2' }, blocks: [{ id: 'img', type: 'image', src: 'https://cdn.example/old.png' }] }] });
+    ch.emit({ t: 'media', action: 'pick', kind: 'image', replacingId: 'img' });
+    await wait(0);
+    source.undo();
+    done('https://cdn.example/new.png');
+    await wait(0);
+    assert.deepEqual(srcs(source), ['https://cdn.example/old.png']);
+    source.redo();
+    assert.deepEqual(srcs(source), ['https://cdn.example/new.png']);
+  });
+});
+
+describe('replacing the draft starts a new history', () => {
+  const MD = '# Week 3\n\nFirst **paragraph**.\n\n- one\n- two\n';
+  it("undo after 'theirs' does not rewind to the draft it dropped", async () => {
+    const theirs = createDocument({ title: 'Theirs', blocks: [paragraph('Their text.', 'p1')] });
+    const source = createJinshuSource({
+      key: 'w3',
+      initialDoc: lesson(),
+      save: async () => ({ ok: false, conflict: true, remoteDoc: theirs, remoteVersion: 'v9' }),
+    });
+    source.apply({ batchId: 'e', origin: HUMAN, base: 1, ops: [{ op: 'edit', id: 'p1', find: 'First', replace: 'Mine' }] });
+    await source.save();
+    await source.resolveConflict('theirs');
+    assert.equal(source.getState().canUndo, false);
+    assert.equal(source.undo().problems[0].code, 'NOT_FOUND');
+    assert.equal(source.getState().doc.title, 'Theirs');
+  });
+
+  it('a batch based before a load is stale', async () => {
+    const source = createJinshuSource({ key: 'w3', initialDoc: lesson(), load: async () => ({ doc: lesson(), version: 'v2' }) });
+    const base = source.getState().revision;
+    await source.load();
+    const res = source.apply({ batchId: 'x', origin: HUMAN, base, ops: [{ op: 'edit', id: 'p1', find: 'First', replace: 'Late' }] });
+    assert.equal(res.problems[0]?.code, 'STALE_BLOCK');
+  });
+
+  it("markdown: 'theirs' keeps the remote file's bytes for what did not change", async () => {
+    const remote = '# Theirs\n\nTheir __text__.\n\n* one\n* two\n';
+    const source = createJinshuSource({
+      key: 'w3',
+      format: 'markdown',
+      initialText: MD,
+      save: async () => ({ ok: false, conflict: true, remoteText: remote, remoteVersion: 'v9' }),
+    });
+    source.apply({ batchId: 'e', origin: HUMAN, base: 1, ops: [{ op: 'edit', id: source.getState().doc.blocks[0].id, find: 'First', replace: 'Mine' }] });
+    await source.save();
+    await source.resolveConflict('theirs');
+    assert.equal(source.file().text, remote);
+  });
+
+  it('markdown: a restored draft keeps the bytes of the file it was based on', async () => {
+    const odd = '# Week 3\n\nFirst __paragraph__.\n\n* one\n\nLast.\n';
+    const store = new Map();
+    const storage = { get: async k => store.get(k), set: async (k, v) => void store.set(k, v), remove: async k => void store.delete(k) };
+    const first = createJinshuSource({ key: 'w3', format: 'markdown', initialText: odd, storage });
+    const last = first.getState().doc.blocks.at(-1).id;
+    first.apply({ batchId: 'a', origin: HUMAN, base: 1, ops: [{ op: 'edit', id: last, find: 'Last', replace: 'End' }] });
+    await wait(0);
+    const second = createJinshuSource({ key: 'w3', format: 'markdown', storage });
+    assert.equal(await second.restoreDraft(), true);
+    assert.equal(second.file().text, odd.replace('Last.', 'End.'));
+    assert.equal(second.getState().canUndo, false);
+  });
+});
+
+describe('save state reaches the page over the channel', () => {
+  it('sends dirty and saving as they change', async () => {
+    let finish;
+    const source = createJinshuSource({ key: 'w3', initialDoc: lesson(), save: () => new Promise(r => (finish = r)) });
+    const ch = fakeChannel();
+    source.serve(ch, { role: 'editor' });
+    const states = () => ch.sent.filter(m => m.t === 'saveState');
+    assert.deepEqual(states().at(-1), { t: 'saveState', dirty: false, saveStatus: 'saved' });
+    ch.emit({ t: 'ops', batch: { batchId: 'b', origin: HUMAN, base: 1, ops: [{ op: 'edit', id: 'p1', find: 'First', replace: 'New' }] } });
+    assert.deepEqual(states().at(-1), { t: 'saveState', dirty: true, saveStatus: 'dirty' });
+    ch.emit({ t: 'save', action: 'save', requestId: 'q1' });
+    await wait(0);
+    assert.equal(states().at(-1).saveStatus, 'saving');
+    finish({ ok: true, version: 'v2' });
+    await wait(0);
+    assert.deepEqual(states().at(-1), { t: 'saveState', dirty: false, saveStatus: 'saved' });
+    assert.deepEqual(ch.sent.find(m => m.t === 'saveResult'), { t: 'saveResult', requestId: 'q1', ok: true });
+    const count = states().length;
+    source.setFocus(['p1']);
+    assert.equal(states().length, count, 'unchanged state is not resent');
+  });
+
+  it('a save that meets a conflict answers not ok', async () => {
+    const source = createJinshuSource({ key: 'w3', initialDoc: lesson(), save: async () => ({ ok: false, conflict: true, remoteDoc: lesson(), remoteVersion: 'v9' }) });
+    const ch = fakeChannel();
+    source.serve(ch, { role: 'editor' });
+    ch.emit({ t: 'ops', batch: { batchId: 'b', origin: HUMAN, base: 1, ops: [{ op: 'edit', id: 'p1', find: 'First', replace: 'New' }] } });
+    ch.emit({ t: 'save', action: 'save', requestId: 'q1' });
+    await wait(0);
+    assert.deepEqual(ch.sent.find(m => m.t === 'saveResult'), { t: 'saveResult', requestId: 'q1', ok: false });
+  });
+});
+
+describe('focus belongs to each editor', () => {
+  const AGENT = { kind: 'agent', id: 'codex' };
+  const agentOp = (source, id) => source.apply({ batchId: `a${id}${source.getState().revision}`, origin: AGENT, base: source.getState().revision, ops: [{ op: 'edit', id, find: 'paragraph', replace: 'para' }] });
+
+  it("one editor blurring keeps another's focus, and a closed editor's focus goes", () => {
+    const source = createJinshuSource({ key: 'w3', initialDoc: lesson() });
+    const one = fakeChannel();
+    const two = fakeChannel();
+    source.serve(one, { role: 'editor' });
+    source.serve(two, { role: 'editor' });
+    one.emit({ t: 'focus', blockIds: ['p1'] });
+    two.emit({ t: 'focus', blockIds: ['p2'] });
+    two.emit({ t: 'focus', blockIds: [] });
+    assert.deepEqual(source.getState().focusIds, ['p1']);
+    assert.ok(agentOp(source, 'p1').suggestionId, 'still downgraded on the focused block');
+    one.close();
+    assert.deepEqual(source.getState().focusIds, []);
+    assert.equal(agentOp(source, 'p1').suggestionId, undefined);
+  });
+});
+
+describe('a draft edited back to what was saved is clean', () => {
+  it('undo to the saved content clears dirty; redo makes it dirty again', () => {
+    const source = createJinshuSource({ key: 'w3', initialDoc: lesson() });
+    source.apply({ batchId: 'e', origin: HUMAN, base: 1, ops: [{ op: 'text', target: { blockId: 'p1' }, from: 0, to: 5, insert: [{ text: 'Only' }] }] });
+    assert.equal(source.getState().dirty, true);
+    source.undo();
+    assert.equal(source.getState().dirty, false);
+    assert.equal(source.getState().saveStatus, 'saved');
+    source.redo();
+    assert.equal(source.getState().dirty, true);
+  });
+
+  it('retyping the saved text by hand is clean too', () => {
+    const source = createJinshuSource({ key: 'w3', initialDoc: lesson() });
+    source.apply({ batchId: 'a', origin: HUMAN, base: 1, ops: [{ op: 'text', target: { blockId: 'p1' }, from: 0, to: 5, insert: [{ text: 'Only' }] }] });
+    source.apply({ batchId: 'b', origin: HUMAN, base: source.getState().revision, ops: [{ op: 'text', target: { blockId: 'p1' }, from: 0, to: 4, insert: [{ text: 'First' }] }] });
+    assert.equal(source.getState().dirty, false);
+  });
+});

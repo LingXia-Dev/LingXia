@@ -58,6 +58,7 @@ import type {
   OpBatch,
   Origin,
   Suggestion,
+  TextTarget,
 } from '../schema/types';
 import type { AgentActivity, AgentBatch, ChannelClientMsg, ChannelServerMsg } from '../source/types';
 import { BlockBody, JinshuSkeleton, blockTopSpacing, renderBlock, type BlockRenderContext, type CustomBlockRenderer } from '../internal/Blocks';
@@ -86,6 +87,7 @@ import { stableCallbacks } from '../internal/stable';
 import {
   linkAt,
   markSpanAt,
+  SHORTHAND_MARKS,
   splitAt,
   toggleMarkAt,
   type TextRange,
@@ -118,9 +120,9 @@ export interface JinshuEditorProps {
   readonly onAskAgent?: (blockIds: readonly string[]) => void;
   /** Enable `useLeaveGuard` when draft has unsaved changes. @default true */
   readonly hasLeaveGuard?: boolean;
-  /** Unsaved changes, for the leave guard and the toolbar's Save; falls back to `saveStatus === 'dirty'`. */
+  /** Unsaved changes, for the leave guard and the toolbar's Save; on a live `channel` the source's, else `saveStatus === 'dirty'`. */
   readonly isDirty?: boolean;
-  /** Where saving stands, as the page hears it from Logic; on a live `channel` the toolbar shows it, with Save or Retry. */
+  /** Where saving stands; on a live `channel` the source sends it. The toolbar shows it, with Save or Retry. */
   readonly saveStatus?: 'saved' | 'dirty' | 'saving' | 'failed';
   /** Shared with a `JinshuOutline` from `useJinshuNav()`. */
   readonly nav?: JinshuNavHandle;
@@ -158,6 +160,8 @@ interface EditorLiveState {
   readonly hasMedia?: boolean;
   readonly format?: JinshuFormat;
   readonly autoSave?: boolean;
+  /** Where saving stands, as the source sends it. */
+  readonly saveState?: { readonly dirty: boolean; readonly saveStatus: 'saved' | 'dirty' | 'saving' | 'failed' };
   /** Upload progress by block id, 0–1, while a picked file uploads. */
   readonly uploads?: Readonly<Record<string, number>>;
   readonly saveRequest?: { readonly origin: Origin; readonly summary?: string } | null;
@@ -208,9 +212,47 @@ const SLASH_ITEMS: readonly SlashItem[] = [
 const lastWorked = new WeakMap<object, string>();
 // Where the caret or selection is in the open text field, by its draft cell; read when a format applies, so moving it renders nothing.
 const selections = new WeakMap<object, TextRange & { readonly id: string | null }>();
-const MARKS = ['**', '*', '++', '~~', '`', '==', '^', '~'] as const;
+const MARKS = SHORTHAND_MARKS;
 // Block editors holding a field open, per editor, with how to save and close each.
 const openEditors = new WeakMap<object, Map<string, { readonly close: () => void; readonly save: () => void }>>();
+// A page-held document comes back only on the page's next render; edits made before then build on this copy.
+const heldDocs = new WeakMap<object, { readonly from: JinshuDocument; readonly doc: JinshuDocument }>();
+
+function holdsBlock(doc: JinshuDocument | null, id: string): boolean {
+  let found = false;
+  if (doc) walkBlocks(doc.blocks, blk => { if (blk.id === id) found = true; });
+  return found;
+}
+
+/** A field the reader sees, with the text op target that edits it. */
+interface TextField {
+  readonly target: TextTarget;
+  readonly text: string;
+  /** Absent for code, whose text carries no marks. */
+  readonly runs?: readonly Inline[];
+}
+const textFieldCache = new WeakMap<JinshuBlock, readonly TextField[]>();
+
+/** Every piece of text the reader sees in `block` and the blocks inside it, as Find searches it. */
+function textFields(block: JinshuBlock): readonly TextField[] {
+  const hit = textFieldCache.get(block);
+  if (hit) return hit;
+  const out: TextField[] = [];
+  const runs = (target: TextTarget, inlines: readonly Inline[] | undefined) => {
+    if (inlines && inlines.length > 0) out.push({ target, text: inlinePlainProjection(inlines), runs: inlines });
+  };
+  walkBlocks([block], blk => {
+    if (blk.type === 'paragraph' || blk.type === 'heading') runs({ blockId: blk.id }, blk.runs);
+    else if (blk.type === 'list') for (const item of blk.items) runs({ blockId: item.id }, item.runs);
+    else if (blk.type === 'table') for (const row of blk.rows) row.cells.forEach((cell, col) => runs({ blockId: blk.id, field: { cell: [row.id, col] } }, cell));
+    else if (blk.type === 'callout') runs({ blockId: blk.id, field: 'title' }, blk.title);
+    else if (blk.type === 'details') runs({ blockId: blk.id, field: 'summary' }, blk.summary);
+    else if (blk.type === 'image' || blk.type === 'video') runs({ blockId: blk.id, field: 'caption' }, blk.caption);
+    else if (blk.type === 'code') out.push({ target: { blockId: blk.id, field: 'code' }, text: blk.code });
+  });
+  textFieldCache.set(block, out);
+  return out;
+}
 
 /** The blocks a wide toolbar offers in one tap; the rest stay in the insert palette. */
 const QUICK_INSERTS: readonly { readonly id: string; readonly icon: IconButtonProps['icon'] }[] = [
@@ -704,7 +746,7 @@ export function JinshuEditor(props: JinshuEditorProps) {
   const findQuery = useLocal<string>(`jinshu-ed-find-q-${docKey}`, '');
   const replaceQuery = useLocal<string>(`jinshu-ed-repl-q-${docKey}`, '');
   const queueCursor = useLocal<number>(`jinshu-ed-queue-cur-${docKey}`, 0);
-  const changeCursor = useLocal<number>(`jinshu-ed-change-cur-${docKey}`, 0);
+  const changeCursor = useLocal(`jinshu-ed-change-at-${docKey}`, { batch: '', at: 0 });
   // The selected block shows its inspector only after "properties".
   const inspecting = useLocal<boolean>(`jinshu-ed-inspect-${docKey}`, false);
   const previewId = useLocal<string | null>(`jinshu-ed-preview-${docKey}`, null);
@@ -764,19 +806,14 @@ export function JinshuEditor(props: JinshuEditorProps) {
                   : null,
             });
           } else if (msg.t === 'flush') {
-            // Auto-save is due mid-typing: the field's text goes into the document and the field stays open.
-            const block = cur.doc?.blocks.find(b => b.id === activeId.value);
-            if (block && (block.type === 'paragraph' || block.type === 'heading' || block.type === 'math') && slashAfterId.value !== block.id) {
-              commitActiveDraft(block, draftText.value, cur.revision);
-            }
-            // An open list, quote, callout, code block or table cell saves too, and stays open.
-            for (const { save } of openEditors.get(activeId)?.values() ?? []) {
-              try {
-                save();
-              } catch {
-                // Its block left the document; nothing is left to save.
-              }
-            }
+            // Auto-save is due mid-typing.
+            flushDrafts();
+          } else if (msg.t === 'saveState') {
+            live.set({ ...cur, saveState: { dirty: msg.dirty, saveStatus: msg.saveStatus } });
+          } else if (msg.t === 'saveResult' && msg.requestId === leaving.value) {
+            // Save and leave: leave only once the save landed; a conflict or failure stays to show it.
+            leaving.set(null);
+            guard.answer(msg.ok);
           } else if (msg.t === 'uploadProgress') {
             const uploads = { ...(cur.uploads ?? {}) };
             if (msg.ratio >= 1) delete uploads[msg.blockId];
@@ -786,6 +823,11 @@ export function JinshuEditor(props: JinshuEditorProps) {
             source.set({ text: msg.text, entered: cur.doc as JinshuDocument, enteredText: msg.text, base: msg.revision });
           } else if (msg.t === 'ack' && source.value?.pending === msg.batchId) {
             source.set(null);
+          } else if (msg.t === 'reject' && leaving.value !== null && source.value?.pending !== msg.batchId) {
+            // A flushed draft was refused: leaving now would lose it.
+            leaving.set(null);
+            guard.answer(false);
+            if (msg.snapshot) live.set({ ...cur, doc: msg.snapshot as JinshuDocument, revision: msg.revision ?? cur.revision });
           } else if (msg.t === 'reject' && source.value?.pending === msg.batchId) {
             // The text stays: the person decides what to do with it.
             const stale = msg.problems.some(p => p.code === 'STALE_BLOCK');
@@ -802,10 +844,31 @@ export function JinshuEditor(props: JinshuEditorProps) {
       })
     : null;
 
-  const isDirty = props.isDirty ?? props.saveStatus === 'dirty';
+  const sourceSave = activeChannel ? (live.value as EditorLiveState).saveState : undefined;
+  const saveStatus = props.saveStatus ?? sourceSave?.saveStatus;
+  const isDirty = props.isDirty ?? sourceSave?.dirty ?? saveStatus === 'dirty';
+  // The save "Save and leave" waits for; the guard stays up meanwhile, or turning clean would answer "stay".
+  const leaving = useLocal<string | null>(`jinshu-ed-leaving-${docKey}`, null);
   const guard = useLeaveGuard(`jinshu-draft-${docKey}`, {
-    enabled: !props.isReadOnly && props.hasLeaveGuard !== false && isDirty,
+    enabled: !props.isReadOnly && props.hasLeaveGuard !== false && (isDirty || leaving.value !== null),
   });
+
+  /** Puts text still in open fields into the document; the fields stay open. */
+  const flushDrafts = () => {
+    const cur = live.value as EditorLiveState;
+    const block = cur.doc?.blocks.find(b => b.id === activeId.value);
+    if (block && (block.type === 'paragraph' || block.type === 'heading' || block.type === 'math') && slashAfterId.value !== block.id) {
+      commitActiveDraft(block, draftText.value, cur.revision);
+    }
+    // An open list, quote, callout, code block or table cell saves too.
+    for (const { save } of openEditors.get(activeId)?.values() ?? []) {
+      try {
+        save();
+      } catch {
+        // Its block left the document; nothing is left to save.
+      }
+    }
+  };
 
   const liveState = live.value as EditorLiveState;
   const doc = activeChannel ? liveState.doc : (props.doc ?? null);
@@ -838,46 +901,71 @@ export function JinshuEditor(props: JinshuEditorProps) {
     chan?.send(msg);
   };
 
+  /** The document with every edit sent so far, read in a handler: the render's `doc` lags one behind. */
+  const currentDoc = (): JinshuDocument | null => {
+    if (activeChannel) return (live.value as EditorLiveState).doc;
+    const held = heldDocs.get(activeId);
+    return held && held.from === props.doc ? held.doc : (props.doc ?? null);
+  };
+
   /** Sends one human batch; returns its id on a live channel. */
   const dispatchOps = (ops: readonly AnyJinshuOp[], base = liveState.revision): string | undefined => {
     if (readOnly || ops.length === 0) return undefined;
+    // Applied here first, so the page shows it at once (keys typed while a line-start rule swaps the field
+    // land in the new one); the ops sent on carry the ids this made, so the owner's copy agrees.
+    const from = currentDoc();
+    const local = from ? applyOps(from, ops, undefined, { format: docFormat }) : null;
+    const applied = local && !local.problems.some(p => p.severity === 'error') ? local : null;
+    const sent = applied?.ops ?? ops;
     if (chan) {
-      const batch: OpBatch = { batchId: newBlockId('ed'), origin: HUMAN_ORIGIN, base, ops, mode: 'direct' };
-      // Shown at once, so keys typed while a line-start rule swaps the field land in the new one;
       // Logic's snapshot replaces this copy. A batch the page cannot apply alone waits for Logic.
-      const cur = live.value as EditorLiveState;
-      if (cur.doc) {
-        const local = applyOps(cur.doc, ops, undefined, { format: docFormat });
-        if (!local.problems.some(p => p.severity === 'error')) live.set({ ...cur, doc: local.doc });
-      }
+      if (applied) live.set({ ...(live.value as EditorLiveState), doc: applied.doc });
+      const batch: OpBatch = { batchId: newBlockId('ed'), origin: HUMAN_ORIGIN, base, ops: sent, mode: 'direct' };
       sendMsg({ t: 'ops', batch });
       return batch.batchId;
     }
-    props.onOps?.(ops);
+    if (applied && props.doc) heldDocs.set(activeId, { from: props.doc, doc: applied.doc });
+    props.onOps?.(sent);
     return undefined;
   };
 
-  const commitActiveDraft = (block: JinshuBlock, nextValue: string, base?: number) => {
-    const prevValue = shorthandOf(block, dialect);
-    if (nextValue === prevValue) return;
+  /** The ops that write the open field's text into `block`; none when it reads back the same. */
+  const draftOps = (block: JinshuBlock, nextValue: string): AnyJinshuOp[] => {
+    if (nextValue === shorthandOf(block, dialect)) return [];
     if (block.type === 'paragraph' || block.type === 'heading') {
       const runs = shorthandToInlines(nextValue, { inHeading: block.type === 'heading', existingAtoms: atomsIn(block.runs), ...dialect });
       // A draft that reads back to the same runs (e.g. only escapes differ) is no edit.
-      if (JSON.stringify(normalizeInlines(runs)) === JSON.stringify(normalizeInlines(block.runs))) return;
-      dispatchOps([
-        {
-          op: 'replace',
-          id: block.id,
-          blocks: [
-            block.type === 'heading'
-              ? { id: block.id, type: 'heading', level: block.level, runs }
-              : { id: block.id, type: 'paragraph', runs },
-          ],
-        },
-      ], base);
-    } else if (block.type === 'math') {
-      dispatchOps([{ op: 'update', id: block.id, attrs: { latex: nextValue } }]);
+      if (JSON.stringify(normalizeInlines(runs)) === JSON.stringify(normalizeInlines(block.runs))) return [];
+      return [{ op: 'replace', id: block.id, blocks: [block.type === 'heading' ? { id: block.id, type: 'heading', level: block.level, runs } : { id: block.id, type: 'paragraph', runs }] }];
     }
+    return block.type === 'math' ? [{ op: 'update', id: block.id, attrs: { latex: nextValue } }] : [];
+  };
+
+  const commitActiveDraft = (block: JinshuBlock, nextValue: string, base?: number) => {
+    const ops = draftOps(block, nextValue);
+    if (ops.length > 0) dispatchOps(ops, base);
+  };
+
+  /**
+   * Turning `block` into `kind`, with the open field's text written in first, as ops and the block they
+   * make; null when it would lose content or the format cannot hold the result.
+   */
+  const turnIntoPlan = (block: JinshuBlock, kind: string): { readonly ops: readonly AnyJinshuOp[]; readonly made: JinshuBlock } | null => {
+    const op = turnIntoOp(block, kind);
+    if (!op || !doc) return null;
+    const typed = block.id === activeId.value ? draftOps(block, draftText.value) : [];
+    const ops = typed.length > 0 ? [{ ...typed[0], noteWord: op.noteWord }, op] : [op];
+    // The block alone is enough: a conversion never depends on the rest of the document.
+    const res = applyOps({ ...doc, blocks: [block] }, ops, undefined, { format: docFormat });
+    return res.problems.some(p => p.severity === 'error') ? null : { ops, made: res.doc.blocks[0] };
+  };
+  const turnInto = (block: JinshuBlock, kind: string) => {
+    const plan = turnIntoPlan(block, kind);
+    if (!plan) return;
+    dispatchOps(plan.ops);
+    if (block.id !== activeId.value) return;
+    if (plan.made.type === 'paragraph' || plan.made.type === 'heading') draftText.set(shorthandOf(plan.made, dialect));
+    else activeId.set(null);
   };
 
   /** One selected block at a time; selecting closes the inspector and ends text editing. */
@@ -1137,8 +1225,18 @@ export function JinshuEditor(props: JinshuEditorProps) {
       holdOpen(blockId: string, close: (() => void) | null, save?: () => void) {
         let held = openEditors.get(activeId);
         if (!held) openEditors.set(activeId, (held = new Map()));
-        if (close) held.set(blockId, { close, save: save ?? (() => {}) });
-        else held.delete(blockId);
+        if (!close) {
+          held.delete(blockId);
+          return;
+        }
+        // An editor whose block left the document (deleted, undone, replaced) has nothing to save: it drops out.
+        const map = held;
+        const present = () => {
+          if (holdsBlock(currentDoc(), blockId)) return true;
+          map.delete(blockId);
+          return false;
+        };
+        held.set(blockId, { close: () => void (present() && close()), save: () => void (present() && save?.()) });
       },
       onTyping() {
         if ((live.value as EditorLiveState).autoSave) sendMsg({ t: 'typing' });
@@ -1162,22 +1260,28 @@ export function JinshuEditor(props: JinshuEditorProps) {
   // Replaces what Find counts, ignoring case as it does, with the replacement as plain text taking
   // the marks of the text it replaces. Matches go last to first so earlier offsets stay put.
   const runReplaceAll = () => {
-    if (!doc || !findQuery.value) return;
+    if (!findQuery.value) return;
+    // Open fields save first, so the replacement lands on what they hold and leaving them cannot write the old text back.
+    closeOpenEditors();
+    const open = activeTextBlock();
+    if (open) commitActiveDraft(open, draftText.value);
+    const current = currentDoc();
+    if (!current) return;
     const needle = findQuery.value;
+    const insert = replaceQuery.value;
     const noteWord = note('@jinshu.note.replace', { text: needle });
     const ops: AnyJinshuOp[] = [];
-    for (const blk of doc.blocks) {
-      if (blk.type === 'paragraph' || blk.type === 'heading') {
-        for (const [from, to] of findMatches(inlinePlainProjection(blk.runs), needle).reverse()) {
-          ops.push({ op: 'text', target: { blockId: blk.id }, from, to, insert: replaceQuery.value ? [{ ...marksAt(blk.runs, from), text: replaceQuery.value }] : [], noteWord });
-        }
-      } else if (blk.type === 'code') {
-        for (const [from, to] of findMatches(blk.code, needle).reverse()) {
-          ops.push({ op: 'text', target: { blockId: blk.id, field: 'code' }, from, to, insert: replaceQuery.value ? [{ text: replaceQuery.value }] : [], noteWord });
+    for (const blk of current.blocks) {
+      for (const field of textFields(blk)) {
+        for (const [from, to] of findMatches(field.text, needle).reverse()) {
+          ops.push({ op: 'text', target: field.target, from, to, insert: insert ? [{ ...(field.runs ? marksAt(field.runs, from) : {}), text: insert }] : [], noteWord });
         }
       }
     }
     if (ops.length > 0) dispatchOps(ops);
+    // The open field takes the replaced text.
+    const after = open && currentDoc()?.blocks.find(b => b.id === open.id);
+    if (after && activeId.value === after.id) draftText.set(shorthandOf(after, dialect));
   };
 
   const renderCtx: BlockRenderContext = {
@@ -1193,7 +1297,7 @@ export function JinshuEditor(props: JinshuEditorProps) {
     ...stableCallbacks(live, {
       resolveSrc: props.resolveSrc,
       onLinkPress: props.onLinkPress,
-      onInPageLink: (id: string) => props.nav?.scrollTo(id),
+      onInPageLink: (id: string) => (props.nav ? props.nav.scrollTo(id) : reveal(`jinshu-${scope}-b-${id}`)),
       onFileAction: props.onFileAction,
       onOpenImage: readOnly ? undefined : (blockId: string) => selectBlock(selectedNonTextId.value === blockId ? null : blockId),
       onUpdateCustomAttrs: readOnly
@@ -1218,11 +1322,14 @@ export function JinshuEditor(props: JinshuEditorProps) {
     return q === '' || blockTypeLabel(item.id).toLowerCase().includes(q) || item.keywords.includes(q);
   });
 
+  // Matches by top-level block, counting text inside lists, tables, containers and columns.
   const matchingBlockIds = new Set<string>();
+  let matchCount = 0;
   if (showFind.value && findQuery.value && doc) {
     for (const blk of doc.blocks) {
-      const txt = blk.type === 'code' ? blk.code : blk.type === 'paragraph' || blk.type === 'heading' ? inlinePlainProjection(blk.runs) : '';
-      if (findMatches(txt, findQuery.value).length > 0) matchingBlockIds.add(blk.id);
+      const n = textFields(blk).reduce((sum, field) => sum + findMatches(field.text, findQuery.value).length, 0);
+      if (n > 0) matchingBlockIds.add(blk.id);
+      matchCount += n;
     }
   }
 
@@ -1230,11 +1337,11 @@ export function JinshuEditor(props: JinshuEditorProps) {
   const typedBlock = activeId.value && doc ? doc.blocks.find(blk => blk.id === activeId.value) : undefined;
   const hasChanges = isDirty || (typedBlock !== undefined && isInlineTextBlock(typedBlock) && draftText.value !== shorthandOf(typedBlock, dialect));
   // An auto-saving document is saving whenever it has changes: no Save to press, unless saving failed or waits on a conflict.
-  const savesItself = liveState.autoSave === true && props.saveStatus !== 'failed' && conflicts.length === 0;
+  const savesItself = liveState.autoSave === true && saveStatus !== 'failed' && conflicts.length === 0;
   const saveLabel =
-    props.saveStatus === 'saving' || (savesItself && hasChanges)
+    saveStatus === 'saving' || (savesItself && hasChanges)
       ? jinshuText('@jinshu.editor.save.saving')
-      : props.saveStatus === 'failed'
+      : saveStatus === 'failed'
         ? jinshuText('@jinshu.editor.save.failed')
         : hasChanges
           ? jinshuText('@jinshu.editor.save.unsaved')
@@ -1280,26 +1387,29 @@ export function JinshuEditor(props: JinshuEditorProps) {
     sendMsg({ t: 'save', action: accepted ? 'confirmAgentSave' : 'cancelAgentSave' });
   };
 
-  // Blocks the agent changed, by top-level block, for marks and the bar's View, which steps through them.
-  const changedIds: string[] = [];
-  if (doc) {
-    for (const batch of agentBatches) {
-      for (const id of batch.blockIds) {
-        const top = topLevelOf(id, doc);
-        if (top && !changedIds.includes(top)) changedIds.push(top);
-      }
+  // Blocks changed by every batch not yet dismissed or undone, by top-level block, are marked.
+  const topLevelIds = (batches: readonly AgentBatch[]): string[] => {
+    const ids = new Set<string>();
+    if (doc) for (const batch of batches) for (const id of batch.blockIds) {
+      const top = topLevelOf(id, doc);
+      if (top) ids.add(top);
     }
-  }
-  const changedOrder = doc ? doc.blocks.filter(b => changedIds.includes(b.id)).map(b => b.id) : [];
+    return doc ? doc.blocks.filter(b => ids.has(b.id)).map(b => b.id) : [];
+  };
+  const changedIds = topLevelIds(agentBatches);
+  // The bar is one batch, the latest: its count, View and Undo all mean that batch; dismissing it shows the one before.
   const latestBatch = agentBatches[agentBatches.length - 1];
+  const latestOrder = latestBatch ? topLevelIds([latestBatch]) : [];
+  // What View steps through, plus blocks the batch deleted.
+  const latestCount = latestOrder.length + (latestBatch && doc ? latestBatch.blockIds.filter(id => topLevelOf(id, doc) === null).length : 0);
   const dropBatch = (batchId: string) =>
     live.set({ ...liveState, agentBatches: agentBatches.filter(b => b.batchId !== batchId) });
   const revealBlock = (blockId: string) => reveal(`jinshu-${scope}-r-${blockId}`);
   const nextChange = () => {
-    if (changedOrder.length === 0) return;
-    const next = changeCursor.value % changedOrder.length;
-    changeCursor.set(next + 1);
-    revealBlock(changedOrder[next]);
+    if (!latestBatch || latestOrder.length === 0) return;
+    const at = changeCursor.value.batch === latestBatch.batchId ? changeCursor.value.at % latestOrder.length : 0;
+    changeCursor.set({ batch: latestBatch.batchId, at: at + 1 });
+    revealBlock(latestOrder[at]);
   };
 
   // Where each agent is working; a stream's mark rides on its preview instead.
@@ -1409,19 +1519,24 @@ export function JinshuEditor(props: JinshuEditorProps) {
   const canTurnInto = turnIntoValue !== null;
   const turnIntoLabel = blockTypeLabel(TURN_INTO.find(t => t.id === turnIntoValue)?.id ?? 'paragraph');
   const turnIntoKinds = TURN_INTO.filter(t => allows({ block: blockOfKind(t.id) }));
-  const turnIntoItems: DropdownMenuEntry[] = turnIntoKinds.map(t => ({
-    id: `turn-${t.id}`,
-    label: blockTypeLabel(t.id),
-    ...(t.id === turnIntoValue ? { icon: 'check' as const } : {}),
-    onClick: () => {
-      if (!activeBlock) return;
-      commitActiveDraft(activeBlock, draftText.value);
-      const op = turnIntoOp(activeBlock, t.id);
-      if (op) dispatchOps([op]);
-      if (t.id === 'paragraph' || t.id.startsWith('h')) draftText.set(shorthandOf(activeBlock, dialect));
-      else activeId.set(null);
-    },
-  }));
+  /** The turn-into choices for `block`: one that would lose content is shown disabled, saying so. */
+  const turnIntoEntries = (block: JinshuBlock, current: string | null, withCurrent: boolean) =>
+    turnIntoKinds
+      .filter(t => withCurrent || t.id !== current)
+      .map(t => {
+        const isCurrent = t.id === current;
+        const blocked = !isCurrent && turnIntoPlan(block, t.id) === null;
+        return {
+          id: `turn-${t.id}`,
+          label: blockTypeLabel(t.id),
+          ...(isCurrent ? { icon: 'check' as const } : {}),
+          ...(blocked ? { isDisabled: true, description: jinshuText('@jinshu.editor.format.turnIntoLoses') } : {}),
+          onClick: () => {
+            if (!isCurrent) turnInto(block, t.id);
+          },
+        };
+      });
+  const turnIntoItems: DropdownMenuEntry[] = activeBlock && canTurnInto ? turnIntoEntries(activeBlock, turnIntoValue, true) : [];
 
   const [selected, marksHere, markedIn] = caretMarks.value.split('|');
   const isHere = markedIn === (activeId.value ?? '');
@@ -1527,9 +1642,10 @@ export function JinshuEditor(props: JinshuEditorProps) {
     /></Tooltip>
   ));
 
-  const linkPopover = (
+  // In the format bar, and on a desktop also in the toolbar, where they work at a bare caret.
+  const linkPopover = (place: string) => (
     <Popover
-      key={`link-pop-${popEpoch.value}`}
+      key={`link-pop-${place}-${popEpoch.value}`}
       label={jinshuText('@jinshu.editor.link.insert')}
       onOpenChange={isOpen => {
         const { start, end } = caretRange();
@@ -1588,13 +1704,19 @@ export function JinshuEditor(props: JinshuEditorProps) {
         </view>
       }
     >
-      <Tooltip content={jinshuText('@jinshu.editor.link.title')} placement="bottom"><IconButton label={jinshuText('@jinshu.editor.link.title')} icon="link" size="sm" isDisabled={!canFormatInline} /></Tooltip>
+      <Tooltip content={jinshuText('@jinshu.editor.link.title')} placement="bottom"><IconButton
+        label={jinshuText('@jinshu.editor.link.title')}
+        icon="link"
+        size="sm"
+        isDisabled={!canFormatInline}
+        disabledMessage={place === 'toolbar' ? jinshuText('@jinshu.editor.link.needsText') : undefined}
+      /></Tooltip>
     </Popover>
   );
 
-  const mathPopover = (
+  const mathPopover = (place: string) => (
     <Popover
-      key={`math-pop-${popEpoch.value}`}
+      key={`math-pop-${place}-${popEpoch.value}`}
       label={jinshuText('@jinshu.editor.math.insert')}
       onOpenChange={isOpen => {
         const { start, end } = caretRange();
@@ -1656,11 +1778,11 @@ export function JinshuEditor(props: JinshuEditorProps) {
       {allows({ mark: 'strike' }) && markButton('strikethrough', jinshuText('@jinshu.editor.format.strike'), '~~')}
       {allows({ mark: 'code' }) && markButton('code', jinshuText('@jinshu.editor.format.code'), '`')}
       {allows({ mark: 'highlight' }) && markButton('highlight', jinshuText('@jinshu.editor.format.highlight'), '==')}
-      {allows({ mark: 'link' }) && linkPopover}
+      {allows({ mark: 'link' }) && linkPopover('format')}
       <ToolbarSep />
       {allows({ mark: 'script' }) && markButton('superscript', jinshuText('@jinshu.editor.format.superscript'), '^')}
       {allows({ mark: 'script' }) && markButton('subscript', jinshuText('@jinshu.editor.format.subscript'), '~')}
-      {mathPopover}
+      {mathPopover('format')}
     </>
   );
 
@@ -1734,6 +1856,14 @@ export function JinshuEditor(props: JinshuEditorProps) {
               <Popover key={`add-pop-${popEpoch.value}`} label={jinshuText('@jinshu.editor.insert')} content={insertPanel(`top-${docKey}`, insertAfter)}>
                 <Tooltip content={jinshuText('@jinshu.editor.insert')} placement="bottom"><IconButton label={jinshuText('@jinshu.editor.insert')} icon="add" size="sm" data-testid={props['data-testid'] && `${props['data-testid']}-toolbar-add`} /></Tooltip>
               </Popover>
+              {/* The floating bar shows only over a selection, so a caret reaches link and equation here. */}
+              {isDesktop && (
+                <>
+                  <ToolbarSep />
+                  {allows({ mark: 'link' }) && linkPopover('toolbar')}
+                  {mathPopover('toolbar')}
+                </>
+              )}
             </view>
 
             <view className={e.toolbarEnd.base}>
@@ -1787,17 +1917,17 @@ export function JinshuEditor(props: JinshuEditorProps) {
                     <Tooltip content={jinshuText('@jinshu.editor.history')} placement="bottom"><IconButton label={jinshuText('@jinshu.editor.history')} icon="clock" size="sm" /></Tooltip>
                   </Popover>
                   {wordCount}
-                  {!savesItself && (hasChanges || props.saveStatus === 'failed' || props.saveStatus === 'saving') ? (
+                  {!savesItself && (hasChanges || saveStatus === 'failed' || saveStatus === 'saving') ? (
                     <Button
-                      label={props.saveStatus === 'saving' ? jinshuText('@jinshu.editor.save.saving') : props.saveStatus === 'failed' ? jinshuText('@jinshu.editor.save.retry') : jinshuText('@jinshu.editor.save')}
+                      label={saveStatus === 'saving' ? jinshuText('@jinshu.editor.save.saving') : saveStatus === 'failed' ? jinshuText('@jinshu.editor.save.retry') : jinshuText('@jinshu.editor.save')}
                       size="sm"
-                      variant={props.saveStatus === 'failed' ? 'destructive' : 'primary'}
-                      isDisabled={props.saveStatus === 'saving'}
+                      variant={saveStatus === 'failed' ? 'destructive' : 'primary'}
+                      isDisabled={saveStatus === 'saving'}
                       onClick={() => sendMsg({ t: 'save', action: 'save' })}
                     />
                   ) : (
                     <view className={e.saved.base}>
-                      {!hasChanges && props.saveStatus !== 'saving' && <vector aria-hidden paths={SAVED_PATH} viewBox={[0, 0, 16, 16]} className={e.saved.glyph} />}
+                      {!hasChanges && saveStatus !== 'saving' && <vector aria-hidden paths={SAVED_PATH} viewBox={[0, 0, 16, 16]} className={e.saved.glyph} />}
                       <text className={e.saved.label}>{saveLabel}</text>
                     </view>
                   )}
@@ -1827,8 +1957,8 @@ export function JinshuEditor(props: JinshuEditorProps) {
             onInput={v => replaceQuery.set(v)}
             className={e.findBar.field}
           />
-          {findQuery.value !== '' && <text className={e.findBar.count}>{jinshuText('@jinshu.editor.find.count', { count: matchingBlockIds.size })}</text>}
-          <Button label={jinshuText('@jinshu.editor.find.replaceAll')} size="sm" variant="tonal" isDisabled={!findQuery.value || matchingBlockIds.size === 0} onClick={runReplaceAll} />
+          {findQuery.value !== '' && <text className={e.findBar.count}>{jinshuText('@jinshu.editor.find.count', { count: matchCount })}</text>}
+          <Button label={jinshuText('@jinshu.editor.find.replaceAll')} size="sm" variant="tonal" isDisabled={!findQuery.value || matchCount === 0} onClick={runReplaceAll} />
           <Tooltip content={jinshuText('@jinshu.editor.find.close')} placement="bottom"><IconButton label={jinshuText('@jinshu.editor.find.close')} icon="close" size="sm" onClick={() => showFind.set(false)} /></Tooltip>
         </view>
       )}
@@ -1839,11 +1969,11 @@ export function JinshuEditor(props: JinshuEditorProps) {
           <text className={e.agentBar.text}>
             {jinshuText(latestBatch.away ? '@jinshu.editor.agent.changedAway' : '@jinshu.editor.agent.changed', {
               name: latestBatch.origin.label ?? latestBatch.origin.id,
-              count: latestBatch.blockIds.length,
+              count: latestCount,
             })}
           </text>
           <view className={e.agentBar.actions}>
-            {latestBatch.blockIds.length > 0 && doc && (
+            {latestOrder.length > 0 && (
               <Button
                 label={jinshuText('@jinshu.editor.agent.view')}
                 size="sm"
@@ -2082,19 +2212,13 @@ export function JinshuEditor(props: JinshuEditorProps) {
             const showGutter = !readOnly && isDesktop && (isHovered || isActive || gutterAddId.value === block.id);
 
             const blockMenuEntries: DropdownMenuEntry[] = [
-              ...(currentTurnInto(block) !== null
+              // Worked out only where the menu can open: each choice is tried on the block.
+              ...(currentTurnInto(block) !== null && (showGutter || isNonTextSelected)
                 ? ([
                     {
                       type: 'group',
                       label: jinshuText('@jinshu.editor.blockMenu.turnInto'),
-                      items: turnIntoKinds.filter(t => t.id !== currentTurnInto(block)).map(t => ({
-                        id: `t-${t.id}`,
-                        label: blockTypeLabel(t.id),
-                        onClick: () => {
-                          const op = turnIntoOp(block, t.id);
-                          if (op) dispatchOps([op]);
-                        },
-                      })),
+                      items: turnIntoEntries(block, currentTurnInto(block), false).map(entry => ({ ...entry, id: entry.id.replace('turn-', 't-') })),
                     },
                     { type: 'divider' },
                   ] as DropdownMenuEntry[])
@@ -2497,7 +2621,9 @@ export function JinshuEditor(props: JinshuEditorProps) {
       <Dialog
         isOpen={guard.pending !== null}
         onOpenChange={open => {
-          if (!open) guard.answer(false);
+          if (open) return;
+          leaving.set(null);
+          guard.answer(false);
         }}
         label={jinshuText('@jinshu.editor.leave.title')}
         description={jinshuText('@jinshu.editor.leave.description')}
@@ -2505,11 +2631,15 @@ export function JinshuEditor(props: JinshuEditorProps) {
           <>
             <Button label={jinshuText('@jinshu.editor.leave.stay')} variant="secondary" onClick={() => guard.answer(false)} />
             <Button
-              label={jinshuText('@jinshu.editor.leave.save')}
+              label={leaving.value !== null ? jinshuText('@jinshu.editor.save.saving') : jinshuText('@jinshu.editor.leave.save')}
               variant="primary"
+              isDisabled={leaving.value !== null}
               onClick={() => {
-                sendMsg({ t: 'save', action: 'save' });
-                guard.answer(true);
+                flushDrafts();
+                if (!chan) return guard.answer(true);
+                const requestId = newBlockId('save');
+                leaving.set(requestId);
+                sendMsg({ t: 'save', action: 'save', requestId });
               }}
             />
             <Button label={jinshuText('@jinshu.editor.leave.discard')} variant="destructive" onClick={() => guard.answer(true)} />

@@ -16,25 +16,38 @@ Status: preview. The schema and source are unit-tested in Node; each component h
 
 ## Use
 
-In the page's Logic, create a source and hand its channel to the page:
+In Logic, keep one source per document and bind it to the page that shows it:
 
 ```ts
-import { createJinshuSource } from '@liulidesign/jinshu/source';
+import { definePage, lx } from '@lingxia/logic';
+import { bindJinshuPage, createJinshuSources, type MinimalChannelEndpoint } from '@liulidesign/jinshu/source';
 
-const source = createJinshuSource({
-  key: 'lesson-42',
-  load: () => api.load('lesson-42'),                          // { doc, version }
-  save: (doc, baseVersion) => api.save('lesson-42', doc, baseVersion),
-  storage: {                                                  // unsaved drafts survive a crash
-    get: key => lx.storage.get(key),
-    set: (key, value) => lx.storage.set(key, value),
-    remove: key => lx.storage.delete(key),
+// One source per key for as long as Logic runs; pages and agent tools share it. Opening one restores
+// an unsaved draft, else calls `load`.
+export const documents = createJinshuSources(key => ({
+  load: () => api.load(key),                                    // { doc, version }
+  save: (doc, baseVersion) => api.save(key, doc, baseVersion),  // { ok: true, version }, or a conflict
+  storage: {                                                    // unsaved drafts survive a crash
+    get: k => lx.storage.get(k),
+    set: (k, value) => lx.storage.set(k, value),
+    remove: k => lx.storage.delete(k),
+  },
+}));
+
+export default definePage({
+  data: { dirty: false, saveStatus: 'saved' },                  // kept current by bindJinshuPage
+  setup(page) {
+    const bound = documents.open('lesson-42').then(source => source && bindJinshuPage(page, source));
+    return {
+      actions: {
+        // `params` carry the role the component opens with (editor or reader): pass them on.
+        syncDoc(params: unknown, channel: MinimalChannelEndpoint) {
+          void bound.then(b => b?.syncDoc(params, channel));
+        },
+      },
+    };
   },
 });
-
-definePage(page => ({
-  actions: { syncDoc: (_params, channel) => source.serve(channel) },
-}));
 ```
 
 In the page, give the channel to a reader or an editor:
@@ -51,10 +64,12 @@ export function render({ actions }) {
 }
 ```
 
+The editor hears where saving stands over the channel, so its Save button, saved mark and leave guard
+need no props; the flags `bindJinshuPage` keeps in `data` are for the page's own chrome.
 `JinshuView` reads the same channel, or takes a `doc` directly when nothing edits it.
 
 <!-- components:start -->
-4 components, each at its own import path:
+4 components, each at its own import path, and all of their exports from `@liulidesign/jinshu`:
 
 | Import | Exports | What it is |
 | --- | --- | --- |
@@ -68,6 +83,9 @@ export function render({ actions }) {
 | --- | --- |
 | `@liulidesign/jinshu/schema` | The format: types, builders (`paragraph`, `heading`, `table`…), `checkDocument`, `applyOps`, markup, diff, `defineBlock` |
 | `@liulidesign/jinshu/source` | Logic side: `createJinshuSource`, `createJinshuTools`, `bindJinshuPage` |
+
+These two have only their own paths, not the root: `source` runs in Logic, never in a page, and
+`schema`'s builders (`list`, `table`, `image`…) read as components beside them.
 
 The reference for each component is in `docs/<Name>.md` and the format in `docs/format.md`, both
 generated, with `catalog.json` holding the components for agents. `docs/design.md` explains the rules
@@ -128,11 +146,28 @@ or the app. A batch that fails validation changes nothing and returns its proble
 
 ## Agents
 
-`createJinshuTools(sources)` gives five tools with fixed names and parameters, the same in every app:
-`jinshu_list`, `jinshu_read`, `jinshu_edit`, `jinshu_undo`, `jinshu_save`. Register their
-`definitions` with your model and route calls to `tools.call(name, args, origin)`. `jinshu_read`
-returns markup with ids, optionally just the outline, a range, a search, or what changed since a
-revision; `jinshu_edit` needs the revision it read (`base`) and returns problems instead of throwing.
+`createJinshuTools({ documents })` returns five agent tools with fixed names and parameters, the
+same in every app: `jinshu_list`, `jinshu_read`, `jinshu_edit`, `jinshu_undo`, `jinshu_save`. Each is
+an `AgentTool` (name, summary, description, input schema, effect, `run`); register them once at launch
+with `lx.agent.provide`, and the host routes calls to them with the caller's identity:
+
+```ts
+const tools = createJinshuTools({
+  documents: {
+    list: query => api.search(query),                           // [{ key, title }]
+    open: key => documents.open(key),                           // the source pages use
+    peek: key => documents.peek(key),
+    pageOf: key => `pages/lesson?id=${key}`,                    // optional: where a person opens it
+  },
+  registry,                                                     // optional: your custom blocks
+});
+
+App({ onLaunch() { lx.agent.provide(tools); } });
+```
+
+`jinshu_read` returns markup with ids, optionally just the outline, a range, a search, or what changed
+since a revision; `jinshu_edit` needs the revision it read (`base`) and returns problems instead of
+throwing.
 
 ## Images, video, audio and files
 

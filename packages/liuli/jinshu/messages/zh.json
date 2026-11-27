@@ -143,6 +143,15 @@
   "@jinshu.editor.block.column": {
     "defaultMessage": "第 {index} 列"
   },
+  "@jinshu.editor.block.columnCount": {
+    "defaultMessage": "{count} 栏"
+  },
+  "@jinshu.editor.block.columnWider": {
+    "defaultMessage": "加宽第 {index} 栏"
+  },
+  "@jinshu.editor.block.columnsEqual": {
+    "defaultMessage": "等宽"
+  },
   "@jinshu.editor.block.deleteColumn": {
     "defaultMessage": "删除列"
   },
@@ -269,6 +278,9 @@
   "@jinshu.editor.block.quoteBody": {
     "defaultMessage": "引用内容"
   },
+  "@jinshu.editor.block.columnPlaceholder": {
+    "defaultMessage": "在此输入"
+  },
   "@jinshu.editor.block.quoteBodyPlaceholder": {
     "defaultMessage": "引用内容；空一行开始新段落"
   },
@@ -383,6 +395,9 @@
   "@jinshu.editor.format.turnInto": {
     "defaultMessage": "转换块类型"
   },
+  "@jinshu.editor.format.turnIntoLoses": {
+    "defaultMessage": "转换会丢失内容"
+  },
   "@jinshu.editor.format.underline": {
     "defaultMessage": "下划线"
   },
@@ -445,6 +460,9 @@
   },
   "@jinshu.editor.link.insert": {
     "defaultMessage": "插入链接"
+  },
+  "@jinshu.editor.link.needsText": {
+    "defaultMessage": "请先把光标放在段落或标题中"
   },
   "@jinshu.editor.link.sections": {
     "defaultMessage": "本文章节"
@@ -719,11 +737,17 @@
   "@jinshu.note.columnBack": {
     "defaultMessage": "前移列"
   },
+  "@jinshu.note.columnCount": {
+    "defaultMessage": "改为 {count} 栏"
+  },
   "@jinshu.note.columnDelete": {
     "defaultMessage": "删除列"
   },
   "@jinshu.note.columnForward": {
     "defaultMessage": "后移列"
+  },
+  "@jinshu.note.columnWidths": {
+    "defaultMessage": "调整栏宽"
   },
   "@jinshu.note.columnInsert": {
     "defaultMessage": "插入列"
@@ -817,6 +841,9 @@
   },
   "@jinshu.note.turnInto": {
     "defaultMessage": "转为{kind, select, paragraph {正文} heading {标题 {level}} bullet {无序列表} ordered {有序列表} task {任务列表} list {列表} quote {引用} callout {提示块} details {折叠块} columns {分栏} code {代码块} math {公式} table {表格} divider {分割线} image {图片} video {视频} audio {音频} file {文件} other {块}}"
+  },
+  "@jinshu.outline.status": {
+    "defaultMessage": "{heading}，{status, select, done {已完成} current {进行中} other {未解锁}}"
   },
   "@jinshu.outline.title": {
     "defaultMessage": "目录"

@@ -30,6 +30,8 @@ export type BlockDiffEntry =
       readonly wordDiff?: readonly WordDiffSegment[];
       readonly attrChanges: readonly AttrChange[];
       readonly fullBlockReplace: boolean;
+      /** Also moved, by the same measure as a `moved` entry; counted under `modified` only. */
+      readonly moved?: { readonly fromIndex: number; readonly toIndex: number };
     };
 
 export interface DocumentDiff {
@@ -137,6 +139,26 @@ function diffAttrs(before: JinshuBlock, after: JinshuBlock): AttrChange[] {
   return changes;
 }
 
+/** The values of one longest strictly increasing subsequence, in O(n log n). */
+function longestIncreasing(values: readonly number[]): Set<number> {
+  const tails: number[] = [];
+  const prev = new Array<number>(values.length).fill(-1);
+  for (let i = 0; i < values.length; i++) {
+    let lo = 0;
+    let hi = tails.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (values[tails[mid]] < values[i]) lo = mid + 1;
+      else hi = mid;
+    }
+    if (lo > 0) prev[i] = tails[lo - 1];
+    tails[lo] = i;
+  }
+  const out = new Set<number>();
+  for (let i = tails.length > 0 ? tails[tails.length - 1] : -1; i >= 0; i = prev[i]) out.add(values[i]);
+  return out;
+}
+
 /**
  * Aligns two documents by stable block `id` and computes block/word/attr diffs.
  */
@@ -183,7 +205,9 @@ export function diffDocuments(
     }
   }
 
-  let lastMatchedAIndex = -1;
+  // A block moved when it is outside the longest run of matched blocks still in their old order,
+  // so one block moving up is one move, not a move of everything it jumped over.
+  const stayed = longestIncreasing(b.blocks.map(blk => aIndexById.get(blk.id) ?? -1).filter(i => i >= 0));
 
   for (let bIdx = 0; bIdx < b.blocks.length; bIdx++) {
     const bBlock = b.blocks[bIdx];
@@ -196,8 +220,7 @@ export function diffDocuments(
 
     flushRemovedBefore(aIdx);
     const aBlock = aBlockById.get(bBlock.id)!;
-    const isMoved = aIdx < lastMatchedAIndex;
-    if (aIdx > lastMatchedAIndex) lastMatchedAIndex = aIdx;
+    const isMoved = !stayed.has(aIdx);
 
     const sameHash = aHashById.get(bBlock.id) === blockContentHash(bBlock);
     if (sameHash) {
@@ -247,6 +270,7 @@ export function diffDocuments(
       wordDiff,
       attrChanges,
       fullBlockReplace,
+      ...(isMoved ? { moved: { fromIndex: aIdx, toIndex: bIdx } } : {}),
     });
     modified += 1;
   }

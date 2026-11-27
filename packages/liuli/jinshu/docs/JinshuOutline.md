@@ -8,7 +8,7 @@ A Jinshu document's headings as a contents list that moves the reader and shows 
 import { useJinshuNav, extractOutline, JinshuOutline } from '@liulidesign/jinshu/JinshuOutline';
 ```
 
-JinshuOutline lists a document's headings, indented by level, as a contents list. Shared with a JinshuView or JinshuEditor through `useJinshuNav()`, pressing a heading scrolls the document to it and tints that heading as the one being read. An app can mark each section done, current or locked, as a course does.
+JinshuOutline lists a document's headings, indented by level, as a contents list. Shared with a JinshuView or JinshuEditor through `useJinshuNav()`, pressing a heading scrolls the document to it and tints that heading as the one being read; with `nav.onVisibleChange` on the scroll holding a JinshuView, the tint follows the reader's scrolling too. An app can mark each section done, current or locked, as a course does.
 
 ## Examples
 
@@ -38,6 +38,7 @@ export function Progress() {
 ### Beside the document
 
 ```tsx
+import { useView } from '@lingxia/view';
 import { createDocument, heading, paragraph } from '@liulidesign/jinshu/schema';
 import { JinshuView } from '@liulidesign/jinshu/JinshuView';
 import { JinshuOutline, useJinshuNav } from '@liulidesign/jinshu/JinshuOutline';
@@ -65,13 +66,17 @@ const guide = createDocument({
   ],
 });
 
-/** In a side column beside the document, sharing one nav handle: pressing a heading scrolls the reader to it. */
+/** Beside the document on a wide screen (above it on a phone), sharing one nav handle: pressing a heading scrolls the reader to it, and scrolling the reader moves the tint. */
 export function BesideTheDocument() {
   const nav = useJinshuNav('outline-beside');
+  // A phone has no room for a side column: the outline sits above the document instead.
+  const isSide = useView().env.sizeClass === 'regular';
   return (
-    <view className="flex-row items-start gap-6">
-      <JinshuOutline doc={guide} nav={nav} className="w-48 shrink-0" />
-      <JinshuView doc={guide} nav={nav} className="grow min-w-0" />
+    <view className={isSide ? 'flex-row items-start gap-6' : 'gap-4'}>
+      <JinshuOutline doc={guide} nav={nav} className={isSide ? 'w-48 shrink-0' : undefined} />
+      <scroll onVisibleChange={nav.onVisibleChange} className="grow min-w-0 max-h-72">
+        <JinshuView doc={guide} nav={nav} />
+      </scroll>
     </view>
   );
 }
@@ -132,6 +137,7 @@ export function InPopover() {
 | `nav` | `JinshuNavHandle` |  | Shared with the JinshuView or JinshuEditor it moves, from `useJinshuNav()`. |
 | `status` | `Readonly<Record<string, OutlineSectionStatus>>` |  | Each section's progress by heading id: `done`, `current` or `locked`, shown at the row's end. |
 | `title` | `string` |  | The outline's heading and accessible name. Defaults to "Contents" in the page's language. |
+| `isTitleHidden` | `boolean` | `false` | Hides the drawn title, for a sheet or popover that already shows one; it stays the accessible name. |
 | `onSelect` | `((headingId: string) => void)` |  | A heading was pressed; with `nav`, the reader also scrolls to it. |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  |  |
@@ -158,8 +164,7 @@ export function InPopover() {
 - Pattern: none.
 - Name: title.
 - Description: none.
-- Each heading is a button named by its text.
-- The status mark is a glyph read as it is drawn; say what done and locked mean in the page around it when it matters.
+- Each heading is a button named by its text, followed by its status in words when it has one; the status mark itself is hidden.
 
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
@@ -173,14 +178,14 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 ## Guidance
 
-- Do: Share one `useJinshuNav()` handle between the outline and the document it moves.
+- Do: Share one `useJinshuNav()` handle between the outline and the document it moves, and pass `nav.onVisibleChange` to the scroll holding the document.
 - Do: Put it in a side column on a wide screen, and behind a Contents button on a phone.
 - Do: Take the headings out in Logic with `extractOutline` and pass `items` when the page does not hold the document.
 - Don't: Use it for a document with one or two headings; there is nothing to move between.
 
 ## Limits
 
-- The tinted heading is the one last chosen; scrolling the document by hand does not move it.
+- The tint follows scrolling only beside a JinshuView whose scroll reports to the nav; beside a JinshuEditor it is the heading last chosen.
 - A locked section stays pressable; the app decides what opening it does.
 - An empty document draws nothing.
 

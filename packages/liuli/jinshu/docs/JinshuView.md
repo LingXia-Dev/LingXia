@@ -164,10 +164,10 @@ export function Loading() {
 | `doc` | `JinshuDocument \| null` |  | The document, held by the page: `null` says it is unavailable, `undefined` that it is still loading. Leave it out to read a live `channel`. |
 | `channel` | `JinshuChannelAction` |  | The page's `syncDoc` action, which Logic answers with `source.serve`: the reader follows the live document. |
 | `docKey` | `string` |  | Which document `channel` serves. |
-| `nav` | `JinshuNavHandle` |  | Shared with a `JinshuOutline` from `useJinshuNav()`: pressing a heading in the outline scrolls the reader to it. |
+| `nav` | `JinshuNavHandle` |  | From `useJinshuNav()`, shared with a `JinshuOutline`: pressing a heading scrolls the reader to it. Give `nav.onVisibleChange` to the `<scroll>` holding the reader to follow the heading being read and report dwell and position. |
 | `resume` | `JinshuProgress` |  | Saved progress: offers to continue at its position and resumes media where it stopped. |
 | `openAt` | `string` |  | A top-level block to open at, once: where an agent's change landed (a tool result's `page`). |
-| `onObserve` | `((events: readonly Observation[]) => void)` |  | What was read and played, in batches: dwell per block, played media ranges, the reading position, events from custom blocks. Facts only; the app decides what counts as done. |
+| `onObserve` | `((events: readonly Observation[]) => void)` |  | What was read and played, in batches: played media ranges and events from custom blocks; dwell per block and the reading position once `nav` hears the scroll. Facts only; the app decides what counts as done. |
 | `filePolicy` | `FilePolicy` |  | Whether files may show inline or only as attachments. |
 | `mediaPolicy` | `MediaPolicy` |  | How media may be scrubbed (`any`, `played-only`, `none`) and the fastest rate offered. |
 | `resolveSrc` | `((src: string) => string)` |  | Turns a block's `src` into what the page loads: a signed URL, a custom scheme. |
@@ -246,6 +246,7 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 - Do: Pass `resume` from the progress you stored, so a returning reader is offered their place.
 - Do: Use `mediaPolicy` to keep a required video from being skipped; say so near it in the page if it matters.
 - Do: Keep what `onObserve` reports and decide completion in Logic; the reader reports facts, not grades.
+- Do: Pass `nav.onVisibleChange` from `useJinshuNav()` to the `<scroll>` holding the reader, with the same `nav` on the reader, for dwell, position and pausing media that scrolls away.
 - Don't: Rebuild the document in the page to change one block; send ops through the source.
 - Don't: Put interactive app content in a block as text; register it as an `x-` block with `customBlocks`.
 
@@ -259,6 +260,8 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 - The reader shows no change bar or review queue; an agent's changes appear in place, briefly tinted with `hasUpdateHighlights`. Changes made while no editor was open wait for the next `JinshuEditor`.
 - `openAt` brings the block to the nearest edge of the scroll, not to its top.
+- Dwell is measured per top-level block from scrolling alone: time with the page hidden or the reader away shows as one long `idleMs` stretch, and time since the last scroll is not reported when the page closes.
+- Every block is mounted; the page's scroll belongs to the app, so the reader does not mount blocks by viewport.
 - It has no AI entry of its own: an agent reaches documents only through the tools the app registers with `createJinshuTools`.
 
 Related: JinshuEditor, JinshuOutline, JinshuDiff, VideoControls, Lightbox.

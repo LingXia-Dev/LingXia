@@ -284,11 +284,22 @@ function buildOperationsSchema(): Record<string, unknown> {
     if (names.length > 0) updatable[type] = names.join(', ');
   }
   updatable['list item'] = updatableFields(LIST_ITEM_FIELDS).map(f => f.name).join(', ');
-  const attrProps: Record<string, unknown> = {};
+  // One name may mean different types on different blocks (callout title is inlines, audio title a
+  // string): each name takes every type it has, and null where it is optional anywhere.
+  const variants = new Map<string, { schemas: Map<string, Record<string, unknown>>; nullable: boolean }>();
   for (const fields of [...Object.values(BLOCK_FIELDS), LIST_ITEM_FIELDS]) {
     for (const f of updatableFields(fields)) {
-      if (!(f.name in attrProps)) attrProps[f.name] = fieldJsonSchema(f);
+      const entry = variants.get(f.name) ?? { schemas: new Map(), nullable: false };
+      const schema = fieldJsonSchema(f);
+      entry.schemas.set(JSON.stringify(schema), schema);
+      if (!f.required) entry.nullable = true;
+      variants.set(f.name, entry);
     }
+  }
+  const attrProps: Record<string, unknown> = {};
+  for (const [name, { schemas, nullable }] of variants) {
+    const options = [...schemas.values(), ...(nullable ? [{ type: 'null' }] : [])];
+    attrProps[name] = options.length === 1 ? options[0] : { anyOf: options };
   }
   return {
     type: 'array',

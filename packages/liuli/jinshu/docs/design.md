@@ -110,10 +110,11 @@ The draft lives in Logic and changes with every edit, by a person or an agent; t
 on the server and changes only through `save()`. Saving sends the draft's revision with the
 `baseVersion` it was loaded from. Editing may continue while a save is in flight: `dirty` stays true
 until a save covers the latest revision. A version mismatch is a conflict, resolved as mine (overwrite),
-theirs (drop the draft) or a copy.
+theirs (drop the draft) or a copy. Loading, restoring a draft and taking theirs replace the draft
+wholesale: the history starts again there, and a batch based before it is stale.
 
-With `storage`, the draft, its base version and pending suggestions are written locally after each change
-and offered back after a crash. A stored draft that no longer validates is discarded.
+With `storage`, the draft, its base version, pending suggestions and, for Markdown, the base file's bytes
+are written locally after each change and offered back after a crash. A stored draft that no longer validates is discarded.
 
 With `saveMode: 'auto'`, the source saves 1.5 s after the person's last edit or accepted suggestion. It
 never saves while a conflict is open, waits for a running upload to finish, and does not save after an
@@ -134,8 +135,8 @@ Every change, from the editor, an agent, or the app, is an `OpBatch` with a `bat
 revision it was based on. The source applies a batch in this order, and any failure rolls back the whole
 batch:
 
-1. Ops on the blocks a person is editing (`focusIds`) are turned into suggestions when they come from an
-   agent.
+1. Ops on the blocks a person is editing (`focusIds`, the union over open editors; an editor's focus
+   goes when its channel closes) are turned into suggestions when they come from an agent.
 2. With a template, only its slots may change.
 3. `beforeApply`, once per op; it may accept, reject with a reason, or rewrite the op.
 4. `checkDocument` on the result, including `allowedSrcSchemes`.
@@ -153,7 +154,8 @@ An agent batch that rewrites the document or deletes more than 30% of it becomes
   and the editor keeps local input first if an update races its focus report.
 - **Undo by origin.** Cmd+Z undoes a person's own edits only; each agent batch has its own undo in the
   history. Undoing a batch whose blocks were changed later by someone else is refused, unless forced.
-  Rapid edits by a person to one block within 500 ms are one undo step.
+  Rapid edits by a person to one block within 500 ms are one undo step. History keeps each batch with
+  the ids it minted written in, so undo, redo and replaying later batches give the same ids.
 - **Streaming.** `source.stream()` parses markup block by block as it arrives; a block is final at its
   closing tag. One stream per document at a time. `abort()` keeps the finished blocks as a suggestion.
 
@@ -244,8 +246,9 @@ what the agent does and to collect the person's decisions.
 Picking and uploading are Logic abilities, so the editor asks the source over its channel and the source
 calls the app's `media.pick`. A result with `src` becomes a block at once. A result with a local `file`
 becomes a block pointing at the local file while `media.upload` runs, with progress sent to the page; the
-uploaded `src` then replaces it without entering the undo history, so undo never brings back a dead local
-path.
+uploaded `src` then replaces it without entering the undo history, and replaces the local file wherever
+history recorded it, so undo, redo and replay never bring back a dead local path. A block no longer
+showing the local file, such as a replacement undone during the upload, is left as it is.
 
 ## Pages
 
@@ -254,8 +257,10 @@ path.
 A read-only page passes the document as data: `<JinshuView doc={doc} />`. Once a draft, an agent or an
 editor is involved, the page passes the source's channel action instead (`channel` and `docKey`, or
 `JinshuProvider` for several components), and the source serves snapshots, block changes, suggestions,
-streams, history and upload progress over it. Only small flags such as `dirty` and `saveStatus` go
-through `page.update`. A reopened channel sends the revision it has; the source answers with the changes
+streams, history, upload progress and where saving stands (`saveState`) over it, so an editor on the
+channel needs no flags from the page; `bindJinshuPage` also puts `dirty` and `saveStatus` in the page's
+data for the page's own chrome. "Save and leave" puts open fields into the document and leaves only once
+that save lands; a conflict or failure stays on the page. A reopened channel sends the revision it has; the source answers with the changes
 since then or a snapshot. `doc` and `channel` are exclusive. A page opens its channel as an `editor` or a
 `reader`: agent changes made while no editor showed the document wait for the next editor, since a
 reader does not show them.
@@ -268,9 +273,9 @@ holds. Changed blocks update in place.
 
 ### Long documents and engine limits
 
-The reader mounts the blocks near the viewport only, with estimated heights corrected after mounting,
-and anchors the scroll position to a block id and offset so content inserted above does not move what
-the person is reading. Media off screen pauses and releases its decoder.
+The page's scroll belongs to the app, so the reader mounts every block. Wired to that scroll through
+the nav (`nav.onVisibleChange`), it pauses media whose block scrolls off screen; the runtime pauses all
+playback while the page is hidden.
 
 The View caps how many selectable text nodes a page may have, so selection is budgeted across the mounted
 blocks, and secondary labels are not selectable. Code is drawn one line per text node, which keeps each
@@ -279,23 +284,26 @@ computed in the View; Chinese text is compared by word.
 
 ### Observation
 
-`JinshuView` reports facts in one callback, `onObserve(events)`; the app decides what they mean.
+`JinshuView` reports facts in one callback, `onObserve(events)`; the app decides what they mean. Dwell
+and position come from the scroll holding the reader, which reports to it through `nav.onVisibleChange`.
 
-- `dwell`: how long a block was on screen, the largest share of it seen (`seenRatio`, for blocks taller
-  than the screen) and how long the person had been idle (`idleMs`). Time in the background, locked or
-  in another window does not count.
+- `dwell`: how long a top-level block was on screen, the largest share of it shown at once (`seenRatio`)
+  and the longest stretch in that time without scrolling (`idleMs`). A block reports when it leaves the
+  screen, or at the next scroll once it has gathered a second. The View sees only scrolling: time with
+  the page hidden or the person away is a long `idleMs` stretch, which the app caps as it sees fit.
 - `played`: a continuous playback range, sent when it ends (pause, seek, end, leave), with the rate and
   `ended` on the last one.
-- `position`: where the reader is, as block id and offset, so it still points at the same place after
-  the document changes.
+- `position`: where the reader is, as the top-level block at the top of the screen and how far past its
+  start, so it still points at the same place after the document changes.
 - `block`: an event a custom block emitted, such as a quiz answer.
 
-Each event carries a session id and sequence number. `reduceObservations(progress, events)` drops
-duplicates, merges played ranges and keeps the latest position; `playedRatio` and `seenRatioOf` read the
+Each event carries a session id, new each time the reader mounts, and a sequence number.
+`reduceObservations(progress, events)` drops duplicates, merges played ranges and keeps the latest position; `playedRatio` and `seenRatioOf` read the
 result. Media progress records its `src`, so replacing a video does not inherit the old one's progress.
 `resume` is read once when the view mounts.
 
-The last events are flushed when the page hides or unloads.
+The View has no page-hide or unload signal: a played range ends when playback pauses, which hiding the
+page does, but dwell since the last scroll is not reported when the page closes.
 
 `mediaPolicy` limits playback per page, not per document: `seek` (`any`, `played-only`, `none`) and
 `maxRate`; `played-only` starts from the ranges in `resume` and grows as the person watches, fullscreen
@@ -310,7 +318,9 @@ sent to the page, so the agent tools and the page agree.
 
 `useJinshuNav()` returns a data handle shared by `JinshuOutline` and `JinshuView`: the outline lists the
 headings, marks the current one and takes an optional `status` per heading (`done`, `current`, `locked`)
-that the app decides; `nav.scrollTo(id)` scrolls to any block.
+that the app decides; `nav.scrollTo(id)` scrolls to any block. With `nav.onVisibleChange` on the scroll
+holding the reader, the current heading follows scrolling. An in-page `#id` link scrolls with or without
+a nav; a list item, table row or column scrolls to itself, an inline atom to the block holding it.
 
 ## Editor interaction
 
@@ -318,8 +328,8 @@ The editor and the reader share one block renderer, so a document looks the same
 Editing chrome adapts to the pointer, not the platform:
 
 - **Fine pointer**: block handles appear on hover (`+` inserts below; the handle opens turn-into, move,
-  duplicate, properties, ask the agent and delete), and a compact format bar floats above the block
-  being edited.
+  duplicate, properties, ask the agent and delete), and a compact format bar floats above selected
+  text; link and equation also sit in the toolbar, for a bare caret.
 - **Coarse pointer**: no floating bar over the text, which would collide with the system's own copy and
   paste menu. A format bar sits on top of the keyboard with a Done button at its end, and a tap selects
   a block that is not text, with its own bar and a "more" menu.

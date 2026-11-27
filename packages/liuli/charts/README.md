@@ -34,7 +34,7 @@ export function render() {
 ```
 
 <!-- components:start -->
-6 components, each at its own import path:
+6 components, each at its own import path, and all of their exports from `@liulidesign/charts`:
 
 | Import | Exports | What it is |
 | --- | --- | --- |

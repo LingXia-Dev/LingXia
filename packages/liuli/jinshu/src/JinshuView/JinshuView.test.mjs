@@ -95,3 +95,77 @@ test('Course: with played-only, a chapter unlocks when the video plays up to it,
   assert.equal(open('Three conditions'), true);
   assert.equal(open('Worked examples'), false);
 });
+
+const pageImports = linked => `import { useLocal } from '@lingxia/view';
+import { JinshuView } from ${JSON.stringify(`${linked}/src/JinshuView/JinshuView`)};
+import { JinshuOutline, useJinshuNav } from ${JSON.stringify(`${linked}/src/JinshuOutline/JinshuOutline`)};
+import { createDocument, details, heading, list, listItem, paragraph, run, video } from ${JSON.stringify(`${linked}/src/schema/index`)};
+`;
+
+test('Reading: the scroll reports through the nav; dwell, position and the outline follow it', async () => {
+  const { renderPage } = await import('../testing/harness.mjs');
+  const screen = await renderPage(
+    linked => `${pageImports(linked)}
+const doc = createDocument({ blocks: [heading(2, 'First', 'h1'), paragraph('One.', 'p1'), heading(2, 'Second', 'h2'), paragraph('Two.', 'p2')] });
+export function render() {
+  const nav = useJinshuNav('r');
+  const log = useLocal('log', '');
+  return <page>
+    <JinshuOutline doc={doc} nav={nav} />
+    <scroll data-testid="scroll" onVisibleChange={nav.onVisibleChange}>
+      <JinshuView doc={doc} nav={nav} onObserve={events => log.set(log.value + events.map(e => JSON.stringify(e)).join('\\n') + '\\n')} />
+    </scroll>
+    <text data-testid="log">{log.value}</text>
+  </page>;
+}
+`,
+  );
+  const scroll = () => screen.getByTestId('scroll');
+  const facts = () => textOf(screen.getByTestId('log')).split('\n').filter(Boolean).map(line => JSON.parse(line));
+  screen.visible(scroll(), [{ id: 'jinshu-r-b-h1', ratio: 1, top: 0 }, { id: 'jinshu-r-b-p1', ratio: 1, top: 40 }]);
+  screen.advance(4000);
+  screen.visible(scroll(), [{ id: 'jinshu-r-b-h2', ratio: 1, top: -40 }, { id: 'jinshu-r-b-p2', ratio: 1, top: -5 }]);
+  const got = facts();
+  const dwell = got.filter(f => f.kind === 'dwell');
+  assert.deepEqual(dwell.map(f => [f.blockId, f.dwellMs]), [['h1', 4000], ['p1', 4000]]);
+  assert.ok(dwell.every(f => typeof f.contentHash === 'string'), 'dwell names the content it saw');
+  assert.deepEqual(got.filter(f => f.kind === 'position').map(f => [f.blockId, f.offset]), [['h1', 0], ['p2', 5]]);
+  assert.notEqual(got[0].sessionId, 'view', 'each mount is a session of its own');
+  assert.deepEqual(got.map(f => f.seq), got.map((_, i) => i + 1));
+  const tinted = screen.queryAll(n => n.tag === 'text' && textOf(n) === 'Second' && n.props.color === 'accent');
+  assert.equal(tinted.length, 1, 'the outline tints the heading being read');
+});
+
+test('In-page links scroll without a nav, opening the fold that holds a list item', async () => {
+  const { renderPage } = await import('../testing/harness.mjs');
+  const screen = await renderPage(
+    linked => `${pageImports(linked)}
+const doc = createDocument({ blocks: [
+  paragraph([run('See '), run('the item', { link: '#i1' })], 'p1'),
+  details('More', [list('bullet', [listItem('Hidden item', { id: 'i1' })], { id: 'l1' })], { id: 'd1' }),
+] });
+export function render() {
+  return <page><JinshuView doc={doc} /></page>;
+}
+`,
+  );
+  const fold = () => screen.queryAll(n => n.tag === 'button' && textOf(n) === 'More')[0];
+  assert.equal(fold().props.stateExpanded, 0, 'folded at first');
+  screen.press(screen.queryAll(n => n.tag === 'link')[0]);
+  assert.equal(fold().props.stateExpanded, 1);
+  assert.equal(screen.queryAll(n => String(n.props.elementId ?? n.props.id ?? '').endsWith('-b-i1')).length, 1, 'the item carries the id the link reveals');
+});
+
+test('Played-only resume: what was watched before stays open, for the same source only', async () => {
+  const { renderPage } = await import('../testing/harness.mjs');
+  const page = src => linked => `${pageImports(linked)}
+const doc = createDocument({ blocks: [video('https://example.com/a.mp4', { durationMs: 10_000, chapters: [{ title: 'Start', atMs: 0 }, { title: 'Later', atMs: 6_000 }], id: 'v1' })] });
+const resume = { blocks: {}, media: { v1: { src: ${JSON.stringify(src)}, played: [[0, 6500]], positionMs: 6500, durationMs: 10_000 } } };
+export function render() {
+  return <page><JinshuView doc={doc} resume={resume} mediaPolicy={{ seek: 'played-only' }} /></page>;
+}
+`;
+  const open = (screen, title) => screen.queryAll(node => labelOf(node)?.endsWith(title))[0].props.enabled !== 0;
+  assert.equal(open(await renderPage(page('https://example.com/a.mp4')), 'Later'), true);
+  assert.equal(open(await renderPage(page('https://example.com/b.mp4')), 'Later'), false, 'a replaced video starts over');
+});

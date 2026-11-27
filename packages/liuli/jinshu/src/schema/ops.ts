@@ -20,6 +20,7 @@ import {
   collectAtoms,
   inlinesToMarkup,
   parseAgentMarkup,
+  toAgentView,
   parseInlineMarkup,
   toBlockMarkup,
 } from './markup';
@@ -552,7 +553,7 @@ function singleInlineContent(blk: JinshuBlock): { runs: readonly Inline[] } | { 
 }
 
 /** Type conversion, allowed only when nothing would be lost. Keeps the block id. */
-function convertBlock(blk: JinshuBlock, op: Extract<JinshuTextOp, { op: 'setType' }>): ConvertResult {
+function convertBlock(blk: JinshuBlock, op: Extract<JinshuTextOp, { op: 'setType' }>, childId: string): ConvertResult {
   const id = blk.id;
   // Same-family conversions keep the structure.
   if (op.type === 'list' && blk.type === 'list') {
@@ -573,7 +574,6 @@ function convertBlock(blk: JinshuBlock, op: Extract<JinshuTextOp, { op: 'setType
   const content = singleInlineContent(blk);
   if ('lost' in content) return content;
   const runs = content.runs;
-  const childId = op.childId || newBlockId('p');
   switch (op.type) {
     case 'paragraph':
       return { block: { id, type: 'paragraph', runs } };
@@ -624,20 +624,21 @@ export function applyOps(
       return rejected(doc, [{ code: 'INVALID', severity: 'error', message: 'ops must be an array.' }]);
     }
     const working = cloneDoc(doc);
+    const resolved: AnyJinshuOp[] = [];
     for (opIndex = 0; opIndex < ops.length; opIndex++) {
       const op = ops[opIndex];
       if (!isRecord(op) || typeof op.op !== 'string') {
         problems.push({ code: 'INVALID', severity: 'error', opIndex, message: 'Each op must be an object with an "op" name.' });
         return rejected(doc, problems);
       }
-      const failure = applyOne(working, op as unknown as AnyJinshuOp, opIndex, registry, options, problems);
+      const failure = applyOne(working, op as unknown as AnyJinshuOp, opIndex, registry, options, problems, resolved);
       if (failure) return rejected(doc, problems);
     }
 
     const normalized = normalizeDocument(working, registry);
     problems.push(...checkDocument(normalized, registry, options));
     if (problems.some(p => p.severity === 'error') || options?.dryRun) return rejected(doc, problems);
-    return { doc: normalized, problems };
+    return { doc: normalized, problems, ops: resolved };
   } catch (err) {
     problems.push({
       code: 'INVALID',
@@ -711,6 +712,28 @@ function applyOne(
   registry: JinshuRegistry,
   options: ApplyOpsOptions | undefined,
   problems: Problem[],
+  resolved: AnyJinshuOp[],
+): boolean {
+  let done: AnyJinshuOp = op;
+  const failed = applyOneInner(working, op, opIndex, registry, options, problems, next => (done = next));
+  if (!failed) resolved.push(done);
+  return failed;
+}
+
+/** New blocks as an op carries them once their ids are minted; a copy, as later ops edit `working` in place. */
+function withBlocks<T extends { readonly markup?: string; readonly blocks?: readonly BlockInput[] }>(op: T, blocks: readonly JinshuBlock[]): T {
+  const { markup: _markup, ...rest } = op;
+  return { ...rest, blocks: cloneDoc({ blocks } as unknown as JinshuDocument).blocks } as unknown as T;
+}
+
+function applyOneInner(
+  working: JinshuDocument,
+  op: AnyJinshuOp,
+  opIndex: number,
+  registry: JinshuRegistry,
+  options: ApplyOpsOptions | undefined,
+  problems: Problem[],
+  resolve: (op: AnyJinshuOp) => void,
 ): boolean {
   const fail = (p: Omit<Problem, 'opIndex' | 'severity'> & { severity?: Problem['severity'] }) => {
     problems.push({ severity: 'error', opIndex, ...p });
@@ -729,6 +752,7 @@ function applyOne(
         problems.push(err);
         return true;
       }
+      resolve(withBlocks(op, res.blocks));
       return false;
     }
 
@@ -741,6 +765,7 @@ function applyOne(
       // First replacement block inherits the original `id`; remaining blocks keep new ids.
       const replaced = res.blocks.map((b, idx) => (idx === 0 ? { ...b, id: op.id } : b));
       loc.list.splice(loc.index, 1, ...replaced);
+      resolve(withBlocks(op, replaced));
       return false;
     }
 
@@ -883,6 +908,7 @@ function applyOne(
           cells: Array.from({ length: cols }, (_, c) => op.cells?.[c] ?? []),
         };
         rows.splice(anchorId === undefined ? rows.length : anchorIndex(), 0, newRow);
+        resolve({ ...op, rowId: newRow.id });
       } else if (op.action === 'delete' || op.action === 'move') {
         const from = resolveRowIndex(rows, op.rowId);
         if (from < 0) return fail({ code: 'NOT_FOUND', id: op.id, message: `Row "${String(op.rowId)}" not found in table "${op.id}".` });
@@ -1053,6 +1079,10 @@ function applyOne(
       if (parsed.id !== undefined) mut.id = parsed.id;
       if (parsed.meta !== undefined) mut.meta = parsed.meta;
       mut.blocks = aligned.length > 0 ? aligned : [paragraph()];
+      // Markup again, with the ids it aligned to and minted; only the document fields it set.
+      const written = { blocks: mut.blocks } as Record<string, unknown>;
+      for (const key of ['title', 'lang', 'id', 'meta'] as const) if (parsed[key] !== undefined) written[key] = parsed[key];
+      resolve({ ...op, markup: toAgentView(written as unknown as JinshuDocument, { registry, maxChars: Infinity }) });
       return false;
     }
 
@@ -1147,11 +1177,13 @@ function applyOne(
       const loc = findBlockLocation(blocks, op.id);
       if (!loc) return fail({ code: 'NOT_FOUND', id: op.id, message: `Block "${op.id}" not found.` });
       const blk = loc.list[loc.index];
-      const res = convertBlock(blk, op);
+      const childId = op.childId || newBlockId('p');
+      const res = convertBlock(blk, op, childId);
       if ('lost' in res) {
         return fail({ code: 'INVALID', id: op.id, message: `Converting "${blk.type}" to "${String(op.type)}" would lose ${res.lost}.` });
       }
       loc.list[loc.index] = res.block;
+      if (!op.childId && (op.type === 'quote' || op.type === 'callout' || op.type === 'list')) resolve({ ...op, childId });
       return false;
     }
 

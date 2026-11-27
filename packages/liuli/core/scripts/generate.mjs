@@ -541,6 +541,8 @@ function contentsModule(entries, guides) {
 
 const outputs = new Map();
 const catalog = [];
+// Where each `Component:name` export comes from, so the root entry only merges one value re-exported twice.
+const exportOrigins = new Map();
 for (const name of names) {
   const doc = await loadDoc(name);
   propsTypes.set(doc.name, doc.propsType);
@@ -558,9 +560,17 @@ for (const name of names) {
   const component = program.getSourceFile(join(src, name, `${name}.tsx`));
   // The module's exported functions and the values it re-exports (`export { useJinshuNav } from …`).
   const exports = component.statements.flatMap(node => {
-    if (ts.isFunctionDeclaration(node) && node.name && node.modifiers?.some(m => m.kind === ts.SyntaxKind.ExportKeyword)) return [node.name.text];
-    if (ts.isExportDeclaration(node) && !node.isTypeOnly && node.exportClause && ts.isNamedExports(node.exportClause))
-      return node.exportClause.elements.filter(element => !element.isTypeOnly).map(element => element.name.text);
+    if (ts.isFunctionDeclaration(node) && node.name && node.modifiers?.some(m => m.kind === ts.SyntaxKind.ExportKeyword)) {
+      exportOrigins.set(`${name}:${node.name.text}`, `src/${name}/${name}.tsx`);
+      return [node.name.text];
+    }
+    if (ts.isExportDeclaration(node) && !node.isTypeOnly && node.exportClause && ts.isNamedExports(node.exportClause)) {
+      const from = node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier) ? join('src', name, node.moduleSpecifier.text) : `src/${name}/${name}.tsx`;
+      return node.exportClause.elements.filter(element => !element.isTypeOnly).map(element => {
+        exportOrigins.set(`${name}:${element.name.text}`, `${from}#${(element.propertyName ?? element.name).text}`);
+        return element.name.text;
+      });
+    }
     return [];
   });
   const sources = exampleSources(name);
@@ -610,11 +620,16 @@ outputs.set(join(core, 'catalog.json'), `${JSON.stringify({ generated, component
 // The package's root entry: each component module's exported functions and its types, so
 // `@liulidesign/core` gives what each subpath documents; consts shared between modules stay behind.
 {
-  // A value two modules both re-export (a shared provider) comes from the first; its types likewise.
-  const given = new Set();
+  // A value two modules both re-export (a shared provider) is given once; two different values under one name fail.
+  const given = new Map();
   const modules = [...catalog].sort((x, y) => x.name.localeCompare(y.name)).flatMap(entry => {
-    const own = entry.exports.filter(name => !given.has(name));
-    for (const name of own) given.add(name);
+    const own = entry.exports.filter(name => {
+      const origin = exportOrigins.get(`${entry.name}:${name}`);
+      if (!given.has(name)) return given.set(name, { origin, by: entry.name }), true;
+      const first = given.get(name);
+      if (first.origin !== origin) problems.push(`src/index.ts: ${entry.name} and ${first.by} both export ${name}, from different modules; rename one`);
+      return false;
+    });
     return [`export { ${own.join(', ')} } from './${entry.name}/${entry.name}';`, `export type * from './${entry.name}/${entry.name}';`];
   });
   const shared = isCore ? ['density', 'hue'].map(module => `export * from './${module}';`) : [];
@@ -636,7 +651,7 @@ if (existsSync(readmePath)) {
       start,
       isCore
         ? `${catalog.length} components. Import any of them from \`${packageName}\`, or from its own path; a second component in a row (\`AvatarGroup\`, \`Spinner\`) has a path of its own too:`
-        : `${catalog.length} components, each at its own import path:`,
+        : `${catalog.length} components, each at its own import path, and all of their exports from \`${packageName}\`:`,
       '',
       '| Import | Exports | What it is |',
       '| --- | --- | --- |',

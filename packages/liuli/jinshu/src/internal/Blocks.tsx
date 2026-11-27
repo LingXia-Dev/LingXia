@@ -1,4 +1,4 @@
-import { cx, useBox, useLocal, useVideo, useView, type Child } from '@lingxia/view';
+import { cx, useBox, useLocal, useVideo, useView, type Child, type TimeStamped, type Video } from '@lingxia/view';
 import { Badge } from '@liulidesign/core/Badge';
 import { Button } from '@liulidesign/core/Button';
 import { Details } from '@liulidesign/core/Details';
@@ -37,6 +37,13 @@ import { jinshuViewRecipe as r } from '../JinshuView/JinshuView.recipe';
 
 export type CustomBlockRenderer = (props: BlockProps<any>) => Child;
 
+export interface ResumeMedia {
+  readonly src: string;
+  readonly positionMs: number;
+  /** The furthest point watched. */
+  readonly playedMs: number;
+}
+
 /** Shared, mutable count of `select-text` nodes still allowed this render (the View caps them per page). */
 export interface SelectBudget {
   left: number;
@@ -57,15 +64,17 @@ export interface BlockRenderContext {
   /** When set, each selectable text node takes one from it; past zero, text renders unselectable. */
   readonly selectBudget?: SelectBudget;
   readonly targetBlockId?: string | null;
-  /** Playback positions to resume media at, by block id. */
-  readonly resumeMedia?: Readonly<Record<string, { readonly positionMs: number }>>;
+  /** Where to resume media and how far it was watched, by block id; ignored for another `src`. */
+  readonly resumeMedia?: Readonly<Record<string, ResumeMedia>>;
+  /** Filled with each media block's player, so the reader can pause what scrolls away. */
+  readonly players?: Map<string, Video>;
   readonly onLinkPress?: (info: { readonly blockId: string; readonly href: string }) => void;
   readonly onInPageLink?: (targetBlockId: string) => void;
   readonly onFileAction?: (info: { readonly blockId: string; readonly src: string; readonly action: 'download' }) => void;
   readonly onOpenImage?: (blockId: string) => void;
   readonly onCopyCode?: (code: string, blockId: string) => void;
   readonly onEmitBlockEvent?: (blockId: string, type: string, data: unknown) => void;
-  readonly onPlayedSegment?: (blockId: string, src: string, range: [number, number], durationMs: number, rate: number, ended?: true) => void;
+  readonly onPlayedSegment?: (blockId: string, src: string, range: [number, number], durationMs: number, rate: number, ended?: true, at?: number) => void;
   readonly onToggleTask?: (blockId: string, itemId: string, checked: boolean) => void;
   readonly onUpdateCustomAttrs?: (blockId: string, attrs: Record<string, unknown>) => void;
   readonly highlightedBlockIds?: ReadonlySet<string>;
@@ -115,6 +124,7 @@ function containsBlockId(blocks: readonly JinshuBlock[], targetId: string | null
     if ((b.type === 'quote' || b.type === 'callout' || b.type === 'details') && containsBlockId(b.blocks, targetId)) return true;
     if (b.type === 'list' && b.items.some(i => i.id === targetId || (i.blocks && containsBlockId(i.blocks, targetId)))) return true;
     if (b.type === 'columns' && b.columns.some(c => c.id === targetId || containsBlockId(c.blocks, targetId))) return true;
+    if (b.type === 'table' && b.rows.some(row => row.id === targetId)) return true;
   }
   return false;
 }
@@ -356,21 +366,25 @@ function JinshuImageBlockView({ block, ctx }: { block: ImageBlock; ctx: BlockRen
 /**
  * Real playback observation for a `<video>` (video and audio blocks): each played stretch is reported
  * once it ends (pause, end, seek, rate change), `seek: 'played-only'` snaps a forward seek back to the
- * furthest point already played, `maxRate` clamps the rate, and `resumeMedia` seeks on first metadata.
+ * furthest point already played (from `resumeMedia` on), `maxRate` clamps the rate, and `resumeMedia`
+ * seeks on first metadata.
  */
 function usePlaybackTracking(blockId: string, src: string, ctx: BlockRenderContext, player: ReturnType<typeof useVideo>, knownDurationMs?: number) {
+  ctx.players?.set(blockId, player);
+  const resume = ctx.resumeMedia?.[blockId];
+  const fromResume = resume && resume.src === src ? resume : undefined;
   const segStartMs = useLocal<number | null>(`pb-seg-${blockId}`, null);
-  const maxPlayedMs = useLocal(`pb-max-${blockId}`, 0);
+  const maxPlayedMs = useLocal(`pb-max-${blockId}`, fromResume?.playedMs ?? 0);
   const lastMs = useLocal(`pb-last-${blockId}`, 0);
   const resumed = useLocal(`pb-resumed-${blockId}`, false);
   const durationMs = knownDurationMs ?? (player.duration !== null ? Math.round(player.duration * 1000) : 0);
   const policy = ctx.mediaPolicy;
 
-  const closeSegment = (endMs: number, ended?: true) => {
+  const closeSegment = (at: number, endMs: number, ended?: true) => {
     const start = segStartMs.value;
     segStartMs.set(null);
     if (start === null || endMs - start < 250) return;
-    ctx.onPlayedSegment?.(blockId, src, [Math.round(start), Math.round(endMs)], durationMs || Math.round(endMs), player.playbackRate || 1, ended);
+    ctx.onPlayedSegment?.(blockId, src, [Math.round(start), Math.round(endMs)], durationMs || Math.round(endMs), player.playbackRate || 1, ended, at);
   };
 
   return {
@@ -378,7 +392,7 @@ function usePlaybackTracking(blockId: string, src: string, ctx: BlockRenderConte
     durationMs,
     handlers: {
       onLoadedMetadata: () => {
-        const at = ctx.resumeMedia?.[blockId]?.positionMs;
+        const at = fromResume?.positionMs;
         if (!resumed.value && at !== undefined && at > 0) {
           resumed.set(true);
           void player.seek(at / 1000);
@@ -393,23 +407,24 @@ function usePlaybackTracking(blockId: string, src: string, ctx: BlockRenderConte
         if (segStartMs.value === null && !player.paused) segStartMs.set(ms);
         if (ms > maxPlayedMs.value && (playedOn || policy?.seek !== 'played-only')) maxPlayedMs.set(ms);
       },
-      onPause: () => closeSegment(player.currentTime * 1000),
-      onEnded: () => closeSegment(durationMs || player.currentTime * 1000, true),
-      onSeeked: (e: { readonly currentTime: number }) => {
+      onPause: (e: TimeStamped) => closeSegment(e.timeStamp, player.currentTime * 1000),
+      onEnded: (e: TimeStamped) => closeSegment(e.timeStamp, durationMs || player.currentTime * 1000, true),
+      onSeeked: (e: { readonly currentTime: number } & TimeStamped) => {
         const ms = e.currentTime * 1000;
         if (policy?.seek === 'none' || (policy?.seek === 'played-only' && ms > maxPlayedMs.value + 1000)) {
           void player.seek(maxPlayedMs.value / 1000);
           return;
         }
-        closeSegment(lastMs.value);
+        closeSegment(e.timeStamp, lastMs.value);
+        lastMs.set(ms);
         if (!player.paused) segStartMs.set(ms);
       },
-      onRateChange: (e: { readonly playbackRate: number }) => {
+      onRateChange: (e: { readonly playbackRate: number } & TimeStamped) => {
         if (policy?.maxRate !== undefined && e.playbackRate > policy.maxRate) {
           void player.setPlaybackRate(policy.maxRate);
           return;
         }
-        closeSegment(player.currentTime * 1000);
+        closeSegment(e.timeStamp, player.currentTime * 1000);
         if (!player.paused) segStartMs.set(player.currentTime * 1000);
       },
     },
@@ -636,7 +651,7 @@ function JinshuColumnsBlockView({ block, ctx }: { block: ColumnsBlock; ctx: Bloc
       {block.columns.map((col, idx) => {
         const flexGrow = block.widths?.[idx] ?? 1;
         return (
-          <view key={col.id} className={r.columns.column} style={shouldStack ? undefined : { flexGrow, flexBasis: 0 }}>
+          <view key={col.id} id={blockDomId(col.id, ctx)} className={r.columns.column} style={shouldStack ? undefined : { flexGrow, flexBasis: 0 }}>
             {col.blocks.map((child, cIdx) => renderBlock(child, cIdx > 0 ? col.blocks[cIdx - 1].type : null, ctx))}
           </view>
         );
@@ -789,7 +804,7 @@ export function renderBlock(
       inner = (
         <view id={blockDomId(l.id, ctx)} data-testid={blockTestId(l.id, ctx)} role="list" className={r.list.base}>
           {l.items.map((item, idx) => (
-            <view key={item.id} role="listitem" className={r.list.item}>
+            <view key={item.id} id={blockDomId(item.id, ctx)} role="listitem" className={r.list.item}>
               {l.style === 'task' ? (
                 <button
                   role="menuitemcheckbox"
@@ -848,7 +863,7 @@ export function renderBlock(
           {t.rows.map((row, rIdx) => {
             const isHeader = rIdx === 0 && t.headerRow === true;
             return (
-              <view key={`${t.id}-${row.id}`} className={isHeader ? r.table.headerRow : r.table.row}>
+              <view key={`${t.id}-${row.id}`} id={blockDomId(row.id, ctx)} className={isHeader ? r.table.headerRow : r.table.row}>
                 {row.cells.map((cell, cIdx) => (
                   <view key={`${row.id}-${cIdx}`} style={tableColumnFlex(t, cIdx)} className={r.table.cell.box}>
                     <text className={isHeader ? r.table.cell.header : r.table.cell.text} style={t.align?.[cIdx] ? { textAlign: t.align[cIdx] } : undefined}>

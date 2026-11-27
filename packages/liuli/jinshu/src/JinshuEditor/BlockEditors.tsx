@@ -22,6 +22,7 @@ import type {
   JinshuFormat,
   ListBlock,
   ListStyle,
+  MathBlock,
   ParagraphBlock,
   QuoteBlock,
   TableAlign,
@@ -30,10 +31,14 @@ import type {
 } from '../schema/types';
 import { renderInlineRuns } from '../internal/InlineRuns';
 import { CodeFrame, CodeLineNumbers, TableFrame, tableColumnFlex } from '../internal/Blocks';
+import { MathFormulaView } from '../internal/MathView';
 import { jinshuViewRecipe as r } from '../JinshuView/JinshuView.recipe';
 import { jinshuText } from '../i18n/text';
 import { blockEditorsRecipe as b } from './BlockEditors.recipe';
-import { atomsIn, inlinesToShorthand as toShorthand, shorthandToInlines as fromShorthand } from './inlineMarkdown';
+import { jinshuEditorRecipe } from './JinshuEditor.recipe';
+import { SHORTHAND_MARKS, atomsIn, splitAt, inlinesToShorthand as toShorthand, shorthandToInlines as fromShorthand, type TextRange } from './inlineMarkdown';
+
+const m = jinshuEditorRecipe.mathEditor;
 
 const TICK_PATH = [
   { d: 'M3.5 8.5l3 3 6-7', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
@@ -497,23 +502,27 @@ export function QuoteBlockEditor({ block, cb }: { readonly block: QuoteBlock; re
 /** Direct-manipulation editor for Details blocks (summary + every body paragraph). */
 export function DetailsBlockEditor({ block, cb }: { readonly block: DetailsBlock; readonly cb: BlockEditorCallbacks }) {
   const open = useLocal(`ed-det-open-${block.id}`, block.defaultOpen === true);
-  const summaryDraft = useLocal(`ed-det-s-${block.id}`, inlinesToShorthand(block.summary, cb.format));
+  const summary = inlinesToShorthand(block.summary, cb.format);
   const body = containerBodyText(block.blocks, cb.format);
-  const bodyDraft = useLocal(`ed-det-b-${block.id}`, body.text);
+  const summaryDraft = useFieldDraft(`ed-det-s-${block.id}`, summary);
+  const bodyDraft = useFieldDraft(`ed-det-b-${block.id}`, body.text);
 
   const commit = () => {
-    if (summaryDraft.value === inlinesToShorthand(block.summary, cb.format) && bodyDraft.value === body.text) return;
-    cb.dispatchOps([
-      {
-        op: 'replace',
-        id: block.id,
-        blocks: [{ ...block, summary: shorthandToInlines(summaryDraft.value, cb.format, { existingAtoms: atomsIn(block.summary) }), blocks: rebuildContainerBody(block.blocks, bodyDraft.value, cb.format) }],
-        noteWord: { key: '@jinshu.note.editDetails' },
-      },
-    ]);
+    if (summaryDraft.value !== summary || bodyDraft.value !== body.text) {
+      cb.dispatchOps([
+        {
+          op: 'replace',
+          id: block.id,
+          blocks: [{ ...block, summary: shorthandToInlines(summaryDraft.value, cb.format, { existingAtoms: atomsIn(block.summary) }), blocks: rebuildContainerBody(block.blocks, bodyDraft.value, cb.format) }],
+          noteWord: { key: '@jinshu.note.editDetails' },
+        },
+      ]);
+    }
+    summaryDraft.settle();
+    bodyDraft.settle();
   };
-  // Its fields are always open: an auto-save or a toolbar press takes what they hold.
-  cb.holdOpen?.(block.id, commit, commit);
+  // Its fields are always open, but only typed text is the person's: untouched, they follow the document.
+  cb.holdOpen?.(block.id, summaryDraft.isEdited || bodyDraft.isEdited ? commit : null, commit);
 
   // The reader's geometry: the summary row with its chevron at the end; whether it starts open is a block-menu choice.
   return (
@@ -524,7 +533,8 @@ export function DetailsBlockEditor({ block, cb }: { readonly block: DetailsBlock
           value={summaryDraft.value}
           placeholder={jinshuText('@jinshu.editor.block.detailsSummaryPlaceholder')}
           onInput={v => { summaryDraft.set(v); cb.onTyping?.(); }}
-          onBlur={commit}
+          onFocus={() => cb.onFocusBlock(block.id)}
+          onBlur={() => { commit(); cb.onBlurBlock(); }}
           className={b.details.summary}
         />
         <button
@@ -545,7 +555,8 @@ export function DetailsBlockEditor({ block, cb }: { readonly block: DetailsBlock
             maxRows={18}
             placeholder={jinshuText('@jinshu.editor.block.detailsBodyPlaceholder')}
             onInput={v => { bodyDraft.set(v); cb.onTyping?.(); }}
-            onBlur={commit}
+            onFocus={() => cb.onFocusBlock(block.id)}
+            onBlur={() => { commit(); cb.onBlurBlock(); }}
             className={cx(b.details.bodyInput, r.paragraph.base)}
           />
           <KeptChildrenNote count={body.kept} />
@@ -985,7 +996,14 @@ export function TableBlockEditor({ block, cb }: { readonly block: TableBlock; re
 // Columns
 // ---------------------------------------------------------------------------
 
-/** Recursive direct-manipulation editor for `columns` so every heading/paragraph/list inside a column is editable. */
+// Where the caret is in a column's open field, by its draft cell; read on Enter.
+const columnCarets = new WeakMap<object, TextRange & { readonly id: string }>();
+
+/**
+ * `columns` with every child in its own editor: a paragraph or heading opens in place and Enter starts a
+ * paragraph below it. A bar over the block switches 2 and 3 columns, sets widths, and moves, inserts or
+ * removes the block last touched in a column.
+ */
 export function ColumnsBlockEditor({
   block,
   cb,
@@ -998,102 +1016,308 @@ export function ColumnsBlockEditor({
   const { env } = useView();
   const activeChildId = useLocal<string | null>(`ed-col-act-${block.id}`, null);
   const childDraft = useLocal<string>(`ed-col-txt-${block.id}`, '');
+  // The child last touched, which the bar's block actions apply to.
+  const focusedId = useLocal<string | null>(`ed-col-focus-${block.id}`, null);
+  const inspectingId = useLocal<string | null>(`ed-col-insp-${block.id}`, null);
+  const hovered = useLocal(`ed-col-hover-${block.id}`, false);
   const shouldStack = env.sizeClass === 'compact' || env.textScale >= 1.35;
+  const touch = env.pointer === 'coarse';
 
-  const commitInlineChild = (child: JinshuBlock, text: string) => {
-    if (child.type !== 'paragraph' && child.type !== 'heading') return;
-    if (inlinesToShorthand(child.runs, cb.format) === text) return;
+  const located = (id: string | null) => {
+    if (id === null) return null;
+    for (const col of block.columns) {
+      const index = col.blocks.findIndex(child => child.id === id);
+      if (index >= 0) return { col, index, child: col.blocks[index] };
+    }
+    return null;
+  };
+  const focused = located(focusedId.value);
+  // A phone shows the bar only once a child is touched, so it never sits over the text above.
+  const showBar = activeChildId.value !== null || (focused !== null && touch) || (!touch && hovered.value);
+  const wideIndex = (() => {
+    const w = block.widths;
+    if (!w || w.length !== block.columns.length) return null;
+    const max = Math.max(...w);
+    return w.filter(x => x === max).length === 1 && w.some(x => x !== max) ? w.indexOf(max) : null;
+  })();
+
+  const inlineOps = (child: JinshuBlock, text: string): AnyJinshuOp[] => {
+    if (child.type !== 'paragraph' && child.type !== 'heading') return [];
+    if (inlinesToShorthand(child.runs, cb.format) === text) return [];
     const runs = shorthandToInlines(text, cb.format, { inHeading: child.type === 'heading', existingAtoms: atomsIn(child.runs) });
-    cb.dispatchOps([
-      {
-        op: 'replace',
-        id: child.id,
-        blocks: [child.type === 'heading' ? { id: child.id, type: 'heading', level: child.level, runs } : { id: child.id, type: 'paragraph', runs }],
-      },
-    ]);
+    return [{ op: 'replace', id: child.id, blocks: [child.type === 'heading' ? { id: child.id, type: 'heading', level: child.level, runs } : { id: child.id, type: 'paragraph', runs }] }];
   };
-  const activeChild = () => block.columns.flatMap(col => col.blocks).find(child => child.id === activeChildId.value);
   const saveChild = () => {
-    const child = activeChild();
-    if (child) commitInlineChild(child, childDraft.value);
+    const at = located(activeChildId.value);
+    if (!at) return;
+    const ops = inlineOps(at.child, childDraft.value);
+    if (ops.length > 0) cb.dispatchOps(ops);
   };
-  cb.holdOpen?.(
-    block.id,
-    activeChildId.value === null
-      ? null
-      : () => {
-          saveChild();
-          activeChildId.set(null);
-          cb.onBlurBlock();
-        },
-    saveChild,
+  const closeChild = () => {
+    saveChild();
+    activeChildId.set(null);
+    cb.onBlurBlock();
+  };
+  cb.holdOpen?.(block.id, activeChildId.value === null ? null : closeChild, saveChild);
+
+  const touchChild = (id: string) => {
+    focusedId.set(id);
+    cb.onFocusBlock(id);
+  };
+  const openParagraph = (id: string, text: string) => {
+    touchChild(id);
+    activeChildId.set(id);
+    childDraft.set(text);
+  };
+  // Child editors report focus through here, so the bar knows which block it acts on.
+  const childCb: BlockEditorCallbacks = {
+    ...cb,
+    onFocusBlock: touchChild,
+    onEditParagraph: id => openParagraph(id, ''),
+  };
+
+  const splitChild = (child: JinshuBlock) => {
+    const text = childDraft.value;
+    const held = columnCarets.get(childDraft);
+    const range = held && held.id === child.id && held.end <= text.length ? held : { start: text.length, end: text.length };
+    const [before, after] = splitAt(text, range, SHORTHAND_MARKS);
+    const next = paragraph(after ? shorthandToInlines(after, cb.format, {}) : '');
+    cb.dispatchOps([...inlineOps(child, before), { op: 'insert', at: { after: child.id }, blocks: [next] }]);
+    openParagraph(next.id, after);
+    childDraft.setSelection(0, 0);
+    columnCarets.set(childDraft, { id: next.id, start: 0, end: 0 });
+  };
+  const insertBelow = (afterId: string) => {
+    saveChild();
+    const next = paragraph('');
+    cb.dispatchOps([{ op: 'insert', at: { after: afterId }, blocks: [next], noteWord: { key: '@jinshu.note.insert', args: { kind: 'paragraph' } } }]);
+    openParagraph(next.id, '');
+  };
+  const removeChild = (id: string) => {
+    if (activeChildId.value === id) activeChildId.set(null);
+    focusedId.set(null);
+    cb.dispatchOps([{ op: 'delete', id, noteWord: { key: '@jinshu.note.delete' } }]);
+    cb.onBlurBlock();
+  };
+  const moveChild = (id: string, to: { readonly before: string } | { readonly after: string }, noteKey: '@jinshu.note.moveUp' | '@jinshu.note.moveDown') => {
+    saveChild();
+    cb.dispatchOps([{ op: 'move', id, to, noteWord: { key: noteKey } }]);
+  };
+  const setColumnCount = (count: number) => {
+    if (count === block.columns.length) return;
+    saveChild();
+    // Going down to two, the third column's blocks join the second, so nothing is lost.
+    const cols =
+      count > block.columns.length
+        ? [...block.columns, { id: newBlockId('col'), blocks: [paragraph('')] }]
+        : [block.columns[0], { ...block.columns[1], blocks: [...block.columns[1].blocks, ...block.columns.slice(2).flatMap(col => col.blocks)] }];
+    const { widths: _widths, ...rest } = block;
+    cb.dispatchOps([{ op: 'replace', id: block.id, blocks: [{ ...rest, columns: cols }], noteWord: { key: '@jinshu.note.columnCount', args: { count } } }]);
+  };
+  const setWide = (index: number | null) =>
+    cb.dispatchOps([{ op: 'update', id: block.id, attrs: { widths: index === null ? null : block.columns.map((_, i) => (i === index ? 2 : 1)) }, noteWord: { key: '@jinshu.note.columnWidths' } }]);
+
+  const renderChild = (child: JinshuBlock): JSX.Element => {
+    switch (child.type) {
+      case 'list': return <ListBlockEditor block={child} cb={childCb} />;
+      case 'callout': return <CalloutBlockEditor block={child} cb={childCb} />;
+      case 'quote': return <QuoteBlockEditor block={child} cb={childCb} />;
+      case 'details': return <DetailsBlockEditor block={child} cb={childCb} />;
+      case 'code': return <CodeBlockEditor block={child} cb={childCb} />;
+      case 'table': return <TableBlockEditor block={child} cb={childCb} />;
+      case 'math': return <MathBlockEditor block={child} cb={childCb} preview={renderFallback(child)} />;
+      case 'paragraph':
+      case 'heading':
+        if (activeChildId.value === child.id) {
+          return (
+            <textarea
+              aria-label={jinshuText('@jinshu.editor.block.editInColumn', { type: child.type })}
+              bind={childDraft}
+              autoFocus
+              rows={1}
+              maxRows={18}
+              onInput={() => cb.onTyping?.()}
+              onSelectionChange={sel => columnCarets.set(childDraft, { id: child.id, start: sel.start, end: sel.end })}
+              onBlur={() => {
+                if (activeChildId.value !== child.id) return;
+                closeChild();
+              }}
+              onKeyDown={{
+                Enter: () => {
+                  splitChild(child);
+                  return true;
+                },
+                Escape: () => {
+                  closeChild();
+                  return true;
+                },
+              }}
+              className={child.type === 'heading' ? cx(b.columns.input, r.heading.base, r.heading.level[child.level]) : cx(b.columns.input, r.paragraph.base)}
+            />
+          );
+        }
+        return (
+          <view className={b.columns.child}>
+            {child.type === 'paragraph' && child.runs.length === 0 ? (
+              <text className={b.columns.placeholder}>{jinshuText('@jinshu.editor.block.columnPlaceholder')}</text>
+            ) : (
+              renderFallback(child)
+            )}
+            <button
+              aria-label={jinshuText('@jinshu.editor.block.editColumnBlock', { id: child.id })}
+              onClick={() => openParagraph(child.id, inlinesToShorthand(child.runs, cb.format))}
+              className={b.columns.childButton}
+            />
+          </view>
+        );
+      case 'image':
+      case 'video':
+      case 'audio':
+      case 'file':
+        return (
+          <view className={b.columns.media}>
+            {renderFallback(child)}
+            {(touch || hovered.value || inspectingId.value === child.id) && (
+              <view className={b.columns.mediaTool}>
+                <Tooltip content={jinshuText('@jinshu.editor.blockMenu.properties')} placement="bottom"><IconButton
+                  label={jinshuText('@jinshu.editor.blockMenu.properties')}
+                  icon="edit"
+                  size="sm"
+                  variant={inspectingId.value === child.id ? 'tonal' : 'secondary'}
+                  onClick={() => {
+                    touchChild(child.id);
+                    inspectingId.set(inspectingId.value === child.id ? null : child.id);
+                  }}
+                /></Tooltip>
+              </view>
+            )}
+            {inspectingId.value === child.id && (child.type === 'image' ? <ImageBlockInspector block={child} cb={childCb} /> : <MediaBlockInspector block={child} cb={childCb} />)}
+          </view>
+        );
+      default:
+        return renderFallback(child);
+    }
+  };
+
+  const bar = showBar && (
+    <view className={b.table.toolbarDock}>
+      <scroll className={b.table.toolbar}>
+        <view role="toolbar" aria-label={jinshuText('@jinshu.blockType', { type: 'columns' })} className={b.table.toolbarRow}>
+          {[2, 3].map(count => (
+            <Button
+              key={String(count)}
+              label={jinshuText('@jinshu.editor.block.columnCount', { count })}
+              size="sm"
+              variant={block.columns.length === count ? 'tonal' : 'ghost'}
+              onClick={() => setColumnCount(count)}
+            />
+          ))}
+          {holds(cb, 'columns', 'widths') && (
+            <>
+              <view aria-hidden className={b.table.toolbarSeparator} />
+              <Button label={jinshuText('@jinshu.editor.block.columnsEqual')} size="sm" variant={wideIndex === null ? 'tonal' : 'ghost'} onClick={() => setWide(null)} />
+              {block.columns.map((col, i) => (
+                <Button key={col.id} label={jinshuText('@jinshu.editor.block.columnWider', { index: i + 1 })} size="sm" variant={wideIndex === i ? 'tonal' : 'ghost'} onClick={() => setWide(i)} />
+              ))}
+            </>
+          )}
+          {focused && (
+            <>
+              <view aria-hidden className={b.table.toolbarSeparator} />
+              <Button label={jinshuText('@jinshu.editor.block.insertBelow')} startIcon="add" size="sm" variant="ghost" onClick={() => insertBelow(focused.child.id)} />
+              {focused.index > 0 && (
+                <Button label={jinshuText('@jinshu.editor.block.moveUp')} size="sm" variant="ghost" onClick={() => moveChild(focused.child.id, { before: focused.col.blocks[focused.index - 1].id }, '@jinshu.note.moveUp')} />
+              )}
+              {focused.index < focused.col.blocks.length - 1 && (
+                <Button label={jinshuText('@jinshu.editor.block.moveDown')} size="sm" variant="ghost" onClick={() => moveChild(focused.child.id, { after: focused.col.blocks[focused.index + 1].id }, '@jinshu.note.moveDown')} />
+              )}
+              {/* A column keeps at least one block. */}
+              {focused.col.blocks.length > 1 && (
+                <Button label={jinshuText('@jinshu.editor.block.removeItem')} startIcon="delete" size="sm" variant="ghost" onClick={() => removeChild(focused.child.id)} />
+              )}
+            </>
+          )}
+        </view>
+      </scroll>
+    </view>
   );
 
   return (
-    <view className={shouldStack ? b.columns.stacked : b.columns.side}>
-      {block.columns.map((col, colIdx) => (
-        <view key={col.id} className={b.columns.column} style={shouldStack ? undefined : { flexGrow: block.widths?.[colIdx] ?? 1, flexBasis: 0 }}>
-          {col.blocks.map(child => {
-            if (child.type === 'list') return <ListBlockEditor key={child.id} block={child} cb={cb} />;
-            if (child.type === 'callout') return <CalloutBlockEditor key={child.id} block={child} cb={cb} />;
-            if (child.type === 'quote') return <QuoteBlockEditor key={child.id} block={child} cb={cb} />;
-            if (child.type === 'code') return <CodeBlockEditor key={child.id} block={child} cb={cb} />;
-            if (child.type === 'table') return <TableBlockEditor key={child.id} block={child} cb={cb} />;
+    <view
+      className={b.columns.root}
+      onPointerEnter={touch ? undefined : () => hovered.set(true)}
+      onPointerLeave={touch ? undefined : () => hovered.set(false)}
+    >
+      {bar}
+      <view className={shouldStack ? b.columns.stacked : b.columns.side}>
+        {block.columns.map((col, colIdx) => (
+          <view key={col.id} className={b.columns.column} style={shouldStack ? undefined : { flexGrow: block.widths?.[colIdx] ?? 1, flexBasis: 0 }}>
+            {col.blocks.map(child => (
+              <view key={child.id} className={cx(b.columns.slot, showBar && focused?.child.id === child.id && b.columns.slotFocused)}>
+                {renderChild(child)}
+              </view>
+            ))}
+          </view>
+        ))}
+      </view>
+    </view>
+  );
+}
 
-            if (child.type === 'paragraph' || child.type === 'heading') {
-              if (activeChildId.value === child.id) {
-                return (
-                  <textarea
-                    key={child.id}
-                    aria-label={jinshuText('@jinshu.editor.block.editInColumn', { type: child.type })}
-                    value={childDraft.value}
-                    autoFocus
-                    rows={1}
-                    maxRows={18}
-                    onInput={v => { childDraft.set(v); cb.onTyping?.(); }}
-                    onBlur={() => {
-                      commitInlineChild(child, childDraft.value);
-                      activeChildId.set(null);
-                      cb.onBlurBlock();
-                    }}
-                    onKeyDown={{
-                      Enter: () => {
-                        commitInlineChild(child, childDraft.value);
-                        activeChildId.set(null);
-                        cb.onBlurBlock();
-                        return true;
-                      },
-                      Escape: () => {
-                        activeChildId.set(null);
-                        return true;
-                      },
-                    }}
-                    className={
-                      child.type === 'heading' ? cx(b.columns.input, r.heading.base, r.heading.level[child.level]) : cx(b.columns.input, r.paragraph.base)
-                    }
-                  />
-                );
-              }
-              return (
-                <view key={child.id} className={b.columns.child}>
-                  {renderFallback(child)}
-                  <button
-                    aria-label={jinshuText('@jinshu.editor.block.editColumnBlock', { id: child.id })}
-                    onClick={() => {
-                      cb.onFocusBlock(child.id);
-                      activeChildId.set(child.id);
-                      childDraft.set(inlinesToShorthand(child.runs, cb.format));
-                    }}
-                    className={b.columns.childButton}
-                  />
-                </view>
-              );
-            }
+/** A formula in a column: the reader's formula until pressed, then its LaTeX under a live preview. */
+export function MathBlockEditor({ block, cb, preview }: { readonly block: MathBlock; readonly cb: BlockEditorCallbacks; readonly preview: JSX.Element }) {
+  const editing = useLocal(`ed-math-${block.id}`, false);
+  const draft = useLocal(`ed-math-t-${block.id}`, block.latex);
+  const save = () => {
+    if (draft.value !== block.latex) cb.dispatchOps([{ op: 'update', id: block.id, attrs: { latex: draft.value } }]);
+  };
+  const commit = () => {
+    save();
+    editing.set(false);
+    cb.onBlurBlock();
+  };
+  cb.holdOpen?.(block.id, editing.value ? commit : null, save);
 
-            return <view key={child.id}>{renderFallback(child)}</view>;
-          })}
+  if (!editing.value) {
+    return (
+      <view className={b.columns.child}>
+        {preview}
+        <button
+          aria-label={jinshuText('@jinshu.editor.block.editColumnBlock', { id: block.id })}
+          onClick={() => {
+            cb.onFocusBlock(block.id);
+            draft.set(block.latex);
+            editing.set(true);
+          }}
+          className={b.columns.childButton}
+        />
+      </view>
+    );
+  }
+  return (
+    <view className={m.base}>
+      <scroll className={m.scroll}>
+        <view className={m.preview}>
+          <MathFormulaView latex={draft.value || block.latex} />
         </view>
-      ))}
+      </scroll>
+      <view className={m.source}>
+        <textarea
+          aria-label={jinshuText('@jinshu.editor.edit.source', { type: 'math' })}
+          value={draft.value}
+          autoFocus
+          rows={1}
+          maxRows={6}
+          onInput={v => { draft.set(v); cb.onTyping?.(); }}
+          onBlur={save}
+          onKeyDown={{ Escape: () => { commit(); return true; } }}
+          className={m.field}
+        />
+        <view className={m.footer}>
+          <text className={m.hint}>{jinshuText('@jinshu.editor.math.hint')}</text>
+          <Button label={jinshuText('@jinshu.editor.done')} size="sm" variant="tonal" onClick={commit} />
+        </view>
+      </view>
     </view>
   );
 }
@@ -1106,10 +1330,17 @@ export function ColumnsBlockEditor({
  * A field's draft that follows the block until the person types: a change made elsewhere meanwhile
  * shows, and leaving the field does not write the old text back over it.
  */
-function useFieldDraft(name: string, current: string): { readonly value: string; set(next: string): void } {
+function useFieldDraft(name: string, current: string): { readonly value: string; readonly isEdited: boolean; set(next: string): void; settle(): void } {
   const draft = useLocal(name, { seed: current, text: current });
   const { seed, text } = draft.value;
-  return { value: text === seed ? current : text, set: next => draft.set({ seed: current, text: next }) };
+  const isEdited = text !== seed;
+  return {
+    value: isEdited ? text : current,
+    isEdited,
+    set: next => draft.set({ seed: current, text: next }),
+    // Once its text is sent, the field follows the document again.
+    settle: () => draft.set({ seed: text, text }),
+  };
 }
 
 /** Inline inspector for Image blocks (alt, caption, display size). */
@@ -1135,6 +1366,8 @@ export function ImageBlockInspector({ block, cb }: { readonly block: ImageBlock;
         noteWord: { key: '@jinshu.note.imageProps' },
       },
     ]);
+    altDraft.settle();
+    capDraft.settle();
   };
 
   return (
@@ -1178,6 +1411,8 @@ export function MediaBlockInspector({ block, cb }: { readonly block: VideoBlock 
           ? { title: primaryDraft.value.trim() || null }
           : { name: primaryDraft.value.trim() || block.name, description: secondaryDraft.value.trim() || null };
     cb.dispatchOps([{ op: 'update', id: block.id, attrs, noteWord: { key: '@jinshu.note.mediaProps' } }]);
+    primaryDraft.settle();
+    secondaryDraft.settle();
   };
 
   return (

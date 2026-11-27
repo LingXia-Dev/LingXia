@@ -267,7 +267,7 @@
       "status": "preview",
       "since": "2026-11-24",
       "summary": "A Jinshu document, edited block by block, with history, saving, and a review of what an agent changed or asks",
-      "description": "JinshuEditor edits a Jinshu document where it is read: each block keeps the reader's geometry, so moving between reading and editing does not jump. Text blocks edit in place; tables, code, folds, callouts and media have their own editors, and `/` inserts any block. On a live `channel` the source keeps the history, the save state and the review: an agent's change is marked at each block it touched, with a bar to view or undo that batch; its suggestions and save requests wait in one queue; and an agent at work shows a mark the person can stop. Pasted paragraphs or Markdown become blocks, and in a Markdown document (`format`) the menus offer only what Markdown holds. Source mode edits the whole document as Markdown text and applies only the changed blocks, in one undo step.",
+      "description": "JinshuEditor edits a Jinshu document where it is read: each block keeps the reader's geometry, so moving between reading and editing does not jump. Text blocks edit in place; tables, code, folds, callouts, columns and media have their own editors, and `/` inserts any block. On a live `channel` the source keeps the history, the save state and the review: an agent's change is marked at each block it touched, with a bar to view or undo that batch; its suggestions and save requests wait in one queue; and an agent at work shows a mark the person can stop. Pasted paragraphs or Markdown become blocks, and in a Markdown document (`format`) the menus offer only what Markdown holds. Source mode edits the whole document as Markdown text and applies only the changed blocks, in one undo step.",
       "keywords": [
         "editor",
         "document editor",
@@ -340,13 +340,13 @@
           "name": "isDirty",
           "type": "boolean",
           "required": false,
-          "description": "Unsaved changes, for the leave guard and the toolbar's Save; falls back to `saveStatus === 'dirty'`."
+          "description": "Unsaved changes, for the leave guard and the toolbar's Save; on a live `channel` the source's, else `saveStatus === 'dirty'`."
         },
         {
           "name": "saveStatus",
           "type": "\"dirty\" | \"failed\" | \"saved\" | \"saving\"",
           "required": false,
-          "description": "Where saving stands, as the page hears it from Logic; on a live `channel` the toolbar shows it, with Save or Retry.",
+          "description": "Where saving stands; on a live `channel` the source sends it. The toolbar shows it, with Save or Retry.",
           "values": [
             "saved",
             "dirty",
@@ -569,12 +569,12 @@
         {
           "name": "Draft",
           "title": "A draft the page holds",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { callout, codeBlock, createDocument, heading, list, listItem, paragraph, table } from '@liulidesign/jinshu/schema';\nimport { applyOps } from '@liulidesign/jinshu/schema';\nimport type { JinshuDocument } from '@liulidesign/jinshu/schema';\nimport { JinshuEditor } from '@liulidesign/jinshu/JinshuEditor';\n\nconst draft = createDocument({\n  title: 'Limits',\n  blocks: [\n    heading(2, 'What a limit says', 'h1'),\n    paragraph('A limit describes where a function heads.', 'p1'),\n    list('bullet', [listItem('Definition', { id: 'i1' }), listItem('Exercises', { id: 'i2' })], { id: 'l1' }),\n    callout('tip', [paragraph('Sketch the graph before you compute.', 'c1p')], { title: 'Tip', id: 'c1' }),\n    table(['Week', 'Topic', 'Due'], [['3', 'Limits', 'Friday'], ['4', 'Continuity', 'Next Friday']], { id: 't1' }),\n    codeBlock('ts', 'const f = (x: number) => x * x;\\nf(2);', { id: 'k1', filename: 'square.ts' }),\n  ],\n});\n\n/** The editor on a document the page holds: each edit comes back as ops the page applies. */\nexport function Draft() {\n  // `useLocal` types only closed data, and a document's `meta` and extension attrs are open records.\n  const doc = useLocal<any>('editor-example-doc', draft) as { value: JinshuDocument; set(next: JinshuDocument): void };\n  return <JinshuEditor doc={doc.value} onOps={ops => doc.set(applyOps(doc.value, ops).doc)} hasLeaveGuard={false} data-testid=\"draft\" />;\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { callout, codeBlock, createDocument, heading, list, listItem, paragraph, table } from '@liulidesign/jinshu/schema';\nimport { applyOps } from '@liulidesign/jinshu/schema';\nimport { JinshuEditor } from '@liulidesign/jinshu/JinshuEditor';\n\nconst draft = createDocument({\n  title: 'Limits',\n  blocks: [\n    heading(2, 'What a limit says', 'h1'),\n    paragraph('A limit describes where a function heads.', 'p1'),\n    list('bullet', [listItem('Definition', { id: 'i1' }), listItem('Exercises', { id: 'i2' })], { id: 'l1' }),\n    callout('tip', [paragraph('Sketch the graph before you compute.', 'c1p')], { title: 'Tip', id: 'c1' }),\n    table(['Week', 'Topic', 'Due'], [['3', 'Limits', 'Friday'], ['4', 'Continuity', 'Next Friday']], { id: 't1' }),\n    codeBlock('ts', 'const f = (x: number) => x * x;\\nf(2);', { id: 'k1', filename: 'square.ts' }),\n  ],\n});\n\n/** The editor on a document the page holds: each edit comes back as ops the page applies. */\nexport function Draft() {\n  const doc = useLocal('editor-example-doc', draft);\n  return <JinshuEditor doc={doc.value} onOps={ops => doc.set(applyOps(doc.value, ops).doc)} hasLeaveGuard={false} data-testid=\"draft\" />;\n}"
         },
         {
           "name": "AskAgent",
           "title": "Handing blocks to the app's agent",
-          "source": "import { useLocal } from '@lingxia/view';\nimport { createDocument, heading, paragraph } from '@liulidesign/jinshu/schema';\nimport { applyOps } from '@liulidesign/jinshu/schema';\nimport type { JinshuDocument } from '@liulidesign/jinshu/schema';\nimport { JinshuEditor } from '@liulidesign/jinshu/JinshuEditor';\n\nconst notes = createDocument({\n  title: 'Meeting notes',\n  blocks: [heading(2, 'Decisions', 'n1'), paragraph('Ship the reader first; the editor follows in May.', 'n2'), paragraph('Open: who owns the migration?', 'n3')],\n});\n\n/** Each block's menu offers to hand it to the app's agent; the app opens its own conversation with it. */\nexport function AskAgent() {\n  const doc = useLocal<any>('editor-ask-doc', notes) as { value: JinshuDocument; set(next: JinshuDocument): void };\n  const asked = useLocal<string>('editor-ask-ids', '');\n  return (\n    <view className=\"gap-3\">\n      <JinshuEditor\n        doc={doc.value}\n        onOps={ops => doc.set(applyOps(doc.value, ops).doc)}\n        onAskAgent={ids => asked.set(ids.join(', '))}\n        hasLeaveGuard={false}\n        data-testid=\"ask-agent\"\n      />\n      {asked.value !== '' && <text className=\"text-footnote text-muted\">{`Handed to the assistant: ${asked.value}`}</text>}\n    </view>\n  );\n}"
+          "source": "import { useLocal } from '@lingxia/view';\nimport { createDocument, heading, paragraph } from '@liulidesign/jinshu/schema';\nimport { applyOps } from '@liulidesign/jinshu/schema';\nimport { JinshuEditor } from '@liulidesign/jinshu/JinshuEditor';\n\nconst notes = createDocument({\n  title: 'Meeting notes',\n  blocks: [heading(2, 'Decisions', 'n1'), paragraph('Ship the reader first; the editor follows in May.', 'n2'), paragraph('Open: who owns the migration?', 'n3')],\n});\n\n/** Each block's menu offers to hand it to the app's agent; the app opens its own conversation with it. */\nexport function AskAgent() {\n  const doc = useLocal('editor-ask-doc', notes);\n  const asked = useLocal<string>('editor-ask-ids', '');\n  return (\n    <view className=\"gap-3\">\n      <JinshuEditor\n        doc={doc.value}\n        onOps={ops => doc.set(applyOps(doc.value, ops).doc)}\n        onAskAgent={ids => asked.set(ids.join(', '))}\n        hasLeaveGuard={false}\n        data-testid=\"ask-agent\"\n      />\n      {asked.value !== '' && <text className=\"text-footnote text-muted\">{`Handed to the assistant: ${asked.value}`}</text>}\n    </view>\n  );\n}"
         },
         {
           "name": "ReadOnly",
@@ -674,7 +674,7 @@
       "status": "preview",
       "since": "2026-11-24",
       "summary": "A Jinshu document's headings as a contents list that moves the reader and shows each section's progress",
-      "description": "JinshuOutline lists a document's headings, indented by level, as a contents list. Shared with a JinshuView or JinshuEditor through `useJinshuNav()`, pressing a heading scrolls the document to it and tints that heading as the one being read. An app can mark each section done, current or locked, as a course does.",
+      "description": "JinshuOutline lists a document's headings, indented by level, as a contents list. Shared with a JinshuView or JinshuEditor through `useJinshuNav()`, pressing a heading scrolls the document to it and tints that heading as the one being read; with `nav.onVisibleChange` on the scroll holding a JinshuView, the tint follows the reader's scrolling too. An app can mark each section done, current or locked, as a course does.",
       "keywords": [
         "outline",
         "table of contents",
@@ -715,6 +715,13 @@
           "type": "string",
           "required": false,
           "description": "The outline's heading and accessible name. Defaults to \"Contents\" in the page's language."
+        },
+        {
+          "name": "isTitleHidden",
+          "type": "boolean",
+          "required": false,
+          "description": "Hides the drawn title, for a sheet or popover that already shows one; it stays the accessible name.",
+          "default": "false"
         },
         {
           "name": "onSelect",
@@ -793,8 +800,7 @@
           }
         ],
         "notes": [
-          "Each heading is a button named by its text.",
-          "The status mark is a glyph read as it is drawn; say what done and locked mean in the page around it when it matters."
+          "Each heading is a button named by its text, followed by its status in words when it has one; the status mark itself is hidden."
         ]
       },
       "examples": [
@@ -806,7 +812,7 @@
         {
           "name": "BesideTheDocument",
           "title": "Beside the document",
-          "source": "import { createDocument, heading, paragraph } from '@liulidesign/jinshu/schema';\nimport { JinshuView } from '@liulidesign/jinshu/JinshuView';\nimport { JinshuOutline, useJinshuNav } from '@liulidesign/jinshu/JinshuOutline';\n\nconst doc = createDocument({\n  blocks: [\n    heading(1, 'Limits', 'h1'),\n    paragraph('Where a function heads.', 'p1'),\n    heading(2, 'Definition', 'h2'),\n    heading(2, 'Exercises', 'h3'),\n    heading(3, '', 'h4'),\n  ],\n});\nconst guide = createDocument({\n  title: 'Onboarding guide',\n  blocks: [\n    heading(2, 'Your first day', 'g1'),\n    paragraph('Collect your badge at reception and set up your laptop with IT.', 'g1p'),\n    heading(2, 'Your first week', 'g2'),\n    paragraph('Meet your team, read the handbook and pick a starter task.', 'g2p'),\n    heading(3, 'Accounts to request', 'g3'),\n    paragraph('Email, chat, the code host and the design library.', 'g3p'),\n    heading(2, 'Your first month', 'g4'),\n    paragraph('Ship your starter task and book a check-in with your manager.', 'g4p'),\n  ],\n});\n\n/** In a side column beside the document, sharing one nav handle: pressing a heading scrolls the reader to it. */\nexport function BesideTheDocument() {\n  const nav = useJinshuNav('outline-beside');\n  return (\n    <view className=\"flex-row items-start gap-6\">\n      <JinshuOutline doc={guide} nav={nav} className=\"w-48 shrink-0\" />\n      <JinshuView doc={guide} nav={nav} className=\"grow min-w-0\" />\n    </view>\n  );\n}"
+          "source": "import { useView } from '@lingxia/view';\nimport { createDocument, heading, paragraph } from '@liulidesign/jinshu/schema';\nimport { JinshuView } from '@liulidesign/jinshu/JinshuView';\nimport { JinshuOutline, useJinshuNav } from '@liulidesign/jinshu/JinshuOutline';\n\nconst doc = createDocument({\n  blocks: [\n    heading(1, 'Limits', 'h1'),\n    paragraph('Where a function heads.', 'p1'),\n    heading(2, 'Definition', 'h2'),\n    heading(2, 'Exercises', 'h3'),\n    heading(3, '', 'h4'),\n  ],\n});\nconst guide = createDocument({\n  title: 'Onboarding guide',\n  blocks: [\n    heading(2, 'Your first day', 'g1'),\n    paragraph('Collect your badge at reception and set up your laptop with IT.', 'g1p'),\n    heading(2, 'Your first week', 'g2'),\n    paragraph('Meet your team, read the handbook and pick a starter task.', 'g2p'),\n    heading(3, 'Accounts to request', 'g3'),\n    paragraph('Email, chat, the code host and the design library.', 'g3p'),\n    heading(2, 'Your first month', 'g4'),\n    paragraph('Ship your starter task and book a check-in with your manager.', 'g4p'),\n  ],\n});\n\n/** Beside the document on a wide screen (above it on a phone), sharing one nav handle: pressing a heading scrolls the reader to it, and scrolling the reader moves the tint. */\nexport function BesideTheDocument() {\n  const nav = useJinshuNav('outline-beside');\n  // A phone has no room for a side column: the outline sits above the document instead.\n  const isSide = useView().env.sizeClass === 'regular';\n  return (\n    <view className={isSide ? 'flex-row items-start gap-6' : 'gap-4'}>\n      <JinshuOutline doc={guide} nav={nav} className={isSide ? 'w-48 shrink-0' : undefined} />\n      <scroll onVisibleChange={nav.onVisibleChange} className=\"grow min-w-0 max-h-72\">\n        <JinshuView doc={guide} nav={nav} />\n      </scroll>\n    </view>\n  );\n}"
         },
         {
           "name": "InPopover",
@@ -816,7 +822,7 @@
       ],
       "gaps": [],
       "limits": [
-        "The tinted heading is the one last chosen; scrolling the document by hand does not move it.",
+        "The tint follows scrolling only beside a JinshuView whose scroll reports to the nav; beside a JinshuEditor it is the heading last chosen.",
         "A locked section stays pressable; the app decides what opening it does.",
         "An empty document draws nothing."
       ],
@@ -914,7 +920,7 @@
           "name": "nav",
           "type": "JinshuNavHandle",
           "required": false,
-          "description": "Shared with a `JinshuOutline` from `useJinshuNav()`: pressing a heading in the outline scrolls the reader to it."
+          "description": "From `useJinshuNav()`, shared with a `JinshuOutline`: pressing a heading scrolls the reader to it. Give `nav.onVisibleChange` to the `<scroll>` holding the reader to follow the heading being read and report dwell and position."
         },
         {
           "name": "resume",
@@ -932,7 +938,7 @@
           "name": "onObserve",
           "type": "((events: readonly Observation[]) => void)",
           "required": false,
-          "description": "What was read and played, in batches: dwell per block, played media ranges, the reading position, events from custom blocks. Facts only; the app decides what counts as done."
+          "description": "What was read and played, in batches: played media ranges and events from custom blocks; dwell per block and the reading position once `nav` hears the scroll. Facts only; the app decides what counts as done."
         },
         {
           "name": "filePolicy",
@@ -1197,6 +1203,8 @@
       "limits": [
         "The reader shows no change bar or review queue; an agent's changes appear in place, briefly tinted with `hasUpdateHighlights`. Changes made while no editor was open wait for the next `JinshuEditor`.",
         "`openAt` brings the block to the nearest edge of the scroll, not to its top.",
+        "Dwell is measured per top-level block from scrolling alone: time with the page hidden or the reader away shows as one long `idleMs` stretch, and time since the last scroll is not reported when the page closes.",
+        "Every block is mounted; the page's scroll belongs to the app, so the reader does not mount blocks by viewport.",
         "It has no AI entry of its own: an agent reaches documents only through the tools the app registers with `createJinshuTools`."
       ],
       "theming": {

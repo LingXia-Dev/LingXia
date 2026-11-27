@@ -232,14 +232,18 @@ describe('Shared sources', () => {
 
   it('a page leaving keeps the source and its draft; the next page sees what changed while away', async () => {
     const source = createJinshuSource({ key: 'w3', initialDoc: lesson() });
-    const updates = [];
+    const data = {};
+    let updates = 0;
     let unload;
-    const { syncDoc } = bindJinshuPage({ update: p => updates.push(p), onUnload: fn => (unload = fn) }, source);
+    const signal = { aborted: false, addEventListener: (_t, fn) => (unload = fn), removeEventListener() {} };
+    const { syncDoc } = bindJinshuPage({ update: recipe => (updates += 1, recipe(data)), signal }, source);
+    assert.equal(data.saveStatus, 'saved');
     const first = fakeChannel();
-    syncDoc(undefined, first);
+    syncDoc({ doc: 'w3', role: 'editor' }, first);
     assert.equal(source.getState().viewers, 1);
     first.close();
     unload();
+    const seen = updates;
     assert.equal(source.getState().viewers, 0);
     const res = await toolsOver({ w3: source }).call('jinshu_edit', { doc: 'w3', base: 1, ops: [{ op: 'edit', id: 'p2', find: 'Second', replace: 'Later' }] });
     assert.equal(res.status, 'ok');
@@ -249,6 +253,7 @@ describe('Shared sources', () => {
     assert.equal(away.batches[0].away, true);
     assert.deepEqual(away.batches[0].blockIds, ['p2']);
     assert.equal(plainText(source.getState().doc.blocks[2].runs), 'Later paragraph.');
+    assert.equal(updates, seen, 'an unloaded page hears nothing');
   });
 
   it('the person stops an agent: its next edit is refused until it reads again', async () => {

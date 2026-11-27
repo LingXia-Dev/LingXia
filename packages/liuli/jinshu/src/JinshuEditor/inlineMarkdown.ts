@@ -11,6 +11,9 @@ export interface TextRange {
   readonly end: number;
 }
 
+/** The shorthand mark delimiters, longest of each family first. */
+export const SHORTHAND_MARKS = ['**', '*', '++', '~~', '`', '==', '^', '~'] as const;
+
 /** A field's text after a format, with the selection to show in it. */
 export interface FormattedText extends TextRange {
   readonly text: string;

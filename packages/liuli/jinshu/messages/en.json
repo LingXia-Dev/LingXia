@@ -191,6 +191,18 @@
     "defaultMessage": "Column {index}",
     "description": "Label of the table toolbar while a column is selected."
   },
+  "@jinshu.editor.block.columnCount": {
+    "defaultMessage": "{count} columns",
+    "description": "Button in a columns block's bar that sets how many columns it has."
+  },
+  "@jinshu.editor.block.columnWider": {
+    "defaultMessage": "Widen column {index}",
+    "description": "Button in a columns block's bar that makes one column twice as wide as the others."
+  },
+  "@jinshu.editor.block.columnsEqual": {
+    "defaultMessage": "Equal widths",
+    "description": "Button in a columns block's bar that makes every column the same width."
+  },
   "@jinshu.editor.block.deleteColumn": {
     "defaultMessage": "Delete column",
     "description": "Table toolbar: delete the selected column."
@@ -359,6 +371,10 @@
     "defaultMessage": "Quote text",
     "description": "Accessible name of the quote field."
   },
+  "@jinshu.editor.block.columnPlaceholder": {
+    "defaultMessage": "Type here",
+    "description": "Shown in an empty paragraph inside a column, where pressing starts typing."
+  },
   "@jinshu.editor.block.quoteBodyPlaceholder": {
     "defaultMessage": "Quote; a blank line starts a new paragraph",
     "description": "Placeholder of the quote field."
@@ -511,6 +527,10 @@
     "defaultMessage": "Change block type",
     "description": "Accessible name of the format bar's block type menu."
   },
+  "@jinshu.editor.format.turnIntoLoses": {
+    "defaultMessage": "Not possible without losing content",
+    "description": "Under a block type the block cannot turn into: its marks, items or lines would be lost."
+  },
   "@jinshu.editor.format.underline": {
     "defaultMessage": "Underline",
     "description": "Format button."
@@ -594,6 +614,10 @@
   "@jinshu.editor.link.insert": {
     "defaultMessage": "Insert link",
     "description": "Accessible name of the link popover."
+  },
+  "@jinshu.editor.link.needsText": {
+    "defaultMessage": "Put the caret in a paragraph or heading first",
+    "description": "Why the toolbar's Link button is disabled: no text block is being edited."
   },
   "@jinshu.editor.link.sections": {
     "defaultMessage": "Sections in this document",
@@ -959,6 +983,10 @@
     "defaultMessage": "Moved a column back",
     "description": "History note: a table column moved toward the start."
   },
+  "@jinshu.note.columnCount": {
+    "defaultMessage": "Changed to {count} columns",
+    "description": "History note: a columns block switched between two and three columns."
+  },
   "@jinshu.note.columnDelete": {
     "defaultMessage": "Deleted a column",
     "description": "History note."
@@ -970,6 +998,10 @@
   "@jinshu.note.columnInsert": {
     "defaultMessage": "Inserted a column",
     "description": "History note."
+  },
+  "@jinshu.note.columnWidths": {
+    "defaultMessage": "Changed column widths",
+    "description": "History note: a columns block's widths changed."
   },
   "@jinshu.note.custom": {
     "defaultMessage": "Updated an extension block",
@@ -1090,6 +1122,10 @@
   "@jinshu.note.turnInto": {
     "defaultMessage": "Turned into {kind, select, paragraph {text} heading {heading {level}} bullet {a bulleted list} ordered {a numbered list} task {a task list} list {a list} quote {a quote} callout {a callout} details {a toggle} columns {columns} code {a code block} math {an equation} table {a table} divider {a divider} image {an image} video {a video} audio {audio} file {a file} other {a block}}",
     "description": "History note: a block changed kind."
+  },
+  "@jinshu.outline.status": {
+    "defaultMessage": "{heading}, {status, select, done {done} current {in progress} other {locked}}",
+    "description": "Accessible name of an outline entry that shows a section's progress; `heading` is its text."
   },
   "@jinshu.outline.title": {
     "defaultMessage": "Contents",

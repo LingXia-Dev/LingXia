@@ -1,3 +1,4 @@
+import { useView } from '@lingxia/view';
 import { Button } from '@liulidesign/core/Button';
 import { Popover } from '@liulidesign/core/Popover';
 import { createDocument, heading, paragraph } from '../schema/helpers';
@@ -34,13 +35,17 @@ export function Progress() {
   return <JinshuOutline doc={doc} nav={nav} status={{ h1: 'done', h2: 'current', h3: 'locked' }} data-testid="outline" />;
 }
 
-/** In a side column beside the document, sharing one nav handle: pressing a heading scrolls the reader to it. */
+/** Beside the document on a wide screen (above it on a phone), sharing one nav handle: pressing a heading scrolls the reader to it, and scrolling the reader moves the tint. */
 export function BesideTheDocument() {
   const nav = useJinshuNav('outline-beside');
+  // A phone has no room for a side column: the outline sits above the document instead.
+  const isSide = useView().env.sizeClass === 'regular';
   return (
-    <view className="flex-row items-start gap-6">
-      <JinshuOutline doc={guide} nav={nav} className="w-48 shrink-0" />
-      <JinshuView doc={guide} nav={nav} className="grow min-w-0" />
+    <view className={isSide ? 'flex-row items-start gap-6' : 'gap-4'}>
+      <JinshuOutline doc={guide} nav={nav} className={isSide ? 'w-48 shrink-0' : undefined} />
+      <scroll onVisibleChange={nav.onVisibleChange} className="grow min-w-0 max-h-72">
+        <JinshuView doc={guide} nav={nav} />
+      </scroll>
     </view>
   );
 }

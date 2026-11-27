@@ -1,7 +1,6 @@
 import { useLocal } from '@lingxia/view';
 import { callout, codeBlock, createDocument, heading, list, listItem, paragraph, table } from '../schema/helpers';
 import { applyOps } from '../schema/ops';
-import type { JinshuDocument } from '../schema/types';
 import { JinshuEditor } from './JinshuEditor';
 
 const draft = createDocument({
@@ -23,14 +22,13 @@ const notes = createDocument({
 
 /** The editor on a document the page holds: each edit comes back as ops the page applies. */
 export function Draft() {
-  // `useLocal` types only closed data, and a document's `meta` and extension attrs are open records.
-  const doc = useLocal<any>('editor-example-doc', draft) as { value: JinshuDocument; set(next: JinshuDocument): void };
+  const doc = useLocal('editor-example-doc', draft);
   return <JinshuEditor doc={doc.value} onOps={ops => doc.set(applyOps(doc.value, ops).doc)} hasLeaveGuard={false} data-testid="draft" />;
 }
 
 /** Each block's menu offers to hand it to the app's agent; the app opens its own conversation with it. */
 export function AskAgent() {
-  const doc = useLocal<any>('editor-ask-doc', notes) as { value: JinshuDocument; set(next: JinshuDocument): void };
+  const doc = useLocal('editor-ask-doc', notes);
   const asked = useLocal<string>('editor-ask-ids', '');
   return (
     <view className="gap-3">

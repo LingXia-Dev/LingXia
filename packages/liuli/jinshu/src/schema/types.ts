@@ -494,6 +494,8 @@ export interface ApplyOpsOptions extends CheckOptions {
 export interface ApplyOpsResult {
   readonly doc: JinshuDocument;
   readonly problems: readonly Problem[];
+  /** On success: the ops with every id they minted written in, so applying them again gives the same ids. */
+  readonly ops?: readonly AnyJinshuOp[];
 }
 
 export interface Origin {

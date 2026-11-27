@@ -255,6 +255,8 @@ export type ChannelClientMsg =
       readonly t: 'save';
       readonly action: 'save' | 'confirmAgentSave' | 'cancelAgentSave' | 'resolveConflict';
       readonly resolution?: 'mine' | 'theirs' | 'copy';
+      /** With `save`: answered by a `saveResult` with the same id once that save finishes. */
+      readonly requestId?: string;
     }
   | { readonly t: 'streamAbort'; readonly streamId: string }
   /** The person stops an agent writing without a stream: its next edits are refused until it reads again. */
@@ -282,6 +284,10 @@ export type ChannelServerMsg =
   | { readonly t: 'conflicts'; readonly conflicts: readonly ConflictItem[] }
   | { readonly t: 'history'; readonly entries: readonly HistoryEntry[]; readonly canUndo: boolean; readonly canRedo: boolean }
   | { readonly t: 'saveRequest'; readonly origin: Origin; readonly summary?: string }
+  /** Where saving stands; sent on open and whenever it changes, so a page needs no flags of its own. */
+  | { readonly t: 'saveState'; readonly dirty: boolean; readonly saveStatus: JinshuSourceState['saveStatus']; readonly saveError?: string }
+  /** The save a `save` message with `requestId` asked for has finished; not ok on a conflict or failure. */
+  | { readonly t: 'saveResult'; readonly requestId: string; readonly ok: boolean }
   | { readonly t: 'uploadProgress'; readonly blockId: string; readonly ratio: number }
   | { readonly t: 'ack'; readonly revision: number; readonly batchId: string }
   | { readonly t: 'file'; readonly revision: number; readonly text: string }

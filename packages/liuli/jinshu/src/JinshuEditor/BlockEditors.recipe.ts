@@ -94,12 +94,21 @@ export const blockEditorsRecipe = {
     },
   },
   columns: {
+    // Its bar floats above it, as a table's does.
+    root: 'relative',
     stacked: 'gap-4',
     side: 'flex-row items-start gap-5',
     column: 'min-w-0 gap-2 rounded-control p-1',
+    slot: 'rounded-checkbox',
+    /** The block the bar's actions apply to. */
+    slotFocused: 'bg-text/3',
     input: 'w-full bg-canvas/0',
     child: 'relative rounded-checkbox hover:bg-text/3',
     childButton: 'absolute inset-0 rounded-checkbox',
+    /** An empty paragraph, which would otherwise draw nothing to press. */
+    placeholder: 'text-body text-muted',
+    media: 'relative gap-2',
+    mediaTool: 'absolute top-2 end-2 z-10',
   },
   inspector: {
     root: 'rounded-control border border-line bg-surface-sunken p-3 gap-2',

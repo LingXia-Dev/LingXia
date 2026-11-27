@@ -66,10 +66,11 @@ interface LogRecord {
   readonly origin: Origin;
   readonly acceptedFrom?: Origin;
   readonly timestampMs: number;
-  readonly ops: readonly AnyJinshuOp[];
+  // Rewritten in place when an upload lands, so undo and redo never bring back the local file.
+  ops: readonly AnyJinshuOp[];
   readonly touchedIds: readonly string[];
-  readonly beforeDoc: JinshuDocument;
-  readonly afterDoc: JinshuDocument;
+  beforeDoc: JinshuDocument;
+  afterDoc: JinshuDocument;
   readonly note?: string;
   readonly noteWord?: NoteWord;
   undone: boolean;
@@ -184,6 +185,32 @@ function computeRangeChange(
   return { from: start, to: endA, insert: inserted };
 }
 
+/** `value` with the block `id` that still shows `tempSrc` given the uploaded fields; the same object when nothing matched. */
+function withUploaded<T>(value: T, id: string, tempSrc: string, fields: Readonly<Record<string, unknown>>): T {
+  if (Array.isArray(value)) {
+    let changed = false;
+    const next = value.map(v => {
+      const n = withUploaded(v, id, tempSrc, fields);
+      if (n !== v) changed = true;
+      return n;
+    });
+    return (changed ? next : value) as T;
+  }
+  if (value === null || typeof value !== 'object') return value;
+  const rec = value as Record<string, unknown>;
+  if (rec.id === id && rec.src === tempSrc) return { ...rec, ...fields } as T;
+  let out: Record<string, unknown> | undefined;
+  for (const [k, v] of Object.entries(rec)) {
+    const n = withUploaded(v, id, tempSrc, fields);
+    if (n !== v) (out ??= { ...rec })[k] = n;
+  }
+  return (out ?? value) as T;
+}
+
+function isMarkdownSource(value: unknown): value is MarkdownSource {
+  return value !== null && typeof value === 'object' && typeof (value as MarkdownSource).text === 'string' && Array.isArray((value as MarkdownSource).segments);
+}
+
 /** Creates a Logic-side JinshuSource managing draft, revisions, rebasing, suggestions, undo, streaming, and Channel sync. */
 export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
   const registry = options.registry ?? emptyRegistry;
@@ -193,6 +220,8 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
 
   // The Markdown file as last read or written: saving keeps the bytes of every block that did not change.
   let markdownSource: MarkdownSource | undefined;
+  // The remote file of an open version conflict, which "theirs" adopts.
+  let conflictSource: MarkdownSource | undefined;
 
   /** A stored file's text in `format`; `previous` lets Markdown keep the ids of blocks it did not change. */
   function readText(text: string, previous?: JinshuDocument): { doc?: JinshuDocument; problems: Problem[]; source?: MarkdownSource } {
@@ -241,13 +270,20 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
 
   let revision = 1;
   let savedRevision = 1;
+  // The content last saved or loaded: a draft edited back to it (undo, retyping) is clean again.
+  let savedDoc: JinshuDocument = doc;
+  let savedText: string | undefined;
+  let cleanCheckedAt = 0;
   let baseVersion = options.initialVersion ?? 'v1';
   let saving = false;
   let saveError: string | undefined;
   let problems: Problem[] = [...(initial?.problems ?? []), ...checkDocument(doc, registry, options)];
   let suggestions: Suggestion[] = [];
   let conflicts: ConflictItem[] = [];
-  let focusIds: string[] = [];
+  // Per editor channel (or `setFocus`'s own key): one editor blurring or closing leaves the others' focus.
+  const focusBy = new Map<object, readonly string[]>();
+  const API_FOCUS = {};
+  const focusIds = (): string[] => Array.from(new Set([...focusBy.values()].flat()));
   let pendingAgentSave: { origin: Origin; summary?: string } | undefined;
   let activeUploads = 0;
   let activeStream: JinshuStream | null = null;
@@ -278,12 +314,15 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
         revision,
         savedRevision,
         suggestions,
+        ...(markdownSource ? { markdownSource } : {}),
         updatedAt: Date.now(),
       })
       .catch(() => {});
   }
 
   const log: LogRecord[] = [];
+  // The draft was replaced wholesale at this revision: a batch based before it is stale on every block.
+  let replacedAt = 0;
   const redoStack: { readonly rec: LogRecord; readonly by: Origin }[] = [];
   const reviewLog: ReviewRecord[] = [];
   const blockLastModifiedRev = new Map<string, number>();
@@ -293,6 +332,16 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
   const listeners = new Set<(state: JinshuSourceState) => void>();
   const channels = new Set<MinimalChannelEndpoint>();
   const channelCleanups = new Set<() => void>();
+
+  /** A replaced draft starts a new history: undo must not rewind to the document it dropped. */
+  function startHistory(): void {
+    log.length = 0;
+    redoStack.length = 0;
+    blockLastModifiedRev.clear();
+    blockLastModifiedBy.clear();
+    awayBatches = [];
+    replacedAt = revision;
+  }
 
   function broadcast(msg: ChannelServerMsg): void {
     for (const ch of channels) {
@@ -337,7 +386,7 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
       history: toHistoryEntries(),
       canUndo: log.some(r => !r.undone && r.origin.kind === 'human'),
       canRedo: redoStack.some(e => e.by.kind === 'human'),
-      focusIds,
+      focusIds: focusIds(),
       ...(pendingAgentSave ? { pendingAgentSave } : {}),
       viewers: channels.size,
       activities,
@@ -398,9 +447,38 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
     });
   }
 
+  function saveStateMsg(state: JinshuSourceState): Extract<ChannelServerMsg, { t: 'saveState' }> {
+    return { t: 'saveState', dirty: state.dirty, saveStatus: state.saveStatus, ...(state.saveError ? { saveError: state.saveError } : {}) };
+  }
+
+  let sentSaveState = '';
+  /** Once per revision: a draft whose content is the saved one again is not dirty. */
+  function settleClean(): void {
+    if (revision === savedRevision || cleanCheckedAt === revision) return;
+    cleanCheckedAt = revision;
+    if (doc !== savedDoc) {
+      savedText ??= JSON.stringify(savedDoc);
+      if (JSON.stringify(doc) !== savedText) return;
+    }
+    savedRevision = revision;
+  }
+
+  function markSaved(rev: number, content: JinshuDocument): void {
+    savedRevision = rev;
+    savedDoc = content;
+    savedText = undefined;
+  }
+
   function notify(): void {
+    settleClean();
     persistDraft();
     const state = getState();
+    const saveState = saveStateMsg(state);
+    const key = JSON.stringify(saveState);
+    if (key !== sentSaveState) {
+      sentSaveState = key;
+      broadcast(saveState);
+    }
     for (const fn of listeners) fn(state);
   }
 
@@ -511,7 +589,7 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
     for (let i = 0; i < batch.ops.length; i++) {
       const targetIds = extractOpTargetIds(batch.ops[i]);
       for (const id of targetIds) {
-        const modRev = blockLastModifiedRev.get(id) ?? 0;
+        const modRev = Math.max(blockLastModifiedRev.get(id) ?? 0, replacedAt);
         const own = from !== undefined && blockLastModifiedBy.get(id) === from;
         if (modRev > batch.base && !own) {
           const currentBlk = findBlockById(doc, id);
@@ -538,7 +616,8 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
     let downgraded: 'focus' | 'large' | undefined;
     const allTargetIds = batch.ops.flatMap(extractOpTargetIds);
     if (batch.origin.kind === 'agent' && mode === 'direct') {
-      if (focusIds.length > 0 && allTargetIds.some(id => focusIds.includes(id))) {
+      const focused = focusIds();
+      if (focused.length > 0 && allTargetIds.some(id => focused.includes(id))) {
         mode = 'suggest';
         downgraded = 'focus';
       }
@@ -598,6 +677,9 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
         return { revision, batchId: batch.batchId, problems: [...result.problems, ...batchProblems] };
       }
     }
+
+    // What history and suggestions keep: the ops with the ids this apply minted, so a replay mints none.
+    const resolvedOps = result.ops ?? expandedOps;
 
     // 6. If `suggest` mode, store as RangeSuggestion or BlockSuggestion without mutating draft
     if (mode === 'suggest') {
@@ -668,7 +750,7 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
             id: sugId,
             origin: batch.origin,
             base: revision,
-            ops: expandedOps as JinshuOp[],
+            ops: resolvedOps as JinshuOp[],
             status: 'pending',
             ...(note ? { note } : {}),
             ...(downgraded ? { downgraded } : {}),
@@ -680,7 +762,7 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
           id: sugId,
           origin: batch.origin,
           base: revision,
-          ops: expandedOps as JinshuOp[],
+          ops: resolvedOps as JinshuOp[],
           status: 'pending',
           ...(note ? { note } : {}),
           ...(downgraded ? { downgraded } : {}),
@@ -727,7 +809,7 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
         ...lastLog,
         revision,
         timestampMs: now,
-        ops: [...lastLog.ops, ...expandedOps],
+        ops: [...lastLog.ops, ...resolvedOps],
         afterDoc: doc,
       };
     } else {
@@ -736,7 +818,7 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
         revision,
         origin: batch.origin,
         timestampMs: now,
-        ops: expandedOps,
+        ops: resolvedOps,
         touchedIds,
         beforeDoc: prevDoc,
         afterDoc: doc,
@@ -936,7 +1018,7 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
       origin: humanOrigin,
       acceptedFrom: sug.origin,
       timestampMs: Date.now(),
-      ops: opsToApply,
+      ops: res.ops ?? opsToApply,
       touchedIds,
       beforeDoc: prevDoc,
       afterDoc: doc,
@@ -1040,9 +1122,11 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
     markdownSource = read.source;
     baseVersion = res.version;
     revision += 1;
-    savedRevision = revision;
+    markSaved(revision, doc);
+    startHistory();
     problems = [...read.problems, ...checkDocument(doc, registry, options)];
     conflicts = [];
+    conflictSource = undefined;
     saveError = undefined;
     pushSnapshotAndMeta();
     notify();
@@ -1067,7 +1151,7 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
 
   async function saveNow(): Promise<SaveResult> {
     if (!options.save) {
-      savedRevision = revision;
+      markSaved(revision, doc);
       saveError = undefined;
       notify();
       return { ok: true, version: baseVersion };
@@ -1083,16 +1167,18 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
       saving = false;
       if (res.ok) {
         if (format === 'markdown') markdownSource = markdownToDocument(file.text, { registry, previous: savingDoc }).source;
-        savedRevision = savingRevision;
+        markSaved(savingRevision, savingDoc);
         baseVersion = res.version;
         conflicts = [];
         pendingAgentSave = undefined;
       } else if (res.conflict) {
+        const remote: { doc?: JinshuDocument; source?: MarkdownSource } = 'remoteDoc' in res ? { doc: res.remoteDoc } : readText(res.remoteText, doc);
+        conflictSource = remote.source;
         conflicts = [
           {
             id: newBlockId('conf'),
             kind: 'version',
-            remoteDoc: 'remoteDoc' in res ? res.remoteDoc : readText(res.remoteText, doc).doc,
+            remoteDoc: remote.doc,
             remoteVersion: res.remoteVersion,
             message: `Remote version "${res.remoteVersion}" is newer than base "${baseVersion}".`,
           },
@@ -1175,15 +1261,19 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
 
     if (resolution === 'theirs' && versionConflict.remoteDoc) {
       doc = migrateDocument(versionConflict.remoteDoc, registry);
+      markdownSource = conflictSource;
+      conflictSource = undefined;
       baseVersion = versionConflict.remoteVersion ?? baseVersion;
       revision += 1;
-      savedRevision = revision;
+      markSaved(revision, doc);
+      startHistory();
       conflicts = [];
       broadcast({ t: 'conflicts', conflicts });
       pushSnapshotAndMeta();
       notify();
       return { ok: true, version: baseVersion };
     }
+    conflictSource = undefined;
     if (resolution === 'mine') {
       baseVersion = versionConflict.remoteVersion ?? baseVersion;
       conflicts = [];
@@ -1206,6 +1296,7 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
         doc?: JinshuDocument;
         baseVersion?: string;
         suggestions?: Suggestion[];
+        markdownSource?: unknown;
       };
       if (!saved.doc || !Array.isArray(saved.doc.blocks)) return false;
       // A stored draft that no longer validates is discarded, not repaired.
@@ -1216,12 +1307,14 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
       doc = normalizeDocument(saved.doc, registry);
       if (typeof saved.baseVersion === 'string') baseVersion = saved.baseVersion;
       if (Array.isArray(saved.suggestions)) suggestions = saved.suggestions;
+      // The bytes of the file the draft was based on; without them it is written fresh.
+      if (format === 'markdown') markdownSource = isMarkdownSource(saved.markdownSource) ? saved.markdownSource : undefined;
       revision += 1;
+      startHistory();
       problems = checkDocument(doc, registry, options);
       pushSnapshotAndMeta();
       if (suggestions.length > 0) broadcast({ t: 'suggestions', suggestions });
-      const state = getState();
-      for (const fn of listeners) fn(state);
+      notify();
       return true;
     } catch {
       return false;
@@ -1371,7 +1464,7 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
       revision,
       title: doc.title ?? '',
       view: wrappedView,
-      focusIds: [...focusIds],
+      focusIds: focusIds(),
       reviews: reviewLog.filter(r => r.revision > sinceRev),
       pending: suggestions.map(s => s.id),
       saveWaiting: pendingAgentSave !== undefined,
@@ -1440,15 +1533,34 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
       const uploaded = await options.media.upload(picked.file, ratio => {
         broadcast({ t: 'uploadProgress', blockId: tempBlockId, ratio });
       });
-      // Replace temp src in-place WITHOUT adding to undo stack
-      const res = applyOps(doc, [{ op: 'update', id: tempBlockId, attrs: fitFormat(kind, uploaded) }], registry, options);
-      if (!res.problems.some(p => p.severity === 'error')) {
-        doc = res.doc;
-        revision += 1;
-        broadcast({ t: 'uploadProgress', blockId: tempBlockId, ratio: 1 });
-        pushSnapshotAndMeta();
-        notify();
+      const fields: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(fitFormat(kind, uploaded))) if (v !== undefined && k !== 'id' && k !== 'type') fields[k] = v;
+      // Outside the undo history, and everywhere the local file is recorded: undo, redo and replay
+      // never bring it back. The draft changes only while the block still shows it.
+      const current = findBlockById(doc, tempBlockId) as { src?: string } | undefined;
+      let nextDoc = doc;
+      if (current?.src === tempSrc) {
+        const res = applyOps(doc, [{ op: 'update', id: tempBlockId, attrs: fields }], registry, options);
+        if (res.problems.some(p => p.severity === 'error')) return;
+        nextDoc = res.doc;
       }
+      for (const rec of log) {
+        rec.ops = withUploaded(rec.ops, tempBlockId, tempSrc, fields);
+        rec.beforeDoc = withUploaded(rec.beforeDoc, tempBlockId, tempSrc, fields);
+        rec.afterDoc = withUploaded(rec.afterDoc, tempBlockId, tempSrc, fields);
+      }
+      const nextSuggestions = withUploaded(suggestions, tempBlockId, tempSrc, fields);
+      if (nextSuggestions !== suggestions) {
+        suggestions = nextSuggestions;
+        broadcast({ t: 'suggestions', suggestions });
+      }
+      broadcast({ t: 'uploadProgress', blockId: tempBlockId, ratio: 1 });
+      if (nextDoc !== doc) {
+        doc = nextDoc;
+        revision += 1;
+        pushSnapshotAndMeta();
+      }
+      notify();
     } finally {
       activeUploads -= 1;
       if (activeUploads === 0) retryAutoSave();
@@ -1485,6 +1597,7 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
       channel.send({ t: 'saveRequest', ...pendingAgentSave });
     }
     if (activities.length > 0) channel.send({ t: 'activity', activities });
+    channel.send(saveStateMsg(getState()));
     if (params?.role === 'editor') joinAsEditor(channel);
     notify();
 
@@ -1504,7 +1617,8 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
           break;
         }
         case 'focus':
-          focusIds = [...msg.blockIds];
+          if (msg.blockIds.length > 0) focusBy.set(channel, [...msg.blockIds]);
+          else focusBy.delete(channel);
           notify();
           break;
         case 'review':
@@ -1519,7 +1633,17 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
           else if (msg.action === 'undoBatch' && msg.batchId) undo(msg.batchId);
           break;
         case 'save':
-          if (msg.action === 'save') void save();
+          if (msg.action === 'save') {
+            const { requestId } = msg;
+            void save().then(res => {
+              if (requestId === undefined || !channels.has(channel)) return;
+              try {
+                channel.send({ t: 'saveResult', requestId, ok: res.ok });
+              } catch {
+                // Closed meanwhile.
+              }
+            });
+          }
           else if (msg.action === 'confirmAgentSave') void confirmAgentSave();
           else if (msg.action === 'cancelAgentSave') cancelAgentSave();
           else if (msg.action === 'resolveConflict' && msg.resolution) void resolveConflict(msg.resolution);
@@ -1549,6 +1673,7 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
       offClose();
       channels.delete(channel);
       editors.delete(channel);
+      focusBy.delete(channel);
       channelCleanups.delete(cleanup);
       notify();
     };
@@ -1576,7 +1701,8 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
     acceptAllSuggestions,
     rejectAllSuggestions,
     setFocus(ids) {
-      focusIds = [...ids];
+      if (ids.length > 0) focusBy.set(API_FOCUS, [...ids]);
+      else focusBy.delete(API_FOCUS);
       notify();
     },
     requestSave,

@@ -8,7 +8,7 @@ export const doc: ComponentDoc = {
   summary: 'A Jinshu document, edited block by block, with history, saving, and a review of what an agent changed or asks',
   description:
     'JinshuEditor edits a Jinshu document where it is read: each block keeps the reader\'s geometry, so moving between reading and ' +
-    'editing does not jump. Text blocks edit in place; tables, code, folds, callouts and media have their own editors, and `/` inserts ' +
+    'editing does not jump. Text blocks edit in place; tables, code, folds, callouts, columns and media have their own editors, and `/` inserts ' +
     'any block. On a live `channel` the source keeps the history, the save state and the review: an agent\'s change is marked at each ' +
     'block it touched, with a bar to view or undo that batch; its suggestions and save requests wait in one queue; and an agent at ' +
     'work shows a mark the person can stop. Pasted paragraphs or Markdown become blocks, and in a Markdown document (`format`) the ' +
@@ -19,13 +19,13 @@ export const doc: ComponentDoc = {
   anatomy: [
     { part: 'root', required: true, description: 'The editor: its header, then the document.' },
     { part: 'header', required: true, description: 'Stays in view while scrolling: the toolbar, then whatever needs the person (activity, the change bar, the review queue).' },
-    { part: 'toolbar', required: false, description: 'The document\'s toolbar: insert, the app\'s `toolbarActions` and find; on a live `channel` also undo, redo, history and the save state. Absent when read-only.' },
+    { part: 'toolbar', required: false, description: 'The document\'s toolbar: insert, the app\'s `toolbarActions` and find; on a desktop also link and equation, which work at a bare caret; on a live `channel` also undo, redo, history and the save state. Absent when read-only.' },
     { part: 'saved', required: false, description: 'The quiet save state at the toolbar\'s end, from `saveStatus`; Save or Retry takes its place while there is something to save.' },
     { part: 'wordCount', required: false, description: 'How long the document is, beside the save state: Chinese, Japanese and Korean by character, other text by word. Not shown on a phone.' },
-    { part: 'findBar', required: false, description: 'Find and replace across the document, with the match count.' },
+    { part: 'findBar', required: false, description: 'Find and replace across all the text the reader sees, in lists, tables, containers and columns too, with the match count.' },
     { part: 'history', required: false, description: 'The edit history: who changed what, in the reader\'s language, with undo and redo of each step.' },
     { part: 'activity', required: false, description: 'An agent reading or writing here, named, with Stop; its next edit is refused once stopped.' },
-    { part: 'agentBar', required: false, description: 'The change bar: who changed how many blocks while the person was here or away, with View (steps through the changes) and Undo for that batch only.' },
+    { part: 'agentBar', required: false, description: 'The change bar for the latest agent batch: who changed how many blocks while the person was here or away, with View (steps through that batch\'s blocks) and Undo for that batch only; dismissing it shows the batch before.' },
     { part: 'queue', required: false, description: 'One item at a time of what waits for the person: a conflict, an agent\'s save request, its suggestions in document order.' },
     { part: 'canvas', required: true, description: 'The document, at the reader\'s measure.' },
     { part: 'source', required: false, description: 'Source mode: the whole document as one Markdown text, parsed back into blocks on leaving, with any warnings or a refusal above it.' },

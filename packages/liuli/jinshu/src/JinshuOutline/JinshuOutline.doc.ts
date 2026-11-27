@@ -8,7 +8,8 @@ export const doc: ComponentDoc = {
   summary: 'A Jinshu document\'s headings as a contents list that moves the reader and shows each section\'s progress',
   description:
     'JinshuOutline lists a document\'s headings, indented by level, as a contents list. Shared with a JinshuView or JinshuEditor ' +
-    'through `useJinshuNav()`, pressing a heading scrolls the document to it and tints that heading as the one being read. ' +
+    'through `useJinshuNav()`, pressing a heading scrolls the document to it and tints that heading as the one being read; ' +
+    'with `nav.onVisibleChange` on the scroll holding a JinshuView, the tint follows the reader\'s scrolling too. ' +
     'An app can mark each section done, current or locked, as a course does.',
   keywords: ['outline', 'table of contents', 'toc', 'contents', 'headings', 'navigation', 'sections', 'jinshu'],
   propsType: 'JinshuOutlineProps',
@@ -34,13 +35,12 @@ export const doc: ComponentDoc = {
       { what: 'locked', pair: ['text-muted', 'canvas'], minimum: '3:1' },
     ],
     notes: [
-      'Each heading is a button named by its text.',
-      'The status mark is a glyph read as it is drawn; say what done and locked mean in the page around it when it matters.',
+      'Each heading is a button named by its text, followed by its status in words when it has one; the status mark itself is hidden.',
     ],
   },
   guidance: {
     do: [
-      'Share one `useJinshuNav()` handle between the outline and the document it moves.',
+      'Share one `useJinshuNav()` handle between the outline and the document it moves, and pass `nav.onVisibleChange` to the scroll holding the document.',
       'Put it in a side column on a wide screen, and behind a Contents button on a phone.',
       'Take the headings out in Logic with `extractOutline` and pass `items` when the page does not hold the document.',
     ],
@@ -55,7 +55,7 @@ export const doc: ComponentDoc = {
   ],
   gaps: [],
   limits: [
-    'The tinted heading is the one last chosen; scrolling the document by hand does not move it.',
+    'The tint follows scrolling only beside a JinshuView whose scroll reports to the nav; beside a JinshuEditor it is the heading last chosen.',
     'A locked section stays pressable; the app decides what opening it does.',
     'An empty document draws nothing.',
   ],

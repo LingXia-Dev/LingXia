@@ -23,6 +23,8 @@ export interface JinshuOutlineProps {
   readonly status?: Readonly<Record<string, OutlineSectionStatus>>;
   /** The outline's heading and accessible name. Defaults to "Contents" in the page's language. */
   readonly title?: string;
+  /** Hides the drawn title, for a sheet or popover that already shows one; it stays the accessible name. @default false */
+  readonly isTitleHidden?: boolean;
   /** A heading was pressed; with `nav`, the reader also scrolls to it. */
   readonly onSelect?: (headingId: string) => void;
   readonly className?: string;
@@ -38,6 +40,7 @@ export function JinshuOutline({
   nav,
   status,
   title: ownTitle,
+  isTitleHidden = false,
   onSelect,
   className,
   'data-testid': testId,
@@ -50,13 +53,15 @@ export function JinshuOutline({
 
   return (
     <view role="group" aria-label={title} data-testid={testId} className={cx(r.root.base, className)}>
-      <text className={r.title.base}>{title}</text>
+      {!isTitleHidden && <text className={r.title.base}>{title}</text>}
       {list.map(item => {
         const isActive = activeId === item.id;
         const st = status?.[item.id];
+        const text = item.text || jinshuText('@jinshu.outline.untitled');
         return (
           <button
             key={item.id}
+            aria-label={st ? jinshuText('@jinshu.outline.status', { heading: text, status: st }) : undefined}
             onClick={() => {
               nav?.scrollTo(item.id);
               onSelect?.(item.id);
@@ -64,9 +69,9 @@ export function JinshuOutline({
             className={cx(r.item.base, r.item.level[item.level], isActive ? r.item.active : r.item.idle)}
           >
             <text className={cx(r.itemText.base, isActive ? r.itemText.active : item.level === 1 ? r.itemText.top : r.itemText.nested)}>
-              {item.text || jinshuText('@jinshu.outline.untitled')}
+              {text}
             </text>
-            {st && <text className={cx(r.status.base, r.status.tone[st])}>{STATUS_GLYPH[st]}</text>}
+            {st && <text aria-hidden className={cx(r.status.base, r.status.tone[st])}>{STATUS_GLYPH[st]}</text>}
           </button>
         );
       })}

@@ -16,7 +16,7 @@ export const topBarRecipe = {
     base: 'flex-row flex-wrap items-center gap-x-2 min-h-11 px-3 py-1 border-b border-line bg-surface shrink-0',
   },
   start: {
-    base: 'grow basis-0 min-w-0 flex-row items-center gap-1',
+    base: 'grow basis-0 flex-row items-center gap-1',
   },
   heading: {
     base: 'shrink min-w-0 text-body font-semibold text-text truncate',

@@ -66,6 +66,7 @@ export const doc: ComponentDoc = {
       'Pass `resume` from the progress you stored, so a returning reader is offered their place.',
       'Use `mediaPolicy` to keep a required video from being skipped; say so near it in the page if it matters.',
       'Keep what `onObserve` reports and decide completion in Logic; the reader reports facts, not grades.',
+      'Pass `nav.onVisibleChange` from `useJinshuNav()` to the `<scroll>` holding the reader, with the same `nav` on the reader, for dwell, position and pausing media that scrolls away.',
     ],
     dont: [
       'Rebuild the document in the page to change one block; send ops through the source.',
@@ -90,6 +91,8 @@ export const doc: ComponentDoc = {
   limits: [
     'The reader shows no change bar or review queue; an agent\'s changes appear in place, briefly tinted with `hasUpdateHighlights`. Changes made while no editor was open wait for the next `JinshuEditor`.',
     '`openAt` brings the block to the nearest edge of the scroll, not to its top.',
+    'Dwell is measured per top-level block from scrolling alone: time with the page hidden or the reader away shows as one long `idleMs` stretch, and time since the last scroll is not reported when the page closes.',
+    'Every block is mounted; the page\'s scroll belongs to the app, so the reader does not mount blocks by viewport.',
     'It has no AI entry of its own: an agent reaches documents only through the tools the app registers with `createJinshuTools`.',
   ],
   related: ['JinshuEditor', 'JinshuOutline', 'JinshuDiff', 'VideoControls', 'Lightbox'],

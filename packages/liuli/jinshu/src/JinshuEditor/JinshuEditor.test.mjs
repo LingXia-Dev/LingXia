@@ -841,6 +841,189 @@ test('auto-save: an open fold, column paragraph and formula save what they hold,
   assert.ok(hasLabel(screen, 'Edit math'), 'still typing in the formula');
 });
 
+const agentApply = (source, ops) => source.apply({ batchId: `a${Math.random().toString(36).slice(2, 8)}`, origin: { kind: 'agent', id: 'codex', label: 'Codex' }, base: source.getState().revision, ops });
+
+test('details: an untouched fold follows the document, and a toolbar insert does not write old text over a change made elsewhere', async () => {
+  const doc = createDocument({ blocks: [details('Why limits', [paragraph('Because.', 'dp')], { id: 'd', defaultOpen: true }), paragraph('End', 'e')] });
+  const source = createJinshuSource({ key: 'w3', initialDoc: doc });
+  const { screen, settle } = await mountLive(source);
+  agentApply(source, [{ op: 'replace', id: 'd', blocks: [details('Why limits matter', [paragraph('Because they do.', 'dp')], { id: 'd', defaultOpen: true })] }]);
+  await settle();
+  assert.equal(byLabel(screen, 'Summary').props.inputValue, 'Why limits matter');
+  screen.press(byLabel(screen, 'Insert Table'));
+  await settle();
+  const fold = source.getState().doc.blocks.find(b => b.id === 'd');
+  assert.equal(plainText(fold.summary), 'Why limits matter', 'the insert left the change made elsewhere alone');
+  assert.equal(plainText(fold.blocks[0].runs), 'Because they do.');
+
+  // Typed, sent, then changed elsewhere: the field shows the newer text again.
+  screen.type(byLabel(screen, 'Summary'), 'Mine');
+  screen.blur(byLabel(screen, 'Summary'));
+  await settle();
+  assert.equal(plainText(source.getState().doc.blocks.find(b => b.id === 'd').summary), 'Mine');
+  agentApply(source, [{ op: 'text', target: { blockId: 'd', field: 'summary' }, from: 0, to: 4, insert: [{ text: 'Theirs' }] }]);
+  await settle();
+  assert.equal(byLabel(screen, 'Summary').props.inputValue, 'Theirs');
+});
+
+test('turn into: typed text survives the change, and a type that would lose content is offered disabled, saying why', async () => {
+  const phone = { pointer: 'coarse', sizeClass: 'compact' };
+  const doc = createDocument({ blocks: [paragraph('Plain', 'p'), { ...paragraph('', 'b'), runs: [{ text: 'Very ' }, { text: 'bold', bold: true }] }] });
+  const source = createJinshuSource({ key: 'w3', initialDoc: doc });
+  const { screen, settle } = await mountLive(source, phone);
+  screen.press(byLabel(screen, 'Edit block p'));
+  await settle();
+  screen.type(byLabel(screen, 'Edit paragraph'), 'Plain, retyped');
+  await settle();
+  screen.press(screen.getByTestId('w3-turn-into'));
+  await settle();
+  pressText(screen, 'Heading 2');
+  await settle();
+  const made = source.getState().doc.blocks[0];
+  assert.equal(made.type, 'heading');
+  assert.equal(plainText(made.runs), 'Plain, retyped');
+  assert.equal(byLabel(screen, 'Edit heading').props.inputValue, 'Plain, retyped', 'the field keeps what was typed');
+  assert.equal(source.getState().history.length, 1, 'the text and the change are one step');
+
+  screen.press(byLabel(screen, 'Edit block b'));
+  await settle();
+  screen.press(screen.getByTestId('w3-turn-into'));
+  await settle();
+  let item = screen.getByText('Heading 2');
+  while (item && item.tag !== 'button') item = item.parent;
+  assert.equal(item.props.enabled, 0, 'bold cannot become a heading');
+  assert.ok(hasText(screen, 'Not possible without losing content'));
+});
+
+test('find and replace: text in lists, tables, quotes, callouts, folds and columns is found and replaced', async () => {
+  const doc = createDocument({
+    blocks: [
+      list('bullet', [listItem('A limit item', { id: 'i' })], { id: 'l' }),
+      table(['Limit'], [['no limit here']], { id: 't' }),
+      quote([paragraph('Quoted limit', 'qp')], 'q'),
+      callout('tip', [paragraph('Body limit', 'cp')], { title: 'Limit title', id: 'c' }),
+      details('Limit summary', [paragraph('Folded limit', 'dp')], { id: 'd' }),
+      columns([{ id: 'c1', blocks: [paragraph('Left limit', 'lp')] }, { id: 'c2', blocks: [paragraph('Right', 'rp')] }], { id: 'cols' }),
+    ],
+  });
+  const source = createJinshuSource({ key: 'w3', initialDoc: doc });
+  const { screen, settle } = await mountLive(source);
+  screen.press(byLabel(screen, 'Find and replace'));
+  await settle();
+  screen.type(byLabel(screen, 'Find text'), 'limit');
+  screen.type(byLabel(screen, 'Replace with'), 'bound');
+  await settle();
+  assert.ok(hasText(screen, '9 matches'));
+  pressText(screen, 'Replace all');
+  await settle();
+  const [l, t, q, c, d, cols] = source.getState().doc.blocks;
+  assert.equal(plainText(l.items[0].runs), 'A bound item');
+  assert.deepEqual(t.rows.map(row => plainText(row.cells[0])), ['bound', 'no bound here']);
+  assert.equal(plainText(q.blocks[0].runs), 'Quoted bound');
+  assert.equal(plainText(c.title), 'bound title');
+  assert.equal(plainText(c.blocks[0].runs), 'Body bound');
+  assert.equal(plainText(d.summary), 'bound summary');
+  assert.equal(plainText(d.blocks[0].runs), 'Folded bound');
+  assert.equal(plainText(cols.columns[0].blocks[0].runs), 'Left bound');
+});
+
+test('find and replace: an open field with a match takes the replacement, and leaving it keeps it', async () => {
+  const source = createJinshuSource({ key: 'w3', initialDoc: lessonDoc() });
+  const { screen, settle } = await mountLive(source);
+  screen.press(byLabel(screen, 'Edit block p1'));
+  await settle();
+  screen.type(byLabel(screen, 'Edit paragraph'), 'First paragraph, typed.');
+  await settle();
+  screen.press(byLabel(screen, 'Find and replace'));
+  await settle();
+  screen.type(byLabel(screen, 'Find text'), 'paragraph');
+  screen.type(byLabel(screen, 'Replace with'), 'line');
+  await settle();
+  pressText(screen, 'Replace all');
+  await settle();
+  assert.equal(byLabel(screen, 'Edit paragraph').props.inputValue, 'First line, typed.');
+  screen.blur(byLabel(screen, 'Edit paragraph'));
+  await settle();
+  assert.deepEqual(source.getState().doc.blocks.slice(1, 3).map(b => plainText(b.runs)), ['First line, typed.', 'Second line.']);
+});
+
+test('columns: Enter starts a paragraph below, the bar switches 2 and 3 columns without losing blocks, and a formula edits in place', async () => {
+  const doc = createDocument({
+    blocks: [columns([{ id: 'c1', blocks: [paragraph('Left side', 'l')] }, { id: 'c2', blocks: [paragraph('Right', 'r'), mathBlock('x^2', 'm')] }], { id: 'cols' })],
+  });
+  const source = createJinshuSource({ key: 'w3', initialDoc: doc });
+  const { screen, settle } = await mountLive(source);
+  const cols = () => source.getState().doc.blocks[0].columns;
+  screen.press(byLabel(screen, 'Edit column block l'));
+  await settle();
+  screen.selectText(byLabel(screen, 'Edit paragraph in column'), 4);
+  screen.key(byLabel(screen, 'Edit paragraph in column'), 'Enter');
+  await settle();
+  assert.deepEqual(cols()[0].blocks.map(b => plainText(b.runs)), ['Left', ' side']);
+  assert.equal(byLabel(screen, 'Edit paragraph in column').props.inputValue, ' side', 'the caret moved on with the rest');
+
+  pressText(screen, 'Remove');
+  await settle();
+  assert.deepEqual(cols()[0].blocks.map(b => plainText(b.runs)), ['Left']);
+
+  screen.press(byLabel(screen, 'Edit column block r'));
+  await settle();
+  pressText(screen, '3 columns');
+  await settle();
+  assert.equal(cols().length, 3);
+  pressText(screen, 'Widen column 1');
+  await settle();
+  assert.deepEqual(source.getState().doc.blocks[0].widths, [2, 1, 1]);
+  pressText(screen, '2 columns');
+  await settle();
+  assert.equal(cols().length, 2);
+  assert.deepEqual(cols()[1].blocks.map(b => b.id).slice(0, 2), ['r', 'm'], 'the third column joined the second');
+  assert.equal(source.getState().doc.blocks[0].widths, undefined);
+
+  screen.press(byLabel(screen, 'Edit column block m'));
+  await settle();
+  screen.type(byLabel(screen, 'Edit math'), 'x^3');
+  pressText(screen, 'Done');
+  await settle();
+  assert.equal(cols()[1].blocks.find(b => b.id === 'm').latex, 'x^3');
+});
+
+test('desktop: the toolbar puts a link or an equation at a bare caret', async () => {
+  const doc = createDocument({ blocks: [paragraph('see here', 'p')] });
+  const source = createJinshuSource({ key: 'w3', initialDoc: doc });
+  const { screen, settle } = await mountLive(source);
+  const toolbarLink = () => screen.queryAll(n => labelOf(n) === 'Link' && n.tag === 'button')[0];
+  assert.equal(toolbarLink().props.enabled, 0, 'nothing is being edited');
+  screen.press(byLabel(screen, 'Edit block p'));
+  await settle();
+  const field = () => byLabel(screen, 'Edit paragraph');
+  screen.selectText(field(), 4);
+  await settle();
+  assert.equal(screen.queryAll(n => n.testId === 'w3-format-bar')[0], undefined, 'no floating bar at a caret');
+  screen.press(toolbarLink());
+  await settle();
+  screen.type(byLabel(screen, 'Link text'), 'docs');
+  screen.type(byLabel(screen, 'Link address'), 'https://x.dev');
+  await settle();
+  screen.press(screen.queryAll(n => n.tag === 'button' && labelOf(n) === 'Insert' && n.props.enabled !== 0).at(-1));
+  await settle();
+  assert.equal(field().props.inputValue, 'see [docs](https://x.dev)here');
+});
+
+test('agent change bar: the count, View and Undo all mean the latest batch; dismissing it shows the one before', async () => {
+  const source = createJinshuSource({ key: 'w3', initialDoc: lessonDoc() });
+  const { screen, settle } = await mountLive(source);
+  const tools = toolsOver({ w3: source });
+  await tools.call('jinshu_edit', { doc: 'w3', base: 1, ops: [{ op: 'edit', id: 'p1', find: 'First', replace: 'One' }] });
+  await tools.call('jinshu_edit', { doc: 'w3', base: source.getState().revision, ops: [{ op: 'edit', id: 'p2', find: 'Second', replace: 'Two' }, { op: 'delete', id: 'p3' }] });
+  await settle();
+  assert.ok(hasText(screen, 'Codex changed 2 blocks'), 'the edited block and the deleted one');
+  pressText(screen, 'Undo this change');
+  await settle();
+  assert.deepEqual(source.getState().doc.blocks.map(b => plainText(b.runs)), ['Week 3', 'One paragraph.', 'Second paragraph.', 'Third.']);
+  assert.ok(hasText(screen, 'Codex changed 1 block'));
+});
+
 test('inspector: a change made elsewhere shows in an untouched field, and leaving it does not undo that change', async () => {
   const doc = createDocument({ blocks: [paragraph('Intro', 'p'), image('https://cdn.example/a.png', { alt: 'A chart', id: 'img' })] });
   const source = createJinshuSource({ key: 'w3', initialDoc: doc });
@@ -856,4 +1039,22 @@ test('inspector: a change made elsewhere shows in an untouched field, and leavin
   screen.blur(byLabel(screen, 'Alt text'));
   await settle();
   assert.equal(source.getState().doc.blocks[1].alt, 'Sales by month');
+});
+
+test('save state: a manually saved document shows Save while dirty, from the channel alone', async () => {
+  let finish;
+  const source = createJinshuSource({ key: 'w3', initialDoc: lessonDoc(), save: () => new Promise(resolve => (finish = resolve)) });
+  const { screen, settle } = await mountLive(source);
+  assert.ok(hasText(screen, 'Saved'));
+  source.apply({ batchId: 'x', origin: { kind: 'agent', id: 'a' }, base: source.getState().revision, ops: [{ op: 'edit', id: 'p3', find: 'Third', replace: 'Last' }] });
+  await settle();
+  assert.ok(hasLabel(screen, 'Save'), 'dirty without any page flag');
+  screen.press(byLabel(screen, 'Save'));
+  await settle();
+  assert.ok(hasText(screen, 'Saving…'));
+  finish({ ok: true, version: 'v2' });
+  await flush();
+  await settle();
+  assert.ok(hasText(screen, 'Saved'));
+  assert.ok(!hasLabel(screen, 'Save'));
 });
