@@ -1,15 +1,14 @@
 // Fixtures for specs only, never listed in the catalogue: Liuli's video controls over a player.
-import { useLocal, useVideo, useView } from '@lingxia/view';
+import { useLocal, useVideo } from '@lingxia/view';
 import { ProgressRing } from './kit';
 import { VideoControls } from '@liulidesign/core/VideoControls';
 import { PUBLIC_STREAM, PUBLIC_VIDEO } from '../public-video';
 
-export function SpecVideo() {
-  const { data } = useView();
+/** `packaged`: the page's Logic was opened with `media=packaged`. */
+export function SpecVideo({ packaged: spec }: { packaged: boolean }) {
   const clip = useVideo('lab-clip');
   const stream = useVideo('lab-stream');
   // Specs pass `media=packaged` for the bundled clip; a network failure falls back to it too.
-  const spec = (data as { packagedMedia?: boolean }).packagedMedia === true;
   // Kept once set: the bundled clip clears the player's error, which must not bring the network clip back.
   const fellBack = useLocal('lab-video-fell-back', false);
   const packaged = spec || fellBack.value;

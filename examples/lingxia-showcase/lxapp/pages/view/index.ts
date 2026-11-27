@@ -1,9 +1,8 @@
-import { labData } from '../../shared/lib/lab-data';
 import { definePage } from '@lingxia/logic';
 import { heldSnap, holdPage, holdPanel, type HeldChoice } from '../../shared/lib/held-snap';
 
 export default definePage({
-  data: { ...labData(), group: '', spec: '', packagedMedia: false, dipped: false, held: heldSnap() },
+  data: { group: '', spec: '', packagedMedia: false, dipped: false, held: heldSnap() },
   setup(thisPage) {
     const actions = {
       holdPage: (choice: HeldChoice) => holdPage(thisPage, choice),

@@ -1,7 +1,6 @@
 // Drawing, media and control demos of the View catalogue: each is the body of one demo.
-import { createContext, Fragment, List, useContext, useId, useLocal, useVideo, useView, useWebView, type Local, type VectorPath } from '@lingxia/view';
+import { createContext, Fragment, List, useContext, useId, useLocal, useVideo, useWebView, type Local, type VectorPath } from '@lingxia/view';
 import { Button, Icon } from '../ui';
-import type { LabPageData } from '../lab-types';
 import { Readout, useSay } from './demo';
 import { labels, readouts } from './text';
 import { Term } from './text-input';
@@ -289,9 +288,15 @@ export function WebScrollDemo() {
   );
 }
 
-// Bar, pie and line plots drawn from the page's series; a bar takes the selection.
+// The series the plots draw: an hourly curve, a five-way share and a jagged latency line.
+const plots = {
+  hourly: Array.from({ length: 24 }, (_, hour) => Math.round(38 + 18 * Math.sin((hour - 6) / 3.8))),
+  share: [45, 25, 15, 10, 5],
+  latency: Array.from({ length: 30 }, (_, index) => 10 + (index * 7) % 9),
+};
+
+// Bar, pie and line plots; a bar takes the selection.
 export function PlotDemo() {
-  const { plots } = useView().data as unknown as LabPageData;
   const picked = useLocal('plots-picked', -1);
   const t = useSay();
   return (

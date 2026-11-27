@@ -1,7 +1,7 @@
 // Motion demos of the View catalogue: each is the body of one demo.
-import { useLocal, useView } from '@lingxia/view';
+import { useLocal } from '@lingxia/view';
 import { Button } from '../ui';
-import { Readout, useSay } from './demo';
+import { Readout, useSay, type Needs } from './demo';
 import { labels, readouts } from './text';
 
 // The panel keeps its text and changes only its height; the row after it follows by layout motion.
@@ -38,11 +38,11 @@ export function PressDemo() {
 }
 
 // `interrupt` asks the page's Logic to reverse the fade 100 ms in: sooner than two taps can land.
-export function FadeDemo() {
-  const { data, actions } = useView();
+export function FadeDemo({ view }: Needs<{ dipped: boolean }, { interrupt(): void }>) {
+  const { data, actions } = view;
   const shown = useLocal('shown', true);
   const t = useSay();
-  const visible = shown.value && !(data as { dipped?: boolean }).dipped;
+  const visible = shown.value && !data.dipped;
   return (
     <view className="flex-row items-center gap-3">
       <Button testId="motion-fade-toggle" size="sm" onClick={() => shown.set(!shown.value)}>{t(shown.value ? labels.fadeOut : labels.fadeIn)}</Button>

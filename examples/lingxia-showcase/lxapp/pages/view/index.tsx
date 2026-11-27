@@ -8,8 +8,9 @@ import type { View } from './$types';
 
 // The index of the catalogue. Opened with `group`, it shows that group in place, under the tab
 // bar; `spec=video` is the one fixture a spec needs under the tab bar.
-export function render({ data }: View) {
-  if (data.spec === 'video') return <Page testId="view-spec-video"><SpecVideo /></Page>;
+export function render(view: View) {
+  const { data } = view;
+  if (data.spec === 'video') return <Page testId="view-spec-video"><SpecVideo packaged={data.packagedMedia} /></Page>;
   const chosen = groups.find(group => group.id === data.group)?.id as GroupId | undefined;
-  return chosen ? <Group id={chosen} /> : <Index />;
+  return chosen ? <Group id={chosen} view={view} /> : <Index />;
 }

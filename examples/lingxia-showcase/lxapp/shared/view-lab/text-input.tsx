@@ -3,7 +3,6 @@ import { Fragment, useId, useLocal, useView } from '@lingxia/view';
 import { Button } from '../ui';
 import { Readout, useSay } from './demo';
 import { labels, readouts } from './text';
-import type { LabPageData } from '../lab-types';
 
 export function TextLayoutDemo() {
   return (
@@ -55,9 +54,14 @@ export function RichTextDemo() {
   );
 }
 
-// A long document: numbered clauses from Logic, inline runs, a clamped preview and a definitions grid.
+const body = 'This section says what the service does for you and what it asks of you in return. It applies from the day you create an account until the day you close it.';
+const terms = {
+  updated: '2026-10-01',
+  clauses: ['Service', 'Account', 'Content', 'Privacy', 'Termination'].map((term, index) => ({ heading: `Clause ${index + 1}`, term, body })),
+};
+
+// A long document: numbered clauses, inline runs, a clamped preview and a definitions grid.
 export function DocumentDemo() {
-  const { terms } = useView().data as unknown as LabPageData;
   const t = useSay();
   return (
     <scroll data-testid="lab-document-scroll" className="h-80 rounded-lg border border-line overscroll-contain">

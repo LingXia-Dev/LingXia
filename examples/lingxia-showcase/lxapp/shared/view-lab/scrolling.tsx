@@ -1,10 +1,10 @@
 // Scrolling demos of the View catalogue: each is the body of one demo.
-import { List, reveal, useAction, useLocal, useView } from '@lingxia/view';
+import { List, reveal, useAction, useLocal } from '@lingxia/view';
 import { Pager } from './kit';
 import { Button } from '../ui';
-import { Readout, useSay } from './demo';
+import { Readout, useSay, type Needs } from './demo';
 import { labels, readouts } from './text';
-import type { HeldSnap } from '../lib/held-snap';
+import type { HeldChoice, HeldSnap } from '../lib/held-snap';
 
 export function JumpDemo() {
   return (
@@ -64,9 +64,11 @@ export function SnapDemo() {
 
 // A pager and a panel whose index lives in the page's data: a swipe waits for Logic's answer, the
 // last page and the panel's top are refused and spring back. `Slow answer` delays Logic by 250 ms.
-export function HeldDemo() {
-  const { data, actions } = useView();
-  const held = (data as { held?: HeldSnap }).held ?? { page: 0, panel: 1 };
+type HeldActions = { holdPage(choice: HeldChoice): Promise<void>; holdPanel(choice: HeldChoice): Promise<void> };
+
+export function HeldDemo({ view }: Needs<{ held: HeldSnap }, HeldActions>) {
+  const { data, actions } = view;
+  const held = data.held;
   const slow = useLocal('held-slow', true);
   const refused = useLocal<'none' | 'page' | 'panel'>('held-refused', 'none');
   // Called straight from `onSnapChange`, so the element waits for the answer; a refusal is shown.

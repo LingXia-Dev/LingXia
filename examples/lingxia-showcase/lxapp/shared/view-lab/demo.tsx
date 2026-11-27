@@ -1,5 +1,5 @@
 // The View catalogue's one demo shape, the group page built from it and the index of groups.
-import { t, useView, type Child, type Component } from '@lingxia/view';
+import { t, useView, type Child, type Component, type PageView } from '@lingxia/view';
 import { Icon, Page } from '../ui';
 import { chrome, count, demos, groups, missing, type GroupId, type Words } from './text';
 
@@ -42,17 +42,25 @@ export function Demo({ title, sentence, testId, children }: { title: string; sen
   );
 }
 
+/**
+ * What a demo needs from its page's Logic. A group page's View must provide it, so a demo moved to
+ * a page whose Logic lacks its data or actions fails the type check.
+ */
+export type Needs<D, A = {}> = { view: PageView<A, D> };
+
 /** One group of the catalogue: its demos in order, then what the group does not show yet. */
-export function GroupPage<G extends GroupId>({ id, bodies, endRoom = 0 }: { id: G; bodies: Record<keyof (typeof demos)[G], Component>; endRoom?: number }) {
+export function GroupPage<G extends GroupId, V extends PageView<any, any>>({ id, view, bodies, endRoom = 0 }: {
+  id: G; view: V; bodies: Record<keyof (typeof demos)[G], Component<{ view: V }>>; endRoom?: number;
+}) {
   const t = useSay();
   const { safeArea } = useView().env;
   const words = demos[id] as Record<string, { testId: string; title: Words; try: Words }>;
-  const drawn = bodies as Record<string, Component>;
+  const drawn = bodies as Record<string, Component<{ view: V }>>;
   return (
     <Page testId={`view-group-${id}`} data={useInsets()}>
       {Object.keys(words).map(key => {
         const Body = drawn[key];
-        return <Demo key={key} title={t(words[key].title)} sentence={t(words[key].try)} testId={words[key].testId}><Body /></Demo>;
+        return <Demo key={key} title={t(words[key].title)} sentence={t(words[key].try)} testId={words[key].testId}><Body view={view} /></Demo>;
       })}
       {missing[id].length > 0 ? (
         <view data-testid="view-group-missing" className="gap-1 px-1 pt-2">
