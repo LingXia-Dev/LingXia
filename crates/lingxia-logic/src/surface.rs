@@ -1469,6 +1469,16 @@ async fn open_declared_surface_spec(
             "surface must be non-empty",
         ));
     }
+    // Before any provider runs, so an undeclared id answers the same on every host.
+    if !lxapp.is_declared_shell_surface(id)
+        && lxapp.shell_surface_role(id).is_none()
+        && declared_lxapp_app_id(&lxapp, id).is_none()
+    {
+        return Err(surface_error(
+            SurfaceErrorCode::NotDeclared,
+            format!("lingxia.yaml declares no surface {id}"),
+        ));
+    }
     let requested_role = read_optional_managed_role(spec)?;
     let has_orchestration_override = has_declared_surface_orchestration_override(
         key.as_deref(),
