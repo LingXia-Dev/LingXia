@@ -408,9 +408,19 @@ impl Timeline {
         Ok(next)
     }
     fn time_at(&self, now: Duration) -> Result<Duration, String> {
-        let delta = now
-            .checked_sub(self.observed_at)
-            .ok_or("UI_ANIMATION: clock moved backwards")?;
+        // Work read the clock when queued and may run after work that read it later: time
+        // holds still rather than fail the page.
+        let delta = now.checked_sub(self.observed_at).unwrap_or_else(|| {
+            static NOTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+            if !NOTED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                log::debug!(
+                    target: "lingxia_view",
+                    "UI_ANIMATION: a clock sample {:?} behind the timeline; held at its last time",
+                    self.observed_at - now
+                );
+            }
+            Duration::ZERO
+        });
         self.elapsed
             .checked_add(if self.visible { delta } else { Duration::ZERO })
             .ok_or_else(|| "UI_ANIMATION: clock overflow".into())
@@ -431,7 +441,7 @@ impl Timeline {
             self.invalidate()?;
         }
         self.elapsed = elapsed;
-        self.observed_at = now;
+        self.observed_at = self.observed_at.max(now);
         self.visible = visible;
         Ok(())
     }
@@ -670,7 +680,7 @@ impl Timeline {
             .is_some_and(|ticket| ticket != frame.ticket)
         {}
         self.elapsed = elapsed;
-        self.observed_at = now;
+        self.observed_at = self.observed_at.max(now);
         Ok(())
     }
 
@@ -681,7 +691,7 @@ impl Timeline {
         self.transitions = Default::default();
         self.visuals.clear();
         self.elapsed = Duration::ZERO;
-        self.observed_at = now;
+        self.observed_at = self.observed_at.max(now);
         Ok(())
     }
 }
@@ -786,6 +796,22 @@ mod tests {
             .prepare_visible(ms(670), definitions(), ["chart"])
             .unwrap();
         assert_eq!(active.samples()["chart"].progress, 0.5);
+    }
+
+    #[test]
+    fn a_clock_sample_behind_the_timeline_holds_time_instead_of_failing() {
+        let mut t = Timeline::default();
+        t.set_visible(true, ms(0)).unwrap();
+        let definitions = || [("chart".into(), effect())];
+        let first = t.prepare_visible(ms(0), definitions(), ["chart"]).unwrap();
+        t.presented(first, ms(0)).unwrap();
+        t.set_visible(false, ms(50)).unwrap();
+        // Work that read the clock at 40 ms runs after the park at 50 ms.
+        t.set_visible(true, ms(40)).unwrap();
+        let held = t.prepare_visible(ms(40), definitions(), ["chart"]).unwrap();
+        assert!((held.samples()["chart"].progress - 0.3).abs() < 1e-12);
+        let resumed = t.prepare_visible(ms(60), definitions(), ["chart"]).unwrap();
+        assert!((resumed.samples()["chart"].progress - 0.4).abs() < 1e-12);
     }
 
     #[test]
@@ -976,7 +1002,6 @@ mod tests {
             t.prepare(ms(11), [("x".into(), effect()), ("x".into(), effect())])
                 .is_err()
         );
-        assert!(t.prepare(ms(9), []).is_err());
         t.presented(frame, ms(12)).unwrap();
         assert_eq!(
             prepare(&mut t, 82, effect()).samples()["chart"].progress,

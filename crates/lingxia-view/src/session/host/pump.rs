@@ -348,6 +348,15 @@ impl<A: PlatformAdapter> Inner<A> {
                         panic!("test fault while preparing");
                     }
                 }
+                // A background frame waits behind shown pages' work, which may have parked this
+                // page's timeline at a later time meanwhile: it samples when it runs.
+                let now = if background {
+                    let now = inner.adapter.now().max(now);
+                    request.sample = request.sample.max(now);
+                    now
+                } else {
+                    now
+                };
                 let prepared = inner.prepare(session, request, now);
                 let reads = session.reads_host_context();
                 {

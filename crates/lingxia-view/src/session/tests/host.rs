@@ -8212,3 +8212,53 @@ fn a_burst_of_channel_messages_costs_at_most_two_renders() {
         "200 messages rendered {rendered} times"
     );
 }
+
+#[test]
+fn a_held_catch_up_frame_runs_on_the_clock_a_later_park_moved() {
+    let worker = ViewWorker::shared("test:catch-up-clock").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let spinner = platform.host(
+        &worker,
+        &source(&format!(
+            "function render(){{return h('view',{{style:{{width:20,height:20,backgroundColor:'#ff0000',animation:{SPIN}}}}})}}"
+        )),
+        false,
+    );
+    spinner.set_visible(true);
+    platform.settle(&[&spinner]);
+    let incoming = platform.host(
+        &worker,
+        &source("function render(){return h('text',{},'B')}"),
+        false,
+    );
+    // Shown work occupies the worker: queued work runs foreground first, then background.
+    let (unblock, blocked) = channel::<()>();
+    worker.run(move |_| {
+        let _ = blocked.recv();
+    });
+    // A page pushed over the spinner, then a rotation: its catch-up frame waits behind them.
+    spinner.set_visible(false);
+    spinner
+        .adapter()
+        .environment
+        .lock()
+        .unwrap()
+        .as_mut()
+        .unwrap()
+        .value
+        .insets = crate::protocol::env::Edges { bottom: 40.0, ..Default::default() };
+    spinner.request_frame();
+    *spinner.adapter().clock.lock().unwrap() += Duration::from_millis(50);
+    // The window stopping parks the timeline, as shown work, ahead of the catch-up frame.
+    spinner.window_visible(false);
+    unblock.send(()).unwrap();
+    incoming.set_visible(true);
+    platform.settle(&[&spinner, &incoming]);
+    let log = spinner.adapter().log.lock().unwrap();
+    assert!(
+        log.recovery.iter().all(Option::is_none) && log.warnings.iter().all(|w| !w.contains("UI_ANIMATION")),
+        "{:?} {:?}",
+        log.recovery,
+        log.warnings
+    );
+}
