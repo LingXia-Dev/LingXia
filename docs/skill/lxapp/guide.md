@@ -312,8 +312,12 @@ host `surfaces`.
 ```
 
 - 2 to 10 `items`; each `page` is a `pages[].name`. The first is selected.
-- `presentation`: `"standard"` (View ends above the bar) or `"immersive"` (View
-  extends behind it; omit `backgroundColor` and `dividerColor`).
+- `presentation` (default `"standard"`):
+  - `"standard"`: the page ends above the bar; the bar is solid. For forms and dense lists.
+  - `"immersive"`: the page runs on under the bar, which turns see-through; the framework sets how
+    much, so labels stay legible. For imagery and long feeds. Omit `backgroundColor` and
+    `dividerColor`. A GPU `<page>` still pads its content clear of the bar (the last row stays
+    reachable); `bleed="bottom"` takes a child (a map, a cover) under it.
 - Style keys are optional. Mobile uses them as declared (no OS dark mode by
   itself); desktop draws the sidebar from the host `theme`: it ignores
   `backgroundColor`, and a dark host ignores every style key. `lx.app.tabBar.update()` cannot change style.

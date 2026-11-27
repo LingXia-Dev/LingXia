@@ -50,8 +50,10 @@ pub enum TabBarVisibilityPreference {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum TabBarPresentation {
+    /// The page ends above the bar, which is solid.
     #[default]
     Standard,
+    /// The page runs on under the bar, which is a see-through material the host draws.
     Immersive,
 }
 
