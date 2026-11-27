@@ -1468,6 +1468,12 @@ export type DownloadsDownloadResult = {
     size: number;
 };
 
+/** What `lx.app.errorText` says when no code-specific word applies. */
+export type ErrorTextOptions = {
+    /** The caller's own words for this failure, such as the page's "Couldn't save the note." */
+    fallback?: string;
+};
+
 /**
  * Configured page name belonging to *another* lxapp. This app's own
  * page union cannot check it, so it stays a plain string and the
@@ -4132,6 +4138,12 @@ declare global {
      * tags keep their text. Read it when the text is shown: a later language switch does not change it.
      */
     t(...message: LxAppMessageCall): string;
+    /**
+     * A failure as text for the person, by its `code`, in the lxapp's language: what a View's
+     * `errorText` says for it. `fallback` when no code-specific word applies; `null` for a cancel.
+     * The error's `message` is English for the log and is never returned.
+     */
+    errorText(error: unknown, options?: ErrorTextOptions): string | null;
     readonly moreActions: MoreActionsApi;
     readonly tabBar: TabBarApi;
     readonly update: LxAppUpdateApi;

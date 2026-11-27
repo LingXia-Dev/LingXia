@@ -102,5 +102,92 @@ rong::js_api! {
         fn t(
             ts_params = "...message: LxAppMessageCall"
         ) = message;
+        fn errorText(
+            ts_params = "error: unknown, options?: ErrorTextOptions",
+            ts_return = "string | null"
+        ) = error_text;
+    }
+}
+
+/// Codes a person can act on get their own word; the rest read as a plain failure. The same table
+/// as the View's `errorText`.
+fn error_word(code: &str) -> Option<&'static str> {
+    Some(match code {
+        "E_NETWORK" | "VIDEO_NETWORK" | "WEBVIEW_NETWORK" => "network",
+        "E_TIMEOUT" => "timeout",
+        "E_PERMISSION_DENIED" | "VIDEO_NOT_GRANTED" | "WEBVIEW_NOT_GRANTED" => "permission",
+        "E_NOT_SUPPORTED"
+        | "E_CAPABILITY_MISSING"
+        | "VIDEO_UNSUPPORTED"
+        | "VIDEO_NO_PLAYER"
+        | "VIDEO_DECODERS"
+        | "WEBVIEW_UNSUPPORTED" => "unsupported",
+        "E_NOT_FOUND" | "VIDEO_NOT_FOUND" => "notFound",
+        "E_QUOTA" => "limit",
+        _ => return None,
+    })
+}
+
+#[derive(rong::FromJSObject, Default)]
+#[ts_skip]
+struct ErrorTextOptions {
+    fallback: Option<String>,
+}
+
+/// A failure as text for the person, by its `code`, in the lxapp's language: what a View's
+/// `errorText` says for it. `fallback` when no code-specific word applies; `null` for a cancel.
+/// The error's `message` is English for the log and is never returned.
+fn error_text(
+    ctx: JSContext,
+    error: rong::JSValue,
+    options: rong::function::Optional<ErrorTextOptions>,
+) -> JSResult<Option<String>> {
+    let code = error
+        .into_object()
+        .and_then(|object| object.get_opt::<_, String>("code").ok().flatten());
+    if code.as_deref() == Some("E_ABORT") {
+        return Ok(None);
+    }
+    let specific = code.as_deref().and_then(error_word);
+    if specific.is_none()
+        && let Some(fallback) = options.0.and_then(|options| options.fallback)
+    {
+        return Ok(Some(fallback));
+    }
+    let word = specific.unwrap_or("failed");
+    let lxapp = LxApp::from_ctx(&ctx)?;
+    let language = lxapp.content_language(&::lxapp::display_language());
+    let key = format!("@view.error.{word}");
+    if let Some(own) = lxapp.message_in(&key, &language, &serde_json::Value::Null) {
+        return Ok(Some(own));
+    }
+    Ok(Some(
+        crate::view_error_word(word, &language)
+            .or_else(|| crate::view_error_word(word, "en"))
+            .unwrap_or_default()
+            .to_string(),
+    ))
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn error_words_match_the_view() {
+        let view = include_str!("../../../packages/lingxia-view/src/runtime/words.js");
+        for (code, word) in [
+            ("E_NETWORK", "network"),
+            ("WEBVIEW_NOT_GRANTED", "permission"),
+            ("E_CAPABILITY_MISSING", "unsupported"),
+            ("VIDEO_NOT_FOUND", "notFound"),
+            ("E_QUOTA", "limit"),
+        ] {
+            assert_eq!(super::error_word(code), Some(word));
+            assert!(
+                view.contains(&format!("{code}: '{word}'")),
+                "{code} differs from the View"
+            );
+        }
+        assert_eq!(super::error_word("E_INTERNAL"), None);
+        assert!(crate::view_error_word("network", "zh-Hans").is_some());
     }
 }

@@ -1558,6 +1558,12 @@ rong::js_api! {
         /// The kind of network the device is on.
         type NetworkType = r###"'none' | 'unknown' | 'wifi' | '2g' | '3g' | '4g' | '5g' | 'ethernet'"###;
 
+        /// What `lx.app.errorText` says when no code-specific word applies.
+        type ErrorTextOptions = r###"{
+    /** The caller's own words for this failure, such as the page's "Couldn't save the note." */
+    fallback?: string;
+}"###;
+
         /// How `lx.openFile` shows the file.
         type OpenFileOptions = r###"{
     /**

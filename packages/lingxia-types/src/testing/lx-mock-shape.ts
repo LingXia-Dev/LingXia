@@ -5,6 +5,7 @@ export const LX_MOCK_SHAPE: Readonly<Record<string, 'namespace' | 'async' | 'syn
   "lx.app.appearance": "namespace",
   "lx.app.appearance.get": "sync",
   "lx.app.appearance.watch": "sync",
+  "lx.app.errorText": "sync",
   "lx.app.info": "namespace",
   "lx.app.info.appId": "value",
   "lx.app.info.channel": "value",

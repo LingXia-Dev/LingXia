@@ -772,6 +772,12 @@ pub fn run(config: I18nConfig) -> Result<()> {
             rust_keys.as_ref().expect("rust_keys"),
             &err_code_keys,
         )?;
+        let view = config.input.join(VIEW_DIR);
+        if view.is_dir() {
+            let mut generated = fs::read_to_string(&plan.write_to)?;
+            generated.push_str(&view_error_words_rust(&view)?);
+            fs::write(&plan.write_to, generated)?;
+        }
     }
     if let Some(plan) = &android_plan {
         let combined = platform_form(
@@ -941,6 +947,34 @@ fn generate_view_words(dir: &Path, out: &Path) -> Result<()> {
             language_objects(&languages)
         ),
     )
+}
+
+/// `view_error_word`: the View's `@view.error.*` words for Logic's `lx.app.errorText`, so both
+/// layers say a failure the same way from one catalogue.
+fn view_error_words_rust(dir: &Path) -> Result<String> {
+    let languages = package_catalogues(dir, "@view.")?;
+    let mut out = String::from(
+        "\n#[rustfmt::skip]\n\
+         /// A `@view.error.*` word (`network`, `failed`, …) in `language`'s base tag; `None` for a\n\
+         /// language LingXia does not translate.\n\
+         pub fn view_error_word(word: &str, language: &str) -> Option<&'static str> {\n    \
+         let lang = language.split(['-', '_']).next().unwrap_or(language).to_ascii_lowercase();\n    \
+         Some(match (word, lang.as_str()) {\n",
+    );
+    for (tag, catalogue) in &languages {
+        for (key, entry) in &catalogue.entries {
+            let Some(word) = key.strip_prefix("@view.error.") else {
+                continue;
+            };
+            let text = lingxia_i18n::format::format(&entry.message, tag, &serde_json::Value::Null);
+            out.push_str(&format!(
+                "        ({word:?}, {tag:?}) => \"{}\",\n",
+                escape_rust_string(&text)
+            ));
+        }
+    }
+    out.push_str("        _ => return None,\n    })\n}\n");
+    Ok(out)
 }
 
 /// A package's `PackageWords` module, which `packageText` reads; `from` names its input.
