@@ -12,3 +12,4 @@ export { formatAllows, checkMarkdownProfile } from './profile';
 export type { FormatMark } from './profile';
 export { documentToMarkdown, markdownToBlocks, markdownToDocument } from './markdown';
 export type { MarkdownSource } from './markdown';
+export { htmlToBlocks } from './html';

@@ -1,0 +1,31 @@
+{
+  "bad-id": [{ "code": "INVALID", "id": "Para One", "match": "must match [a-z0-9_-]{1,32}" }],
+  "bad-list-style": [{ "code": "INVALID", "id": "l", "match": "style \"roman\"" }],
+  "bad-tone": [{ "code": "INVALID", "id": "c", "match": "tone \"loud\"" }],
+  "climbing-src": [{ "code": "INVALID", "id": "f", "match": "escapes root" }],
+  "code-in-transcript": [{ "code": "INVALID", "id": "c", "match": "transcript only allows paragraph" }],
+  "data-src": [{ "code": "INVALID", "id": "v", "match": "\"data:\"" }],
+  "details-in-details": [{ "code": "INVALID", "id": "d2", "match": "\"details\" is not allowed" }],
+  "duplicate-id": [{ "code": "INVALID", "id": "p1", "match": "Duplicate id" }],
+  "duplicate-nested-id": [{ "code": "INVALID", "id": "x", "match": "Duplicate id" }],
+  "empty-blocks": [{ "code": "INVALID", "match": "at least 1 block" }],
+  "heading-break": [{ "code": "INVALID", "id": "h", "match": "HardBreak" }],
+  "heading-level": [{ "code": "INVALID", "id": "h", "match": "level 5" }],
+  "javascript-link": [{ "code": "INVALID", "id": "p", "match": "\"javascript:\"" }],
+  "javascript-src": [{ "code": "INVALID", "id": "img", "match": "\"javascript:\"" }],
+  "list-too-deep": [{ "code": "LIMIT", "id": "l7", "match": "depth" }],
+  "long-id": [{ "code": "INVALID", "id": "a123456789012345678901234567890123", "match": "must match" }],
+  "markdown-details": [{ "code": "FORMAT", "id": "d", "match": "details", "profile": "markdown" }],
+  "markdown-underline": [{ "code": "FORMAT", "id": "p", "match": "underline", "profile": "markdown" }],
+  "missing-runs": [
+    { "code": "INVALID", "id": "p", "match": "required field \"runs\"" },
+    { "code": "INVALID", "id": "p", "match": "must be an array" }
+  ],
+  "missing-src": [{ "code": "INVALID", "id": "img", "match": "required field \"src\"" }],
+  "nested-columns": [{ "code": "INVALID", "id": "in", "match": "Nested columns" }],
+  "not-object": [{ "code": "INVALID", "match": "must be an object" }],
+  "one-column": [{ "code": "INVALID", "id": "c", "match": "2 or 3 columns" }],
+  "quote-empty": [{ "code": "INVALID", "id": "q", "match": "at least 1 child" }],
+  "quote-heading": [{ "code": "INVALID", "id": "h", "match": "\"heading\" is not allowed inside quote" }],
+  "unknown-type": [{ "code": "INVALID", "id": "b", "match": "Unknown block type" }]
+}

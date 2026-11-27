@@ -1,0 +1,7 @@
+<doc title="Week 3: Limits">
+<h2 id="h-intro">What a limit is</h2>
+<p id="p-def">A limit describes where <math>f(x)</math><b> is heading</b>, not where it is.</p>
+<p id="p-marks">See <a href="https://example.com/notes">the notes</a> and <code>code</code>.<br/>Second line, <s>struck</s> and <b><i>both</i></b>.</p>
+<h3 id="h-back">Back to the top</h3>
+<p id="p-link">Jump to <a href="#h-intro">the intro</a>.</p>
+</doc>

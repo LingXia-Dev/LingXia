@@ -1,0 +1,153 @@
+{
+  "version": 1,
+  "title": "Rich",
+  "lang": "en",
+  "blocks": [
+    {
+      "id": "ct",
+      "type": "callout",
+      "tone": "tip",
+      "title": [
+        {
+          "text": "Remember"
+        }
+      ],
+      "blocks": [
+        {
+          "id": "ct-p",
+          "type": "paragraph",
+          "runs": [
+            {
+              "text": "Inside."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "d1",
+      "type": "details",
+      "summary": [
+        {
+          "text": "More"
+        }
+      ],
+      "defaultOpen": true,
+      "blocks": [
+        {
+          "id": "d-p",
+          "type": "paragraph",
+          "runs": [
+            {
+              "text": "Hidden."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "cols",
+      "type": "columns",
+      "widths": [
+        2,
+        1
+      ],
+      "columns": [
+        {
+          "id": "col-l",
+          "blocks": [
+            {
+              "id": "col-l-p",
+              "type": "paragraph",
+              "runs": [
+                {
+                  "text": "Left"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "col-r",
+          "blocks": [
+            {
+              "id": "col-r-p",
+              "type": "paragraph",
+              "runs": [
+                {
+                  "text": "Right"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "v1",
+      "type": "video",
+      "src": "https://example.com/v.mp4",
+      "durationMs": 125400,
+      "caption": [
+        {
+          "text": "A clip"
+        }
+      ],
+      "chapters": [
+        {
+          "atMs": 0,
+          "title": "Start"
+        }
+      ]
+    },
+    {
+      "id": "a1",
+      "type": "audio",
+      "src": "lx://media/a.m4a",
+      "title": "Talk",
+      "transcript": [
+        {
+          "id": "a-t1",
+          "type": "paragraph",
+          "runs": [
+            {
+              "text": "Hello."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "f1",
+      "type": "file",
+      "src": "files/notes.pdf",
+      "name": "notes.pdf",
+      "mimeType": "application/pdf",
+      "sizeBytes": 2048
+    },
+    {
+      "id": "p-json-only",
+      "type": "paragraph",
+      "runs": [
+        {
+          "text": "under",
+          "underline": true
+        },
+        {
+          "text": " H"
+        },
+        {
+          "text": "2",
+          "script": "sub"
+        },
+        {
+          "text": "O "
+        },
+        {
+          "text": "hot",
+          "highlight": "warning"
+        }
+      ]
+    }
+  ]
+}

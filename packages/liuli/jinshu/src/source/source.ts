@@ -143,6 +143,16 @@ function touchedBy(prevDoc: JinshuDocument, nextDoc: JinshuDocument, ops: readon
     if (block.type === 'list') for (const item of block.items) inside.add(item.id);
   });
   const edited = ops.filter(op => op.op !== 'insert').flatMap(extractOpTargetIds);
+  // A merge also changes the block it folds into, its previous sibling.
+  const merged = new Set(ops.flatMap(op => (op.op === 'merge' ? [op.id] : [])));
+  if (merged.size > 0) {
+    const lastChild = new Map<string, string>();
+    walkBlocks(prevDoc.blocks, (block, parentId) => {
+      const prev = lastChild.get(parentId);
+      if (prev !== undefined && merged.has(block.id)) edited.push(prev);
+      lastChild.set(parentId, block.id);
+    });
+  }
   return Array.from(new Set([...edited, ...added]));
 }
 
@@ -290,7 +300,9 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
   let activities: AgentActivity[] = [];
   // Agent batches no editor has shown yet; the next editor to open shows them.
   let awayBatches: AgentBatch[] = [];
-  // Channels whose page shows the change bar: away batches go only to these.
+  // Agent batches that landed while no page showed the document, for the next reader's notice; it has no undo, so an editor showing them first takes them too.
+  let readerAway: AgentBatch[] = [];
+  // Channels whose page shows the change bar with undo: the editor's away batches go only to these.
   const editors = new Set<MinimalChannelEndpoint>();
   const stopped = new Set<string>();
   // Bumped by each person's edit; a pending auto save runs only if it is still the latest.
@@ -340,6 +352,7 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
     blockLastModifiedRev.clear();
     blockLastModifiedBy.clear();
     awayBatches = [];
+    readerAway = [];
     replacedAt = revision;
   }
 
@@ -834,8 +847,10 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
 
     if (batch.origin.kind === 'agent') {
       const shown: AgentBatch = { batchId: batch.batchId, revision, origin: batch.origin, blockIds: touchedIds };
-      if (editors.size > 0) broadcast({ t: 'agentBatches', batches: [shown] });
-      else awayBatches = [...awayBatches, channels.size > 0 ? shown : { ...shown, away: true }];
+      // Every open page shows it as it lands; without an editor it also waits for the next editor's undo.
+      if (channels.size > 0) broadcast({ t: 'agentBatches', batches: [shown] });
+      else readerAway = [...readerAway, { ...shown, away: true }];
+      if (editors.size === 0) awayBatches = [...awayBatches, channels.size > 0 ? shown : { ...shown, away: true }];
     }
 
     markStaleSuggestions(touchedIds);
@@ -945,12 +960,22 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
       return { revision, problems: [{ code: 'NOT_FOUND', severity: 'error', message: 'Nothing to redo.' }] };
     }
     const { rec } = redoStack[at];
-    const res = applyOps(doc, rec.ops, registry, options);
-    if (res.problems.some(p => p.severity === 'error')) {
-      return { revision, problems: [...res.problems] };
+    // It must still apply on top of the draft; the draft then comes from replaying history in order, as
+    // undo rebuilds it, so the batch lands where it was rather than after later batches.
+    const onTop = applyOps(doc, rec.ops, registry, options);
+    if (onTop.problems.some(p => p.severity === 'error')) {
+      return { revision, problems: [...onTop.problems] };
     }
-    redoStack.splice(at, 1);
+    const from = log.findIndex(r => r.undone);
     rec.undone = false;
+    let replayed: JinshuDocument | undefined = from >= 0 ? log[from].beforeDoc : undefined;
+    for (let i = from; replayed && i < log.length; i++) {
+      if (log[i].undone) continue;
+      const step = applyOps(replayed, log[i].ops, registry, options);
+      replayed = step.problems.some(p => p.severity === 'error') ? undefined : step.doc;
+    }
+    const res = replayed ? { doc: normalizeDocument(replayed, registry) } : onTop;
+    redoStack.splice(at, 1);
     doc = res.doc;
     revision += 1;
     for (const id of rec.touchedIds) {
@@ -1570,9 +1595,17 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
   function joinAsEditor(channel: MinimalChannelEndpoint): void {
     if (editors.has(channel)) return;
     editors.add(channel);
+    readerAway = [];
     if (awayBatches.length === 0) return;
     channel.send({ t: 'agentBatches', batches: awayBatches });
     awayBatches = [];
+  }
+
+  // Once, to the first reader after an absence; a batch undone meanwhile is not news.
+  function joinAsReader(channel: MinimalChannelEndpoint): void {
+    const news = readerAway.filter(b => log.some(r => r.batchId === b.batchId && !r.undone));
+    readerAway = [];
+    if (news.length > 0) channel.send({ t: 'agentBatches', batches: news });
   }
 
   function serve(channel: MinimalChannelEndpoint, params?: ChannelParams): () => void {
@@ -1599,6 +1632,7 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
     if (activities.length > 0) channel.send({ t: 'activity', activities });
     channel.send(saveStateMsg(getState()));
     if (params?.role === 'editor') joinAsEditor(channel);
+    else if (params?.role === 'reader') joinAsReader(channel);
     notify();
 
     const offData = channel.on('data', msg => {
@@ -1606,6 +1640,7 @@ export function createJinshuSource(options: JinshuSourceOptions): JinshuSource {
         case 'open':
           channel.send({ t: 'snapshot', revision, doc, policy: policy() });
           if (msg.role === 'editor') joinAsEditor(channel);
+          else if (msg.role === 'reader') joinAsReader(channel);
           break;
         case 'ops': {
           const res = apply(msg.batch, channel);

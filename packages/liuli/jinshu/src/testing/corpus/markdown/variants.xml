@@ -1,0 +1,26 @@
+<doc title="Title Line">
+<h2 id="h-1f0m1q1">Section</h2>
+<p id="p-18jijxz">Some <i>emphasis</i>, <b>strong</b> and <code>code</code>, see <a href="https://example.com">https://example.com</a> or <a href="https://example.org">https://example.org</a>.</p>
+<h4 id="h-3zrobs">Five hashes</h4>
+<code id="code-ybideb" language="text">
+```
+indented code
+second line
+```
+</code>
+<list id="l-oxrkmu" style="bullet">
+  <li id="li-6gzx62">plus item</li>
+  <li id="li-1lun3ha">another</li>
+</list>
+<callout id="c-15hk9qn" tone="info">
+  <p id="p-1yog2r9">A note.</p>
+</callout>
+<callout id="c-1uhqj6r" tone="danger">
+  <p id="p-10f6xv0">Careful.</p>
+</callout>
+<table id="t-gnp2nz" align="start,end" headerRow="true">
+  <tr id="r-jty2nh"><th>a</th><th>b</th></tr>
+  <tr id="r-13v1rbh"><td>1</td><td>2</td></tr>
+</table>
+<math id="m-yjp67r">e^{i\pi} + 1 = 0</math>
+</doc>

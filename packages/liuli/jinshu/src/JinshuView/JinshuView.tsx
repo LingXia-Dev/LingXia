@@ -10,18 +10,21 @@ import {
 import { Button } from '@liulidesign/core/Button';
 import { IconButton } from '@liulidesign/core/IconButton';
 import { Lightbox, type LightboxImage } from '@liulidesign/core/Lightbox';
+import { Tooltip } from '@liulidesign/core/Tooltip';
+import type { AgentActivity, AgentBatch } from '../source/types';
 import { blockContentHash, findBlockById, listBlocks, plainText, walkBlocks } from '../schema/helpers';
 import { validateSrc } from '../schema/validate';
 import type {
   DistributiveOmit,
   FilePolicy,
+  HistoryEntry,
   JinshuDocument,
   JinshuProgress,
   MediaPolicy,
   Observation,
 } from '../schema/types';
 import type { InlineAtomRenderer } from '../internal/InlineRuns';
-import { blockElementId, revealTargetId, setNavReader, type JinshuNavHandle } from '../internal/nav';
+import { blockElementId, scrollToInPage, setNavReader, type JinshuNavHandle } from '../internal/nav';
 import { newReadingState, readVisibility, type ReadingState } from '../internal/reading';
 import { useJinshuChannelContext, type JinshuChannelAction } from '../internal/channel';
 import { jinshuText } from '../i18n/text';
@@ -62,6 +65,8 @@ export interface JinshuViewProps {
   readonly customInlines?: Readonly<Record<string, InlineAtomRenderer>>;
   /** Tints the blocks a live update changed, briefly. */
   readonly hasUpdateHighlights?: boolean;
+  /** On a live `channel`, shows what agents do: a mark where one is writing, and a bar naming its latest change, with View and Dismiss, over the blocks it marks. @default true */
+  readonly hasAgentFeedback?: boolean;
   /** A link to outside the document was pressed; in-page links scroll on their own. */
   readonly onLinkPress?: (info: { readonly blockId: string; readonly href: string }) => void;
   /** A file's Download was pressed; without it, the button does nothing. */
@@ -89,18 +94,31 @@ function liveOf(anchor: object) {
   return live;
 }
 
+/** What agents are doing, as a live reader hears it. */
+interface AgentFeedback {
+  readonly activities: readonly AgentActivity[];
+  /** Not yet dismissed or undone, oldest first. */
+  readonly batches: readonly AgentBatch[];
+  readonly dismiss: (batchId: string) => void;
+}
+
 function LiveJinshuView(props: JinshuViewProps & { readonly activeChannel: JinshuChannelAction; readonly docKey: string }) {
   // Until the first snapshot the document is loading, not missing: the skeleton shows, not "unavailable".
-  const snapshot = useLocal<{ doc?: JinshuDocument; filePolicy?: FilePolicy; highlightedIds: string[] }>(`jinshu-live-${props.docKey}`, {
-    highlightedIds: [],
-  });
+  const snapshot = useLocal<{
+    doc?: JinshuDocument;
+    filePolicy?: FilePolicy;
+    highlightedIds: string[];
+    activities: AgentActivity[];
+    batches: AgentBatch[];
+  }>(`jinshu-live-${props.docKey}`, { highlightedIds: [], activities: [], batches: [] });
 
   const channel = useChannel(`jinshu-view-${props.docKey}`, props.activeChannel, {
     params: { doc: props.docKey, role: 'reader' },
     onData(msg) {
+      const cur = snapshot.value;
       if (msg.t === 'snapshot') {
         const nextDoc = msg.doc as JinshuDocument;
-        const prevDoc = snapshot.value.doc;
+        const prevDoc = cur.doc;
         const changed: string[] = [];
         if (props.hasUpdateHighlights && prevDoc) {
           const prevHashes = new Map(prevDoc.blocks.map(b => [b.id, blockContentHash(b)]));
@@ -108,14 +126,28 @@ function LiveJinshuView(props: JinshuViewProps & { readonly activeChannel: Jinsh
             if (prevHashes.get(b.id) !== blockContentHash(b)) changed.push(b.id);
           }
         }
-        snapshot.set({
-          doc: nextDoc,
-          filePolicy: msg.policy?.filePolicy,
-          highlightedIds: changed,
-        });
+        snapshot.set({ ...cur, doc: nextDoc, filePolicy: msg.policy?.filePolicy, highlightedIds: changed });
+      } else if (msg.t === 'activity') {
+        snapshot.set({ ...cur, activities: msg.activities as AgentActivity[] });
+      } else if (msg.t === 'agentBatches') {
+        snapshot.set({ ...cur, batches: [...cur.batches, ...(msg.batches as AgentBatch[])] });
+      } else if (msg.t === 'history' && cur.batches.length > 0) {
+        // A batch undone from anywhere drops its bar and marks.
+        const kept = new Set((msg.entries as HistoryEntry[]).filter(h => !h.undone).map(h => h.batchId));
+        const batches = cur.batches.filter(b => kept.has(b.batchId));
+        if (batches.length !== cur.batches.length) snapshot.set({ ...cur, batches });
       }
     },
   });
+
+  const agent: AgentFeedback | undefined =
+    props.hasAgentFeedback === false
+      ? undefined
+      : {
+          activities: snapshot.value.activities,
+          batches: snapshot.value.batches,
+          dismiss: batchId => snapshot.set({ ...snapshot.value, batches: snapshot.value.batches.filter(b => b.batchId !== batchId) }),
+        };
 
   return (
     <ControlledJinshuView
@@ -123,8 +155,27 @@ function LiveJinshuView(props: JinshuViewProps & { readonly activeChannel: Jinsh
       doc={snapshot.value.doc ?? (channel.error ? null : undefined)}
       filePolicy={props.filePolicy ?? snapshot.value.filePolicy}
       highlightedIds={snapshot.value.highlightedIds}
+      agent={agent}
     />
   );
+}
+
+/** The top-level block that holds `id`, for marks and jumps on nested changes; null once deleted. */
+function topLevelOf(id: string, doc: JinshuDocument): string | null {
+  if (doc.blocks.some(b => b.id === id)) return id;
+  return doc.blocks.find(b => JSON.stringify(b).includes(`"id":"${id}"`))?.id ?? null;
+}
+
+/** Changed top-level blocks in document order. */
+function changedTopIds(batches: readonly AgentBatch[], doc: JinshuDocument): string[] {
+  const ids = new Set<string>();
+  for (const batch of batches) {
+    for (const id of batch.blockIds) {
+      const top = topLevelOf(id, doc);
+      if (top) ids.add(top);
+    }
+  }
+  return doc.blocks.filter(b => ids.has(b.id)).map(b => b.id);
 }
 
 function ControlledJinshuView({
@@ -139,6 +190,7 @@ function ControlledJinshuView({
   customBlocks,
   customInlines,
   highlightedIds,
+  agent,
   onLinkPress,
   onFileAction,
   onCopyCode,
@@ -148,7 +200,7 @@ function ControlledJinshuView({
   fallback,
   className,
   'data-testid': testId,
-}: JinshuViewProps & { readonly highlightedIds?: readonly string[] }) {
+}: JinshuViewProps & { readonly highlightedIds?: readonly string[]; readonly agent?: AgentFeedback }) {
   const ownScope = useId();
   // Driven by a nav, the view takes its scope so the nav's `scrollTo` finds the blocks.
   const scope = nav ? nav.scope : ownScope;
@@ -160,6 +212,8 @@ function ControlledJinshuView({
   const openedAt = useLocal('jinshu-opened-at', '');
   // Without a nav, an in-page link's target, so a fold holding it opens.
   const ownTarget = useLocal<string | null>('jinshu-link-target', null);
+  // Where View is in the latest batch's changed blocks.
+  const changeCursor = useLocal('jinshu-change-cursor', { batch: '', at: 0 });
   const live = liveOf(obsSeq);
 
   if (doc === undefined) {
@@ -212,12 +266,39 @@ function ControlledJinshuView({
 
   const target = nav ? nav.state.targetBlockId : ownTarget.value;
   const scrollToTarget = (id: string) => {
-    const resolved = revealTargetId(doc, id);
-    if (!resolved) return;
-    if (nav) return nav.scrollTo(resolved);
-    ownTarget.set(resolved);
-    reveal(blockElementId(scope, resolved));
+    const resolved = scrollToInPage(doc, id, scope, nav);
+    if (resolved && !nav) ownTarget.set(resolved);
   };
+
+  // Agent feedback, read-only: every batch not dismissed or undone marks its blocks; the bar is the latest
+  // batch, and dismissing it shows the one before, as in the editor.
+  const batches = agent?.batches ?? [];
+  const changedSet = batches.length > 0 ? new Set(changedTopIds(batches, doc)) : undefined;
+  const latestBatch = batches[batches.length - 1];
+  const latestOrder = latestBatch ? changedTopIds([latestBatch], doc) : [];
+  // What View steps through, plus blocks the batch deleted.
+  const latestCount = latestOrder.length + (latestBatch ? latestBatch.blockIds.filter(id => topLevelOf(id, doc) === null).length : 0);
+  const nextChange = () => {
+    if (!latestBatch || latestOrder.length === 0) return;
+    const at = changeCursor.value.batch === latestBatch.batchId ? changeCursor.value.at % latestOrder.length : 0;
+    changeCursor.set({ batch: latestBatch.batchId, at: at + 1 });
+    scrollToTarget(latestOrder[at]);
+  };
+  // Only writing: a reader is told the text is changing, not who is looking at it.
+  const markByBlock = new Map<string, AgentActivity>();
+  const topMarks: AgentActivity[] = [];
+  for (const act of agent?.activities ?? []) {
+    if (act.kind !== 'writing') continue;
+    const top = act.blockIds.length > 0 ? topLevelOf(act.blockIds[0], doc) : null;
+    if (top && !markByBlock.has(top)) markByBlock.set(top, act);
+    else if (!top) topMarks.push(act);
+  }
+  const renderActivity = (act: AgentActivity, onBlock: boolean) => (
+    <view key={`act-${act.id}`} role="status" className={cx(r.activity.base, onBlock && r.activity.block)}>
+      <view aria-hidden className={r.activity.dot} />
+      <text className={r.activity.text}>{jinshuText('@jinshu.view.agent.writing', { name: act.origin.label ?? act.origin.id })}</text>
+    </view>
+  );
 
   // The page's scroll reports what it shows through the nav; the reader turns that into facts.
   if (nav) {
@@ -312,6 +393,29 @@ function ControlledJinshuView({
           {doc.title}
         </text>
       )}
+      {(latestBatch || topMarks.length > 0) && (
+        <view className={r.agentHeader.base}>
+          {latestBatch && (
+            <view role="status" className={r.agentBar.base} data-testid={testId && `${testId}-agent-bar`}>
+              <text className={r.agentBar.text}>
+                {jinshuText(latestBatch.away ? '@jinshu.view.agent.changedAway' : '@jinshu.view.agent.changed', {
+                  name: latestBatch.origin.label ?? latestBatch.origin.id,
+                  count: latestCount,
+                })}
+              </text>
+              <view className={r.agentBar.actions}>
+                {latestOrder.length > 0 && (
+                  <Button label={jinshuText('@jinshu.view.agent.view')} size="sm" variant="ghost" onClick={nextChange} />
+                )}
+                <Tooltip content={jinshuText('@jinshu.view.agent.dismiss')} placement="bottom">
+                  <IconButton label={jinshuText('@jinshu.view.agent.dismiss')} icon="close" size="sm" onClick={() => agent?.dismiss(latestBatch.batchId)} />
+                </Tooltip>
+              </view>
+            </view>
+          )}
+          {topMarks.map(act => renderActivity(act, false))}
+        </view>
+      )}
       {resumeTarget && !resumeDismissed.value && (
         <view className={r.resume.base}>
           <text className={r.resumeText.base}>
@@ -331,9 +435,12 @@ function ControlledJinshuView({
           <IconButton label={jinshuText('@jinshu.view.fromStart')} icon="close" size="sm" onClick={() => resumeDismissed.set(true)} />
         </view>
       )}
-      {doc.blocks.map((block, idx) => {
+      {doc.blocks.flatMap((block, idx) => {
         const allowed = isSelectable ? selectLeft : 0;
         selectLeft = Math.max(0, selectLeft - selectCost(block));
+        // A sibling keyed apart, so the block stays mounted as the mark comes and goes.
+        const mark = markByBlock.get(block.id);
+        const before = mark ? [renderActivity(mark, true)] : [];
         const node = (
           <BlockBody
             key={block.id}
@@ -342,19 +449,21 @@ function ControlledJinshuView({
             ctx={ctx}
             selectLeft={allowed}
             isHighlighted={highlightedSet?.has(block.id) === true}
+            isAgentChanged={changedSet?.has(block.id) === true}
           />
         );
-        if (block.id !== openAt) return node;
+        if (block.id !== openAt) return [...before, node];
         // Scrolls there on its first layout; the flag keeps a later relayout from pulling the reader back.
-        return (
+        return [
+          ...before,
           <view key={block.id} id={`jinshu-${scope}-o-${block.id}`} onLayout={() => {
             if (openedAt.value === block.id) return;
             openedAt.set(block.id);
             reveal(`jinshu-${scope}-o-${block.id}`);
           }}>
             {node}
-          </view>
-        );
+          </view>,
+        ];
       })}
       {galleryImages.length > 0 && (
         <Lightbox

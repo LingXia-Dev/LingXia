@@ -266,7 +266,8 @@ test('paste: paragraphs or Markdown become blocks in one undo step; a soft line 
   const { screen, settle } = await mountLive(source);
   screen.press(byLabel(screen, 'Edit block p1'));
   await settle();
-  screen.type(byLabel(screen, 'Edit paragraph'), 'Intro\n\n- one\n- two');
+  const pasted = screen.paste(byLabel(screen, 'Edit paragraph'), { text: 'Intro\n\n- one\n- two', selection: { start: 0, end: 'First paragraph.'.length } });
+  assert.equal(pasted.prevented, true);
   await settle();
   const blocks = source.getState().doc.blocks;
   assert.deepEqual(blocks.map(b => b.type), ['heading', 'paragraph', 'list', 'paragraph', 'paragraph']);
@@ -278,9 +279,64 @@ test('paste: paragraphs or Markdown become blocks in one undo step; a soft line 
 
   screen.press(byLabel(screen, 'Edit block p2'));
   await settle();
-  screen.type(byLabel(screen, 'Edit paragraph'), 'line one\nline two');
+  assert.equal(screen.paste(byLabel(screen, 'Edit paragraph'), { text: 'line one\nline two' }).prevented, false, 'the field takes it as text');
   await settle();
   assert.equal(source.getState().doc.blocks.length, 4);
+});
+
+const pastedPage = `<html><head><meta charset="utf-8"><style>h2 { color: red }</style></head><body><!--StartFragment-->
+<h2 style="margin:0">Limits</h2><p>A <b>limit</b> <a href="https://example.com/l">explained</a><script>alert(1)</script></p>
+<ul><li>one</li><li>two</li></ul><!--EndFragment--></body></html>`;
+
+test('paste HTML: blocks split the paragraph at the caret and go in between, in one undo step', async () => {
+  const source = createJinshuSource({ key: 'w3', initialDoc: lessonDoc() });
+  const { screen, settle } = await mountLive(source);
+  screen.press(byLabel(screen, 'Edit block p1'));
+  await settle();
+  const at = 'First '.length;
+  const res = screen.paste(byLabel(screen, 'Edit paragraph'), { text: 'Limits\nA limit explained\none\ntwo', html: pastedPage, selection: { start: at, end: at } });
+  assert.equal(res.prevented, true);
+  await settle();
+  const blocks = source.getState().doc.blocks;
+  assert.deepEqual(blocks.map(b => b.type), ['heading', 'paragraph', 'heading', 'paragraph', 'list', 'paragraph', 'paragraph', 'paragraph']);
+  assert.equal(blocks[1].id, 'p1');
+  assert.equal(plainText(blocks[1].runs), 'First ');
+  assert.equal(blocks[2].level, 2);
+  assert.equal(plainText(blocks[2].runs), 'Limits');
+  assert.deepEqual(blocks[3].runs, [{ text: 'A ' }, { text: 'limit', bold: true }, { text: ' ' }, { text: 'explained', link: 'https://example.com/l' }]);
+  assert.deepEqual(blocks[4].items.map(i => plainText(i.runs)), ['one', 'two']);
+  assert.equal(plainText(blocks[5].runs), 'paragraph.', 'the text after the caret follows the pasted blocks');
+  assert.ok(!JSON.stringify(blocks).includes('alert'), 'no script text');
+  assert.ok(hasLabel(screen, 'Edit paragraph'), 'the caret stays in the text after the paste');
+  source.undo();
+  assert.deepEqual(source.getState().doc.blocks.map(b => b.id), ['h', 'p1', 'p2', 'p3']);
+  assert.equal(plainText(source.getState().doc.blocks[1].runs), 'First paragraph.');
+});
+
+test('paste HTML: one paragraph goes in at the caret with its marks; an unsafe link keeps only its words', async () => {
+  const source = createJinshuSource({ key: 'w3', initialDoc: lessonDoc() });
+  const { screen, settle } = await mountLive(source);
+  screen.press(byLabel(screen, 'Edit block p2'));
+  await settle();
+  const at = 'Second '.length;
+  const html = '<meta charset="utf-8"><b style="font-weight:normal" id="docs-internal-guid-1"><span style="font-weight:700">bold</span> <a href="javascript:alert(1)">and</a> <em>new</em> </b>';
+  assert.equal(screen.paste(byLabel(screen, 'Edit paragraph'), { text: 'bold and new ', html, selection: { start: at, end: at } }).prevented, true);
+  await settle();
+  const blocks = source.getState().doc.blocks;
+  assert.equal(blocks.length, 4, 'no new block');
+  assert.deepEqual(blocks[2].runs, [{ text: 'Second ' }, { text: 'bold', bold: true }, { text: ' and ' }, { text: 'new', italic: true }, { text: 'paragraph.' }]);
+  assert.equal(byLabel(screen, 'Edit paragraph').props.inputValue, 'Second **bold** and *new*paragraph.');
+});
+
+test('paste HTML that adds nothing to its text goes in as typed shorthand', async () => {
+  const source = createJinshuSource({ key: 'w3', initialDoc: lessonDoc() });
+  const { screen, settle } = await mountLive(source);
+  screen.press(byLabel(screen, 'Edit block p3'));
+  await settle();
+  const res = screen.paste(byLabel(screen, 'Edit paragraph'), { text: ' **more**', html: '<span> **more**</span>' });
+  assert.equal(res.prevented, false);
+  await settle();
+  assert.equal(byLabel(screen, 'Edit paragraph').props.inputValue, 'Third. **more**');
 });
 
 test('markdown document: the menus and property editors offer only what Markdown holds', async () => {
@@ -1057,4 +1113,25 @@ test('save state: a manually saved document shows Save while dirty, from the cha
   await settle();
   assert.ok(hasText(screen, 'Saved'));
   assert.ok(!hasLabel(screen, 'Save'));
+});
+
+test('in-page link to an inline atom: the editor scrolls to the block that holds it, like the reader', async () => {
+  const screen = await renderPage(
+    linked => `import { JinshuEditor } from ${JSON.stringify(`${linked}/src/JinshuEditor/JinshuEditor`)};
+import { useJinshuNav } from ${JSON.stringify(`${linked}/src/internal/nav`)};
+import { createDocument, inlineAtom, paragraph, run } from ${JSON.stringify(`${linked}/src/schema/index`)};
+const doc = createDocument({ blocks: [
+  paragraph([run('See '), run('the ref', { link: '#a1' })], 'p1'),
+  paragraph([run('Held '), inlineAtom('x-app-ref', { to: 1 }, 'ref', { id: 'a1' })], 'p2'),
+] });
+export function render() {
+  const nav = useJinshuNav();
+  return <page><text>{'target:' + String(nav.state.targetBlockId)}</text><JinshuEditor doc={doc} nav={nav} hasLeaveGuard={false} /></page>;
+}
+`,
+    { env: desk },
+  );
+  screen.press(screen.queryAll(n => n.tag === 'link')[0]);
+  await screen.settle();
+  assert.ok(hasText(screen, 'target:p2'), 'the atom resolves to its paragraph');
 });

@@ -399,7 +399,8 @@ export type JinshuTextOp = OpCommon & (
       readonly remove?: readonly InlineMarkKey[];
     }
   | { readonly op: 'split'; readonly id: string; readonly at: number; readonly newId: string }
-  | { readonly op: 'merge'; readonly id: string }
+  /** `into`, the previous sibling it folds into, is written in once applied, so a replay cannot fold elsewhere. */
+  | { readonly op: 'merge'; readonly id: string; readonly into?: string }
   | {
       readonly op: 'setType';
       readonly id: string;

@@ -230,6 +230,9 @@ what the agent does and to collect the person's decisions.
   document bar names the agent and the number of changes, with "view", which steps through the changed
   blocks, and "undo this change", which undoes that batch only. A document that was not on screen shows
   the agent's changes when it next opens.
+- **In a reader.** The same bar and block marks, held at the top of the page's scroll, with View and
+  Dismiss but no Undo, and a writing mark without Stop: a reader sees what the agent does and decides
+  nothing. "Reading" marks are not shown. `hasAgentFeedback={false}` turns it all off.
 - **Undo belongs to the document.** The person takes back an agent's change in the page, where they see
   it; the agent's own UI offers no undo button. In conversation the person asks the agent, which calls
   `jinshu_undo` on its own batches. Either way there is one history.
@@ -262,8 +265,9 @@ channel needs no flags from the page; `bindJinshuPage` also puts `dirty` and `sa
 data for the page's own chrome. "Save and leave" puts open fields into the document and leaves only once
 that save lands; a conflict or failure stays on the page. A reopened channel sends the revision it has; the source answers with the changes
 since then or a snapshot. `doc` and `channel` are exclusive. A page opens its channel as an `editor` or a
-`reader`: agent changes made while no editor showed the document wait for the next editor, since a
-reader does not show them.
+`reader`. Both are sent an agent's change as it lands. A change made while no editor was open waits for
+the next editor, which can undo it; one made while no page was open is also told once to the first
+reader, unless an editor showed it first or it was undone meanwhile.
 
 ### Live updates
 
@@ -344,8 +348,12 @@ Editing chrome adapts to the pointer, not the platform:
   above or below.
 - The toolbar counts the document's length beside the save state: Chinese, Japanese and Korean by
   character, other text by word.
-- Pasted text with paragraph breaks, or Markdown from elsewhere, becomes blocks in one undo step;
-  a single line stays text.
+- A paste from a web page or a word processor keeps headings, lists, quotes, code, tables, links and
+  marks; pasted Markdown or text with paragraph breaks does the same. Blocks split the current one at
+  the caret and go in between, in one undo step; one paragraph goes in at the caret with its marks;
+  plain text stays text. Pasted HTML is untrusted: scripts, styles, media and unknown elements are
+  dropped or unwrapped to their text, and links pass the document's link rules. Where the host gives
+  only plain text, that is what is read.
 - In a Markdown document the menus, the format bar and the property editors offer only what Markdown
   can hold.
 - Source mode shows the whole document as one Markdown text. A JSON document offers it only when

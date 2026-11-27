@@ -5,6 +5,8 @@ export const jinshuViewParts = {
   root: 'view',
   docTitle: 'text',
   resume: 'view',
+  agentBar: 'view',
+  activity: 'view',
   heading: 'text',
   paragraph: 'text',
   quote: 'view',
@@ -42,6 +44,28 @@ export const jinshuViewRecipe = {
   },
   resumeText: {
     base: 'grow min-w-0 truncate text-footnote text-text',
+  },
+  /** The agent bar and whole-document marks, held at the top of the page's scroll while reading. */
+  agentHeader: {
+    base: 'sticky top-0 z-10 gap-2 bg-canvas pb-3',
+  },
+  /** An agent's latest change: who, how much, View and Dismiss; the editor's bar without Undo. */
+  agentBar: {
+    base: 'w-full flex-row flex-wrap items-center justify-between gap-2 rounded-control bg-accent-soft/40 ps-3 pe-1.5 py-1',
+    text: 'text-footnote font-medium text-text min-w-0 shrink',
+    actions: 'flex-row items-center gap-0.5 shrink-0',
+  },
+  /** An agent writing here; nothing to press in a reader. */
+  activity: {
+    base: 'w-full flex-row items-center gap-2 rounded-control bg-info-soft/40 px-3 py-1.5',
+    // Above the block it marks, which keeps its own gap below.
+    block: 'mt-4',
+    dot: 'size-2 shrink-0 rounded-full bg-info',
+    text: 'grow min-w-0 text-footnote text-text truncate',
+  },
+  /** A change bar at a changed block's start edge, as in the editor. */
+  agentChanged: {
+    base: 'absolute -start-3 top-0.5 bottom-0.5 w-0.75 rounded-full bg-accent',
   },
   docTitle: {
     base: 'text-display font-semibold tracking-tight text-text mb-4',

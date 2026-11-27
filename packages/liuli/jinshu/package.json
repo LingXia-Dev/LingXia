@@ -5,8 +5,12 @@
   "description": "Jinshu (锦书): AI-native structured block document model, renderer, source, and editor for LingXia GPU pages.",
   "type": "module",
   "sideEffects": false,
+  "bin": {
+    "jinshu": "./bin/jinshu.mjs"
+  },
   "files": [
     "src",
+    "bin",
     "!src/**/*.test.mjs",
     "!src/**/*.doc.ts",
     "!src/**/*.examples.tsx",

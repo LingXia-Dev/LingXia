@@ -1,0 +1,4 @@
+{
+  "variants": { "warnings": ["headingLevel"] },
+  "front-matter": { "warnings": ["rawHtml", "rawHtml"] }
+}

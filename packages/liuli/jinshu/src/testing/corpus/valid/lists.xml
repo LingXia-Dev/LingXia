@@ -1,0 +1,14 @@
+<list id="l-outer" style="bullet">
+  <li id="i1">One</li>
+  <li id="i2">
+    <p>Two</p>
+    <list id="l-inner" style="ordered" start="3">
+      <li id="i2a">Two a</li>
+      <li id="i2b">Two b</li>
+    </list>
+  </li>
+</list>
+<list id="l-task" style="task">
+  <li id="t1" checked="true">Done</li>
+  <li id="t2">Open</li>
+</list>

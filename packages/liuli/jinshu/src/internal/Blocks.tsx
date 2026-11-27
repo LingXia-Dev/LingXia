@@ -78,6 +78,8 @@ export interface BlockRenderContext {
   readonly onToggleTask?: (blockId: string, itemId: string, checked: boolean) => void;
   readonly onUpdateCustomAttrs?: (blockId: string, attrs: Record<string, unknown>) => void;
   readonly highlightedBlockIds?: ReadonlySet<string>;
+  /** Blocks an agent changed, marked at their start edge. */
+  readonly agentChangedBlockIds?: ReadonlySet<string>;
 }
 
 const TICK_PATH = [
@@ -728,7 +730,8 @@ export function renderBlock(
 ): Child {
   const spacing = blockTopSpacing(prevType, block.type);
   const isHighlighted = ctx.highlightedBlockIds?.has(block.id) === true;
-  const wrapClass = cx(spacing, isHighlighted && r.highlightUpdate.base);
+  const isAgentChanged = ctx.agentChangedBlockIds?.has(block.id) === true;
+  const wrapClass = cx(spacing, isHighlighted && r.highlightUpdate.base, isAgentChanged && 'relative');
 
   const inlineOpts = {
     blockId: block.id,
@@ -941,6 +944,8 @@ export function renderBlock(
   return (
     <view key={block.id} className={wrapClass}>
       {inner}
+      {/* After the content, so marking a block keeps its content mounted. */}
+      {isAgentChanged && <view aria-hidden className={r.agentChanged.base} />}
     </view>
   );
 }
@@ -966,17 +971,20 @@ export function BlockBody({
   ctx,
   selectLeft,
   isHighlighted = false,
+  isAgentChanged = false,
 }: {
   readonly block: JinshuBlock;
   readonly prevType?: string | null;
   readonly ctx: BlockRenderContext;
   readonly selectLeft?: number;
   readonly isHighlighted?: boolean;
+  readonly isAgentChanged?: boolean;
 }) {
   const own: BlockRenderContext = {
     ...ctx,
     ...(selectLeft !== undefined ? { selectBudget: { left: selectLeft } } : {}),
     ...(isHighlighted ? { highlightedBlockIds: new Set([block.id]) } : {}),
+    ...(isAgentChanged ? { agentChangedBlockIds: new Set([block.id]) } : {}),
   };
   return <>{renderBlock(block, prevType, own)}</>;
 }

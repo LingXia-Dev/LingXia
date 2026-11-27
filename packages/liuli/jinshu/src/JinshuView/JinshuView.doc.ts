@@ -9,7 +9,8 @@ export const doc: ComponentDoc = {
   description:
     'JinshuView draws a Jinshu document for reading: headings, paragraphs, lists, callouts, folds, code, formulas, tables, images, ' +
     'video, audio, files and the app\'s own `x-` blocks. It reads a document the page holds (`doc`), or follows a live one that Logic ' +
-    'serves (`channel` and `docKey`), so an edit made elsewhere, by a person or an agent, appears as it lands. It can offer to continue ' +
+    'serves (`channel` and `docKey`), so an edit made elsewhere, by a person or an agent, appears as it lands, with a bar naming an agent\'s ' +
+    'change and a mark where one is writing. It can offer to continue ' +
     'where the reader stopped, open at one block, hold media to a policy, and report what was read and played through `onObserve`.',
   keywords: ['document', 'reader', 'rich text', 'article', 'lesson', 'course', 'blocks', 'markdown', 'viewer', 'jinshu'],
   propsType: 'JinshuViewProps',
@@ -17,6 +18,8 @@ export const doc: ComponentDoc = {
   anatomy: [
     { part: 'root', required: true, description: 'The column of blocks, a 65-character reading measure unless `isFullWidth`.' },
     { part: 'resume', required: false, description: 'With `resume`: the bar above the document naming where the reader stopped, with Continue and Start over.' },
+    { part: 'agentBar', required: false, description: 'On a live `channel`: an agent\'s latest change, by name and count, with View, which steps through the changed blocks, and Dismiss; held at the top while reading. Changed blocks carry a bar at their start edge.' },
+    { part: 'activity', required: false, description: 'On a live `channel`: a mark above the block an agent is writing in, or under the agent bar for the whole document.' },
     { part: 'docTitle', required: false, description: 'The document\'s title, a level-one heading; hidden by `hasTitle={false}`.' },
     { part: 'heading', required: false, description: 'A heading block, levels one to four.' },
     { part: 'paragraph', required: false, description: 'Text in runs: bold, italic, code, highlights, links, inline math and the app\'s atoms.' },
@@ -52,11 +55,14 @@ export const doc: ComponentDoc = {
       { what: 'code line numbers', pair: ['text-muted', 'surface-sunken'], minimum: '3:1' },
       { what: 'table header', pair: ['text', 'surface-sunken'], minimum: '4.5:1' },
       { what: 'resume bar', pair: ['text', 'accent-soft/50'], over: 'canvas', minimum: '4.5:1' },
+      { what: 'agent bar', pair: ['text', 'accent-soft/40'], over: 'canvas', minimum: '4.5:1' },
+      { what: 'writing mark', pair: ['text', 'info-soft/40'], over: 'canvas', minimum: '4.5:1' },
     ],
     notes: [
       'The title and each heading are headings at their level, so a screen reader can move between sections.',
       'Lists are lists of items; a task\'s box is a checkable item named by its text.',
       'Images are named by `alt`, then the caption; a formula is named by its LaTeX; media controls are named by the block\'s title or caption.',
+      'The agent bar and the writing mark are status regions, so a change or an agent starting to write is announced without moving focus.',
       'Selection is budgeted per page: past the budget, further text renders unselectable rather than slowing the page.',
     ],
   },
@@ -89,7 +95,7 @@ export const doc: ComponentDoc = {
     },
   ],
   limits: [
-    'The reader shows no change bar or review queue; an agent\'s changes appear in place, briefly tinted with `hasUpdateHighlights`. Changes made while no editor was open wait for the next `JinshuEditor`.',
+    'A reader shows an agent\'s changes but takes none back and reviews nothing: Undo, Stop and the review queue are the editor\'s. A change made while no page showed the document is told to the first reader to open it, once.',
     '`openAt` brings the block to the nearest edge of the scroll, not to its top.',
     'Dwell is measured per top-level block from scrolling alone: time with the page hidden or the reader away shows as one long `idleMs` stretch, and time since the last scroll is not reported when the page closes.',
     'Every block is mounted; the page\'s scroll belongs to the app, so the reader does not mount blocks by viewport.',

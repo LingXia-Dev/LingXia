@@ -1,0 +1,27 @@
+<doc title="Rich" lang="en">
+<callout id="ct" tone="tip">
+  <title>Remember</title>
+  <p id="ct-p">Inside.</p>
+</callout>
+<details id="d1" defaultOpen="true">
+  <summary>More</summary>
+  <p id="d-p">Hidden.</p>
+</details>
+<columns id="cols" widths="2,1">
+  <col id="col-l">
+    <p id="col-l-p">Left</p>
+  </col>
+  <col id="col-r">
+    <p id="col-r-p">Right</p>
+  </col>
+</columns>
+<video id="v1" src="https://example.com/v.mp4" durationMs="125400">
+  <caption>A clip</caption>
+  <chapter atMs="0">Start</chapter>
+</video>
+<audio id="a1" src="lx://media/a.m4a" title="Talk">
+  <p id="a-t1">Hello.</p>
+</audio>
+<file id="f1" src="files/notes.pdf" name="notes.pdf" mimeType="application/pdf" sizeBytes="2048"/>
+<p id="p-json-only"><u>under</u> H<sub>2</sub>O <mark tone="warning">hot</mark></p>
+</doc>

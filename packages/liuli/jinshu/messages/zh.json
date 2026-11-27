@@ -851,6 +851,21 @@
   "@jinshu.outline.untitled": {
     "defaultMessage": "（无标题）"
   },
+  "@jinshu.view.agent.changed": {
+    "defaultMessage": "{name} 修改了 {count} 处"
+  },
+  "@jinshu.view.agent.changedAway": {
+    "defaultMessage": "你不在时，{name} 修改了 {count} 处"
+  },
+  "@jinshu.view.agent.dismiss": {
+    "defaultMessage": "知道了"
+  },
+  "@jinshu.view.agent.view": {
+    "defaultMessage": "查看"
+  },
+  "@jinshu.view.agent.writing": {
+    "defaultMessage": "{name} 正在写入…"
+  },
   "@jinshu.view.audio.blocked": {
     "defaultMessage": "音频地址受安全策略拦截"
   },

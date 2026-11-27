@@ -37,6 +37,23 @@ export function revealTargetId(doc: JinshuDocument, id: string): string | undefi
   return visit(doc.blocks, undefined);
 }
 
+/**
+ * Follows an in-page `#id` link: resolves `id` with `revealTargetId`, then scrolls through `nav` or reveals
+ * the element in `scope`. Returns the resolved id, or undefined when nothing in `doc` holds `id`.
+ */
+export function scrollToInPage(
+  doc: JinshuDocument,
+  id: string,
+  scope: string,
+  nav?: Pick<JinshuNavHandle, 'scrollTo'>,
+): string | undefined {
+  const resolved = revealTargetId(doc, id);
+  if (!resolved) return undefined;
+  if (nav) nav.scrollTo(resolved);
+  else reveal(blockElementId(scope, resolved));
+  return resolved;
+}
+
 export interface JinshuNavState {
   readonly targetBlockId: string | null;
   readonly seq: number;

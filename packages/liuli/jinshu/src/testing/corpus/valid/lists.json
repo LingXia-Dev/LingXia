@@ -1,0 +1,78 @@
+{
+  "version": 1,
+  "blocks": [
+    {
+      "id": "l-outer",
+      "type": "list",
+      "style": "bullet",
+      "items": [
+        {
+          "id": "i1",
+          "runs": [
+            {
+              "text": "One"
+            }
+          ]
+        },
+        {
+          "id": "i2",
+          "runs": [
+            {
+              "text": "Two"
+            }
+          ],
+          "blocks": [
+            {
+              "id": "l-inner",
+              "type": "list",
+              "style": "ordered",
+              "start": 3,
+              "items": [
+                {
+                  "id": "i2a",
+                  "runs": [
+                    {
+                      "text": "Two a"
+                    }
+                  ]
+                },
+                {
+                  "id": "i2b",
+                  "runs": [
+                    {
+                      "text": "Two b"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "l-task",
+      "type": "list",
+      "style": "task",
+      "items": [
+        {
+          "id": "t1",
+          "checked": true,
+          "runs": [
+            {
+              "text": "Done"
+            }
+          ]
+        },
+        {
+          "id": "t2",
+          "runs": [
+            {
+              "text": "Open"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

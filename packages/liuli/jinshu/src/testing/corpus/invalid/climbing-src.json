@@ -1,0 +1,1 @@
+{ "version": 1, "blocks": [{ "id": "f", "type": "file", "src": "../../etc/passwd", "name": "passwd" }] }

@@ -11,7 +11,7 @@ export const doc: ComponentDoc = {
     'editing does not jump. Text blocks edit in place; tables, code, folds, callouts, columns and media have their own editors, and `/` inserts ' +
     'any block. On a live `channel` the source keeps the history, the save state and the review: an agent\'s change is marked at each ' +
     'block it touched, with a bar to view or undo that batch; its suggestions and save requests wait in one queue; and an agent at ' +
-    'work shows a mark the person can stop. Pasted paragraphs or Markdown become blocks, and in a Markdown document (`format`) the ' +
+    'work shows a mark the person can stop. A paste from a web page, a word processor or Markdown keeps its headings, lists, links and marks, and in a Markdown document (`format`) the ' +
     'menus offer only what Markdown holds. Source mode edits the whole document as Markdown text and applies only the changed blocks, in one undo step.',
   keywords: ['editor', 'document editor', 'rich text', 'block editor', 'wysiwyg', 'review', 'suggestions', 'track changes', 'jinshu'],
   propsType: 'JinshuEditorProps',

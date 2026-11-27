@@ -1,0 +1,4 @@
+<doc title="Post">
+<meta>{"frontMatter":"layout: post\ntags: [a, b]"}</meta>
+<p id="p-1pu9l3y">Body with &lt;span&gt;raw html&lt;/span&gt;.</p>
+</doc>

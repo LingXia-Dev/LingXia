@@ -7,6 +7,7 @@ import {
   useLocal,
   useView,
   type Child,
+  type PasteEvent,
 } from '@lingxia/view';
 import { Badge } from '@liulidesign/core/Badge';
 import { Button } from '@liulidesign/core/Button';
@@ -38,7 +39,7 @@ import {
   walkBlocks,
 } from '../schema/helpers';
 import { normalizeInlines } from '../schema/validate';
-import { applyOps, checkMarkdownProfile, documentToMarkdown, formatAllows, inlinePlainProjection, markdownToBlocks, markdownToDocument } from '../schema/index';
+import { applyOps, checkMarkdownProfile, documentToMarkdown, formatAllows, htmlToBlocks, inlinePlainProjection, markdownToBlocks, markdownToDocument } from '../schema/index';
 import type {
   AnyJinshuOp,
   BlockInput,
@@ -65,7 +66,7 @@ import { BlockBody, JinshuSkeleton, blockTopSpacing, renderBlock, type BlockRend
 import { renderInlineRuns, type InlineAtomRenderer } from '../internal/InlineRuns';
 import { useJinshuChannelContext, type JinshuChannelAction } from '../internal/channel';
 import { MathFormulaView } from '../internal/MathView';
-import type { JinshuNavHandle } from '../internal/nav';
+import { scrollToInPage, type JinshuNavHandle } from '../internal/nav';
 import { jinshuViewRecipe as r } from '../JinshuView/JinshuView.recipe';
 import { formatLineWith, formatWordsWith } from '../i18n/formatWords';
 import { jinshuText } from '../i18n/text';
@@ -1006,24 +1007,84 @@ export function JinshuEditor(props: JinshuEditorProps) {
   };
 
   /**
-   * Enter never reaches the field, so a line break arriving as input is a paste. Text that reads as
-   * several blocks, or as one that is not a paragraph, replaces the block in one undo step.
+   * A paste into the open text field. HTML, or plain text with line breaks, that reads as blocks splits
+   * the block at the selection and goes in between, in one undo step; one paragraph with marks goes in
+   * at the caret. Anything else, or a result the document refuses, is left to the field as typed text.
    */
-  const pastedBlocks = (block: JinshuBlock, next: string): boolean => {
-    if (!next.includes('\n') || (block.type !== 'paragraph' && block.type !== 'heading')) return false;
-    const blocks = markdownToBlocks(next, { format: docFormat });
-    if (blocks.length === 0 || (blocks.length === 1 && blocks[0].type === 'paragraph')) return false;
-    // The block being edited becomes the first of them, so its id and the person's place survive.
-    const placed = blocks.map((b, i) => (i === 0 ? { ...b, id: block.id } : b));
-    dispatchOps([{ op: 'replace', id: block.id, blocks: placed, noteWord: note('@jinshu.note.paste', { count: placed.length }) }]);
-    const last = placed[placed.length - 1];
-    if (last.type === 'paragraph' || last.type === 'heading') {
-      activeId.set(last.id);
-      draftText.set(shorthandOf(last, dialect));
-    } else {
-      activeId.set(null);
+  const handlePaste = (block: JinshuBlock, event: PasteEvent) => {
+    if (block.type !== 'paragraph' && block.type !== 'heading') return;
+    const html = event.plain ? undefined : event.html;
+    const pasted = html ? htmlToBlocks(html, { format: docFormat }) : event.text.includes('\n') ? markdownToBlocks(event.text, { format: docFormat }) : [];
+    if (pasted.length === 0) return;
+    const single = pasted.length === 1 && pasted[0].type === 'paragraph' ? pasted[0] : null;
+    // HTML that adds nothing to its text goes in as typed, so pasted shorthand still reads as marks.
+    if (single && (!html || single.runs.every(r => isInlineRun(r) && Object.keys(r).length === 1))) return;
+
+    const inHeading = block.type === 'heading';
+    const parse = (text: string) => shorthandToInlines(text, { inHeading, existingAtoms: atomsIn(block.runs), ...dialect });
+    const write = (runs: readonly Inline[]) => inlinesToShorthand(normalizeInlines(runs, { inHeading }), dialect);
+    // Where the caret lands after `prefix` inside `whole`: their shared start, as a merged mark moves its closer.
+    const caretAfter = (prefix: readonly Inline[], whole: string) => {
+      const head = write(prefix);
+      let at = 0;
+      while (at < head.length && head[at] === whole[at]) at += 1;
+      return at;
+    };
+    const [beforeText, afterText] = splitAt(draftText.value, event.selection, MARKS);
+    const before = parse(beforeText);
+    const after = parse(afterText);
+
+    if (single) {
+      const text = write([...before, ...single.runs, ...after]);
+      const at = caretAfter([...before, ...single.runs], text);
+      event.preventDefault();
+      placeDraft(block, text, { start: at, end: at });
+      return;
     }
-    return true;
+
+    const own = (runs: readonly Inline[], id: string): JinshuBlock =>
+      block.type === 'heading' ? { id, type: 'heading', level: block.level, runs: [...runs] } : { id, type: 'paragraph', runs: [...runs] };
+    let rest: JinshuBlock[] = [...pasted];
+    let first: JinshuBlock;
+    if (rest[0].type === 'paragraph') {
+      first = own([...before, ...rest[0].runs], block.id);
+      rest = rest.slice(1);
+    } else if (before.length === 0) {
+      // Nothing before the caret: the first pasted block takes the place, and the id, of this one.
+      first = { ...rest[0], id: block.id };
+      rest = rest.slice(1);
+    } else {
+      first = own(before, block.id);
+    }
+    const placed = [first, ...rest];
+    let caret: { readonly id: string; readonly prefix: readonly Inline[] } | null = null;
+    const last = placed[placed.length - 1];
+    if (after.length > 0 && last.type === 'paragraph' && placed.length > 1) {
+      caret = { id: last.id, prefix: last.runs };
+      placed[placed.length - 1] = { ...last, runs: [...last.runs, ...after] };
+    } else if (after.length > 0) {
+      const tail = paragraph([...after]);
+      caret = { id: tail.id, prefix: [] };
+      placed.push(tail);
+    } else if (last.type === 'paragraph' || last.type === 'heading') {
+      caret = { id: last.id, prefix: last.runs };
+    }
+    const ops: AnyJinshuOp[] = [{ op: 'replace', id: block.id, blocks: placed, noteWord: note('@jinshu.note.paste', { count: placed.length }) }];
+    const from = currentDoc();
+    if (!from || applyOps(from, ops, undefined, { format: docFormat }).problems.some(p => p.severity === 'error')) return;
+    event.preventDefault();
+    dispatchOps(ops);
+    const landed = caret && placed.find(b => b.id === caret.id);
+    if (!caret || !landed || (landed.type !== 'paragraph' && landed.type !== 'heading')) {
+      activeId.set(null);
+      return;
+    }
+    const text = shorthandOf(landed, dialect);
+    const at = caretAfter(caret.prefix, text);
+    activeId.set(landed.id);
+    draftText.set(text);
+    draftText.setSelection(at, at);
+    noteSelection(text, { start: at, end: at });
   };
 
   /** The caret follows the paragraph into the block a line-start rule made of it, holding the text after the marker. */
@@ -1034,7 +1095,6 @@ export function JinshuEditor(props: JinshuEditorProps) {
   };
 
   const handleLiveInput = (block: JinshuBlock, next: string) => {
-    if (pastedBlocks(block, next)) return;
     if (block.type === 'paragraph' && next.startsWith('/')) {
       draftText.set(next);
       slashAfterId.set(block.id);
@@ -1297,7 +1357,10 @@ export function JinshuEditor(props: JinshuEditorProps) {
     ...stableCallbacks(live, {
       resolveSrc: props.resolveSrc,
       onLinkPress: props.onLinkPress,
-      onInPageLink: (id: string) => (props.nav ? props.nav.scrollTo(id) : reveal(`jinshu-${scope}-b-${id}`)),
+      onInPageLink: (id: string) => {
+        const held = currentDoc();
+        if (held) scrollToInPage(held, id, scope, props.nav);
+      },
       onFileAction: props.onFileAction,
       onOpenImage: readOnly ? undefined : (blockId: string) => selectBlock(selectedNonTextId.value === blockId ? null : blockId),
       onUpdateCustomAttrs: readOnly
@@ -2388,6 +2451,7 @@ export function JinshuEditor(props: JinshuEditorProps) {
                         maxRows={24}
                         placeholder={block.type === 'paragraph' ? jinshuText('@jinshu.editor.text.placeholder') : jinshuText('@jinshu.editor.heading.placeholder')}
                         onInput={val => handleLiveInput(block, val)}
+                        onPaste={event => handlePaste(block, event)}
                         onSelectionChange={sel => noteSelection(draftText.value, sel)}
                         onBlur={() => commitOnBlur(block)}
                         onKeyDown={{

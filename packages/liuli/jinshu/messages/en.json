@@ -1135,6 +1135,26 @@
     "defaultMessage": "(Untitled)",
     "description": "Outline entry for a heading with no text."
   },
+  "@jinshu.view.agent.changed": {
+    "defaultMessage": "{name} changed {count, plural, one {# block} other {# blocks}}",
+    "description": "Reader bar after an agent changed the document while it was open."
+  },
+  "@jinshu.view.agent.changedAway": {
+    "defaultMessage": "While you were away, {name} changed {count, plural, one {# block} other {# blocks}}",
+    "description": "Reader bar on opening a document an agent changed while no page showed it."
+  },
+  "@jinshu.view.agent.dismiss": {
+    "defaultMessage": "Dismiss",
+    "description": "Closes the reader's agent change bar and its marks."
+  },
+  "@jinshu.view.agent.view": {
+    "defaultMessage": "View",
+    "description": "Steps the reader through the blocks an agent changed."
+  },
+  "@jinshu.view.agent.writing": {
+    "defaultMessage": "{name} is writing…",
+    "description": "Reader mark while an agent writes here."
+  },
   "@jinshu.view.audio.blocked": {
     "defaultMessage": "This audio's address is blocked by the security policy",
     "description": "Shown in place of audio whose address is not allowed."

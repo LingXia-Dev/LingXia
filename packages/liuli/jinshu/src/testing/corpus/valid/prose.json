@@ -1,0 +1,105 @@
+{
+  "version": 1,
+  "title": "Week 3: Limits",
+  "blocks": [
+    {
+      "id": "h-intro",
+      "type": "heading",
+      "level": 2,
+      "runs": [
+        {
+          "text": "What a limit is"
+        }
+      ]
+    },
+    {
+      "id": "p-def",
+      "type": "paragraph",
+      "runs": [
+        {
+          "text": "A limit describes where "
+        },
+        {
+          "math": "f(x)"
+        },
+        {
+          "text": " is heading",
+          "bold": true
+        },
+        {
+          "text": ", not where it is."
+        }
+      ]
+    },
+    {
+      "id": "p-marks",
+      "type": "paragraph",
+      "runs": [
+        {
+          "text": "See "
+        },
+        {
+          "text": "the notes",
+          "link": "https://example.com/notes"
+        },
+        {
+          "text": " and "
+        },
+        {
+          "text": "code",
+          "code": true
+        },
+        {
+          "text": "."
+        },
+        {
+          "break": true
+        },
+        {
+          "text": "Second line, "
+        },
+        {
+          "text": "struck",
+          "strike": true
+        },
+        {
+          "text": " and "
+        },
+        {
+          "text": "both",
+          "bold": true,
+          "italic": true
+        },
+        {
+          "text": "."
+        }
+      ]
+    },
+    {
+      "id": "h-back",
+      "type": "heading",
+      "level": 3,
+      "runs": [
+        {
+          "text": "Back to the top"
+        }
+      ]
+    },
+    {
+      "id": "p-link",
+      "type": "paragraph",
+      "runs": [
+        {
+          "text": "Jump to "
+        },
+        {
+          "text": "the intro",
+          "link": "#h-intro"
+        },
+        {
+          "text": "."
+        }
+      ]
+    }
+  ]
+}

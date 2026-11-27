@@ -33,13 +33,19 @@ const agentEdit = (source, id, find, replace) =>
   toolsOver({ w3: source }).call('jinshu_edit', { doc: 'w3', base: source.getState().revision, ops: [{ op: 'edit', id, find, replace }] });
 const batchesIn = ch => ch.sent.filter(m => m.t === 'agentBatches').flatMap(m => m.batches);
 
-describe('changed while away: only an editor takes the notice', () => {
-  it('a reader opening first leaves the away batches for the editor', async () => {
+describe('changed while away: the editor takes it with undo, a reader is told once', () => {
+  it('a reader opening first is told, and still leaves the away batches for the editor', async () => {
     const source = createJinshuSource({ key: 'w3', initialDoc: lesson() });
     await agentEdit(source, 'p1', 'First', 'Away');
     const reader = fakeChannel();
     source.serve(reader, { doc: 'w3', role: 'reader' });
-    assert.equal(batchesIn(reader).length, 0);
+    const [told] = batchesIn(reader);
+    assert.equal(told.away, true);
+    assert.deepEqual(told.blockIds, ['p1']);
+    // Once: the next reader does not hear it again.
+    const nextReader = fakeChannel();
+    source.serve(nextReader, { doc: 'w3', role: 'reader' });
+    assert.equal(batchesIn(nextReader).length, 0);
     const editor = fakeChannel();
     source.serve(editor, { doc: 'w3', role: 'editor' });
     const [away] = batchesIn(editor);
@@ -51,12 +57,14 @@ describe('changed while away: only an editor takes the notice', () => {
     assert.equal(batchesIn(second).length, 0);
   });
 
-  it('a change while only a reader shows the document waits for an editor, not marked away', async () => {
+  it('a change while only a reader shows the document goes to it live, and waits for an editor, not marked away', async () => {
     const source = createJinshuSource({ key: 'w3', initialDoc: lesson() });
     const reader = fakeChannel();
     source.serve(reader, { role: 'reader' });
     await agentEdit(source, 'p2', 'Second', 'Later');
-    assert.equal(batchesIn(reader).length, 0);
+    const [live] = batchesIn(reader);
+    assert.deepEqual(live.blockIds, ['p2']);
+    assert.equal(live.away, undefined);
     const editor = fakeChannel();
     source.serve(editor);
     editor.emit({ t: 'open', doc: 'w3', role: 'editor' });
@@ -76,6 +84,23 @@ describe('changed while away: only an editor takes the notice', () => {
     const next = fakeChannel();
     source.serve(next, { role: 'editor' });
     assert.deepEqual(batchesIn(next).map(b => b.blockIds[0]), ['p2']);
+  });
+
+  it('a reader is not told of a change undone meanwhile, nor of one an editor showed first', async () => {
+    const source = createJinshuSource({ key: 'w3', initialDoc: lesson() });
+    const undone = await agentEdit(source, 'p1', 'First', 'Gone');
+    source.undo(undone.data.batchId);
+    await agentEdit(source, 'p2', 'Second', 'Kept');
+    const reader = fakeChannel();
+    source.serve(reader, { role: 'reader' });
+    assert.deepEqual(batchesIn(reader).map(b => b.blockIds[0]), ['p2']);
+    reader.close();
+
+    await agentEdit(source, 'p2', 'Kept', 'Again');
+    source.serve(fakeChannel(), { role: 'editor' });
+    const late = fakeChannel();
+    source.serve(late, { role: 'reader' });
+    assert.equal(batchesIn(late).length, 0);
   });
 });
 

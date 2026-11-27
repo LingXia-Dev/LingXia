@@ -1,0 +1,99 @@
+{
+  "version": 1,
+  "title": "Blocks",
+  "blocks": [
+    {
+      "id": "q1",
+      "type": "quote",
+      "blocks": [
+        {
+          "id": "q-p",
+          "type": "paragraph",
+          "runs": [
+            {
+              "text": "Quoted words."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "c1",
+      "type": "callout",
+      "tone": "warning",
+      "blocks": [
+        {
+          "id": "c-p",
+          "type": "paragraph",
+          "runs": [
+            {
+              "text": "Mind the gap."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "code1",
+      "type": "code",
+      "language": "js",
+      "code": "const a = 1;\nconsole.log(a);"
+    },
+    {
+      "id": "m1",
+      "type": "math",
+      "latex": "\\int_0^1 x\\,dx = \\tfrac12"
+    },
+    {
+      "id": "t1",
+      "type": "table",
+      "align": [
+        "start",
+        "end"
+      ],
+      "headerRow": true,
+      "rows": [
+        {
+          "id": "r-h",
+          "cells": [
+            [
+              {
+                "text": "x"
+              }
+            ],
+            [
+              {
+                "text": "f(x)"
+              }
+            ]
+          ]
+        },
+        {
+          "id": "r-1",
+          "cells": [
+            [
+              {
+                "text": "0.9"
+              }
+            ],
+            [
+              {
+                "text": "1.9"
+              }
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "hr1",
+      "type": "divider"
+    },
+    {
+      "id": "img1",
+      "type": "image",
+      "src": "https://example.com/graph.png",
+      "alt": "Graph"
+    }
+  ]
+}

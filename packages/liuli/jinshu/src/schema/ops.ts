@@ -1161,9 +1161,13 @@ function applyOneInner(
       if (!loc || loc.index === 0) return fail({ code: 'INVALID', id: op.id, message: `Block "${op.id}" has no previous sibling to merge with.` });
       const prev = loc.list[loc.index - 1];
       const curr = loc.list[loc.index];
+      if (op.into !== undefined && op.into !== prev.id) {
+        return fail({ code: 'INVALID', id: op.id, message: `Block "${op.id}" no longer follows "${op.into}".` });
+      }
       if ((prev.type !== 'paragraph' && prev.type !== 'heading') || (curr.type !== 'paragraph' && curr.type !== 'heading')) {
         return fail({ code: 'INVALID', id: op.id, message: 'Only paragraph/heading blocks can be merged.' });
       }
+      if (op.into === undefined) resolve({ ...op, into: prev.id });
       // previous block keeps id; current block id disappears
       loc.list[loc.index - 1] = {
         ...prev,

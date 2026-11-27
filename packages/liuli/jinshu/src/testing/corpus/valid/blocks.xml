@@ -1,0 +1,21 @@
+<doc title="Blocks">
+<quote id="q1">
+  <p id="q-p">Quoted words.</p>
+</quote>
+<callout id="c1" tone="warning">
+  <p id="c-p">Mind the gap.</p>
+</callout>
+<code id="code1" language="js">
+```
+const a = 1;
+console.log(a);
+```
+</code>
+<math id="m1">\int_0^1 x\,dx = \tfrac12</math>
+<table id="t1" align="start,end" headerRow="true">
+  <tr id="r-h"><th>x</th><th>f(x)</th></tr>
+  <tr id="r-1"><td>0.9</td><td>1.9</td></tr>
+</table>
+<divider id="hr1"/>
+<image id="img1" src="https://example.com/graph.png" alt="Graph"/>
+</doc>

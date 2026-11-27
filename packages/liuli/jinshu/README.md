@@ -128,6 +128,25 @@ createJinshuSource({
 - Markdown has no ids: they are derived on each read, kept for blocks that did not change. An id of
   a block whose text changed outside Jinshu is new, so a link, comment or reading position on it is lost.
 
+## Command line
+
+The package ships a `jinshu` command for scripts and CI, running the same schema code. The format
+follows the extension: `.md` Markdown, `.json` Jinshu JSON, `.xml` Jinshu Markup.
+
+```sh
+npx @liulidesign/jinshu check lesson.md           # problems with code and id; exit 1 on an error
+npx @liulidesign/jinshu check doc.json --profile markdown   # also what Markdown cannot hold
+npx @liulidesign/jinshu outline lesson.md
+npx @liulidesign/jinshu diff old.json new.json    # block by block, words included; exit 1 when they differ
+npx @liulidesign/jinshu apply lesson.md ops.json --write    # one atomic batch; `-` reads ops from stdin
+```
+
+`apply` takes a JSON array of ops (or `{ "ops": [...] }`), prints the result in the file's format, or
+writes it with `--write` or `-o <file>` (another extension converts). A batch with any failing op
+changes nothing and exits 1; a Markdown file keeps the bytes of every block the ops did not touch.
+Every command takes `--json`; exit code 2 is a usage or I/O error. It needs Node 22.15 or later and no
+build step: the command loads the TypeScript source as it ships.
+
 ## Edits, history and review
 
 Every change is an operation batch (`insert`, `replace`, `edit`, `update`, `move`, `delete`, table row

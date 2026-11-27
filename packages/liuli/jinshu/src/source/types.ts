@@ -175,7 +175,7 @@ export interface AgentActivity {
   readonly streamId?: string;
 }
 
-/** An agent's direct batch the page shows with its "undo this change" bar. */
+/** An agent's direct batch the page shows in its change bar: with "undo this change" in an editor. */
 export interface AgentBatch {
   readonly batchId: string;
   readonly revision: number;
@@ -227,7 +227,7 @@ export type BlockChange =
   | { readonly kind: 'move'; readonly id: string; readonly to: Position }
   | { readonly kind: 'setMeta'; readonly title?: string; readonly lang?: string; readonly meta?: Readonly<Record<string, unknown>> };
 
-/** What a page's channel serves: an editor shows agent changes made while it was away, a reader does not. */
+/** What a page's channel serves: both show agent changes as they land; an editor takes the ones made while no editor was open, with undo, and a reader the ones made while no page was open. */
 export type ChannelRole = 'editor' | 'reader';
 
 /** The parameters a page opens its channel with. */

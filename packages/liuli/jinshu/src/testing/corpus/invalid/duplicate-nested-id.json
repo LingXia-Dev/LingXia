@@ -1,0 +1,1 @@
+{ "version": 1, "blocks": [{ "id": "l1", "type": "list", "style": "bullet", "items": [{ "id": "x", "runs": [{ "text": "a" }] }] }, { "id": "x", "type": "divider" }] }

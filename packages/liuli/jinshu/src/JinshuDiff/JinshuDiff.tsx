@@ -191,6 +191,9 @@ export function JinshuDiff({ a, b, diff: precomputed, mode = 'smart', className,
               <view className={r.changeHeader.wrapping}>
                 <Badge label={jinshuText('@jinshu.diff.modified')} tone="accent" size="sm" />
                 <text className={r.blockId.base}>{entry.id}</text>
+                {entry.moved && (
+                  <Badge label={jinshuText('@jinshu.diff.moved', { from: entry.moved.fromIndex + 1, to: entry.moved.toIndex + 1 })} tone="info" size="sm" />
+                )}
                 {entry.typeChanged && (
                   <Badge label={`${blockTypeLabel(entry.before)} → ${blockTypeLabel(entry.after)}`} tone="warning" size="sm" />
                 )}

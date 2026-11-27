@@ -169,3 +169,110 @@ export function render() {
   assert.equal(open(await renderPage(page('https://example.com/a.mp4')), 'Later'), true);
   assert.equal(open(await renderPage(page('https://example.com/b.mp4')), 'Later'), false, 'a replaced video starts over');
 });
+
+// The reader on a live source, through the same channel messages Logic sends.
+const live = async (source, { props = '', env } = {}) => {
+  const { renderPage } = await import('../testing/harness.mjs');
+  const screen = await renderPage(
+    linked => `import { useView } from '@lingxia/view';
+import { JinshuView } from ${JSON.stringify(`${linked}/src/JinshuView/JinshuView`)};
+function Reader() {
+  const { actions } = useView();
+  if (!actions?.syncDoc) return <view />;
+  return <JinshuView channel={actions.syncDoc} docKey="w3" data-testid="w3" ${props} />;
+}
+export function render() {
+  return <page><Reader /></page>;
+}
+`,
+    { ...(env ? { env } : {}), channels: { syncDoc: (channel, params) => source.serve(channel, params) } },
+  );
+  await screen.settle();
+  return screen;
+};
+const liveDoc = async () => {
+  const { createDocument, heading, paragraph } = await import('../schema/index.ts');
+  return createDocument({ title: 'Week 3', blocks: [heading(1, 'Week 3', 'h'), paragraph('First paragraph.', 'p1'), paragraph('Second paragraph.', 'p2')] });
+};
+const sourceOf = async () => {
+  const { createJinshuSource } = await import('../source/index.ts');
+  return createJinshuSource({ key: 'w3', initialDoc: await liveDoc() });
+};
+const agentEditOn = async (source, id, find, replace) => {
+  const { toolsOver } = await import('../testing/agent.mjs');
+  return toolsOver({ w3: source }).call('jinshu_edit', { doc: 'w3', base: source.getState().revision, ops: [{ op: 'edit', id, find, replace }] });
+};
+const has = (screen, text) => screen.queryAll(n => n.tag === 'text' && textOf(n) === text).length > 0;
+// The change bar at a block's start edge.
+const markedBlocks = screen => screen.queryAll(n => n.props.insetInlineStart === -12 && n.props.width === 3 && n.props.background === 'accent')
+  .map(n => n.parent.children.find(c => c !== n).props.elementId?.split('-b-').pop());
+const pressNamed = (screen, name) => {
+  const hit = screen.queryAll(n => n.tag === 'button' && (labelOf(n) === name || textOf(n) === name))[0];
+  assert.ok(hit, `no button "${name}"`);
+  screen.press(hit);
+};
+
+test('agent change while reading: a bar names the agent and the count, marks the block, View steps to it, Dismiss clears both; no Undo', async () => {
+  const source = await sourceOf();
+  const screen = await live(source);
+  await agentEditOn(source, 'p2', 'Second', 'Agent');
+  await screen.settle();
+  assert.ok(has(screen, 'Codex changed 1 block'));
+  assert.ok(has(screen, 'Agent paragraph.'));
+  assert.ok(!has(screen, 'Undo this change'), 'a reader takes nothing back');
+  assert.deepEqual(markedBlocks(screen), ['p2']);
+  const bar = screen.getByTestId('w3-agent-bar');
+  assert.equal(bar.props.role ?? bar.props.accessibilityRole, 'status');
+  pressNamed(screen, 'View');
+  await screen.settle();
+  pressNamed(screen, 'Dismiss');
+  await screen.settle();
+  assert.ok(!has(screen, 'Codex changed 1 block'));
+  assert.deepEqual(markedBlocks(screen), []);
+  assert.equal(screen.queryAll(n => n.props['data-testid'] === 'w3-agent-bar' || n.props.testID === 'w3-agent-bar').length, 0);
+});
+
+test('agent change while away: the first reader to open is told, in its language', async () => {
+  const { zh: zhEnv } = await import('../testing/harness.mjs');
+  const source = await sourceOf();
+  await agentEditOn(source, 'p1', 'First', 'Away');
+  const screen = await live(source, { env: zhEnv.env });
+  assert.ok(has(screen, '你不在时，Codex 修改了 1 处'));
+  const again = await live(source);
+  assert.ok(!has(again, 'While you were away, Codex changed 1 block'), 'told once');
+});
+
+test('agent change undone elsewhere: the reader drops its bar', async () => {
+  const source = await sourceOf();
+  const screen = await live(source);
+  const res = await agentEditOn(source, 'p2', 'Second', 'Agent');
+  await screen.settle();
+  assert.ok(has(screen, 'Codex changed 1 block'));
+  source.undo(res.data.batchId);
+  await screen.settle();
+  assert.ok(!has(screen, 'Codex changed 1 block'));
+  assert.ok(has(screen, 'Second paragraph.'));
+});
+
+test('agent writing: a mark names the agent above the block, with no Stop in a reader', async () => {
+  const source = await sourceOf();
+  const screen = await live(source);
+  await agentEditOn(source, 'p2', 'Second', 'Agent');
+  await screen.settle();
+  assert.ok(has(screen, 'Codex is writing…'));
+  assert.ok(!has(screen, 'Stop'));
+  source.setActivity(null, source.getState().activities[0].origin.id);
+  await screen.settle();
+  assert.ok(!has(screen, 'Codex is writing…'));
+});
+
+test('hasAgentFeedback={false}: the change lands with no bar or mark', async () => {
+  const source = await sourceOf();
+  const screen = await live(source, { props: 'hasAgentFeedback={false}' });
+  await agentEditOn(source, 'p2', 'Second', 'Agent');
+  await screen.settle();
+  assert.ok(has(screen, 'Agent paragraph.'));
+  assert.ok(!has(screen, 'Codex changed 1 block'));
+  assert.ok(!has(screen, 'Codex is writing…'));
+  assert.deepEqual(markedBlocks(screen), []);
+});

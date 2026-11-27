@@ -1,0 +1,1 @@
+{ "version": 1, "blocks": [{ "id": "c", "type": "columns", "columns": [{ "id": "c1", "blocks": [{ "id": "p1", "type": "paragraph", "runs": [] }] }, { "id": "c2", "blocks": [{ "id": "in", "type": "columns", "columns": [{ "id": "c3", "blocks": [{ "id": "p2", "type": "paragraph", "runs": [] }] }, { "id": "c4", "blocks": [{ "id": "p3", "type": "paragraph", "runs": [] }] }] }] }] }] }
