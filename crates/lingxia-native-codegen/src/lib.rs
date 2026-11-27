@@ -1241,7 +1241,12 @@ fn collect_and_validate_types(manifest: &NativeManifest) -> Result<BTreeMap<Stri
             match &def.kind {
                 StructDefKind::Named(fields) => {
                     for f in fields {
-                        collect_refs_from_type(&f.ty, &mut child_refs);
+                        let mut refs = BTreeSet::new();
+                        collect_refs_from_type(&f.ty, &mut refs);
+                        let owner = format!("field `{}` of `{name}`", f.name);
+                        for child in refs {
+                            pending.push((child, dir, owner.clone(), def.loc.clone()));
+                        }
                     }
                 }
                 StructDefKind::Tuple(elems) => {
@@ -1268,7 +1273,12 @@ fn collect_and_validate_types(manifest: &NativeManifest) -> Result<BTreeMap<Stri
                     }
                     VariantPayload::Struct(fields) => {
                         for f in fields {
-                            collect_refs_from_type(&f.ty, &mut child_refs);
+                            let mut refs = BTreeSet::new();
+                            collect_refs_from_type(&f.ty, &mut refs);
+                            let owner = format!("field `{}` of `{name}::{}`", f.name, v.wire_name);
+                            for child in refs {
+                                pending.push((child, dir, owner.clone(), def.loc.clone()));
+                            }
                         }
                     }
                 }
@@ -1285,7 +1295,7 @@ fn collect_and_validate_types(manifest: &NativeManifest) -> Result<BTreeMap<Stri
             }
         } else {
             bail!(
-                "{}: unsupported or unresolved native DTO type `{name}` referenced by {owner}; define it as a struct, enum, or type alias in the native crate",
+                "{}: {owner} has type `{name}`, which codegen cannot map to TypeScript; wrap it in a newtype the native crate defines (`struct {name}Value(String)` with serde), or use a mapped type: `String`, a number, `bool`, `Option`, `Vec`, `HashMap`, `Uuid`, `DateTime`, `Url`, `PathBuf`",
                 loc.display()
             );
         }
@@ -1805,8 +1815,14 @@ export function isNativeError<C extends NativeErrorCode = NativeErrorCode>(
 
 const SHARED_TS_TYPES: &str = r#"export type NativeVoid = void;
 
+/** What a call reads of an `AbortSignal`, so a program without DOM types still checks. */
+export interface NativeAbortSignal {
+  readonly aborted: boolean;
+  addEventListener(type: "abort", listener: () => void): void;
+}
+
 export interface NativeCallOptions {
-  signal?: AbortSignal;
+  signal?: NativeAbortSignal;
 }
 
 export interface NativeTask<E = unknown, R = void> extends AsyncIterable<E, R, void> {
@@ -2660,6 +2676,23 @@ mod tests {
         assert!(err.contains("MissingDto"), "{err}");
         assert!(err.contains("lib.rs:"), "{err}");
         assert!(err.contains("files.stat"), "{err}");
+
+        let manifest = scan_source(
+            r#"
+            #[derive(serde::Serialize)]
+            pub struct Stat { size: u32, mode: nix::sys::stat::Mode }
+
+            #[lingxia::native("files.stat")]
+            pub async fn stat() -> lingxia::Result<Stat> { todo!() }
+        "#,
+        );
+        let err = render(&manifest, OutputKind::LogicTypeScript)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("lib.rs:3: field `mode` of `Stat` has type `Mode`, which codegen cannot map to TypeScript; wrap it in a newtype"),
+            "{err}"
+        );
     }
 
     #[test]
