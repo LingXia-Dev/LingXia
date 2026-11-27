@@ -200,7 +200,7 @@ const LX_FILE_API = [
   'text',
 ] as const;
 const STORAGE_API = ['clear', 'delete', 'get', 'has', 'info', 'list', 'set'] as const;
-const APP_API = ['appearance', 'info', 'language', 'moreActions', 't', 'tabBar', 'update'] as const;
+const APP_API = ['appearance', 'errorText', 'info', 'language', 'moreActions', 't', 'tabBar', 'update'] as const;
 const APP_UPDATE_API = ['apply', 'onFailed', 'onReady'] as const;
 const MORE_ACTIONS_API = ['replace'] as const;
 const PAGE_PLAYER_API = [
