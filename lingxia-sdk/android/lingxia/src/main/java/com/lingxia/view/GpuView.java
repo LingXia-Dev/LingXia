@@ -924,7 +924,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         // A disposed page presents nothing more; its waiters must not wait forever.
         answerPresentationWaiters(false);
     }
-    @Override public void surfaceCreated(SurfaceHolder holder) { updateCaretActivity(); updateSurfaceVisibility(); }
+    @Override public void surfaceCreated(SurfaceHolder holder) { surfaceRefusals = 0; updateCaretActivity(); updateSurfaceVisibility(); }
     @Override public void surfaceDestroyed(SurfaceHolder holder) {
         surface.cancelRefreshGesture();
         hasSurfaceFrame = false;
@@ -959,6 +959,10 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         surfaceRedraws.clear();
         for (Runnable callback : callbacks) callback.run();
     }
+
+    private static final int SURFACE_RETRIES = 20;
+    private static final long SURFACE_RETRY_MS = 50;
+    private int surfaceRefusals;
 
     private void attachGpu() {
         // A retained hidden page attaches too, so its catch-up frame is ready when it returns.
@@ -1013,8 +1017,16 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
             }
             return true;
         }
+        @Override public void gpuRefused() { onMain(() -> {
+            attaching = false;
+            if (destroyed) return;
+            // Past the retries the next surface callback binds again.
+            if (++surfaceRefusals <= SURFACE_RETRIES) main.postDelayed(GpuView.this::attachGpu, SURFACE_RETRY_MS);
+            else Log.w("LingXia.UI", "UI_SURFACE: refused " + surfaceRefusals + " times; waiting for the surface to change");
+        }); }
         @Override public void gpuAttached(boolean attached) { onMain(() -> {
             attaching = false;
+            surfaceRefusals = 0;
             if (destroyed) return;
             gpuAttached = attached;
             if (!destroyed) nativeRedraw(host);

@@ -1311,6 +1311,18 @@ extern "system" fn attach<'a>(
                 host.adapter(),
                 Box::new(move || {
                     let adapter = main.adapter();
+                    // A window still bound to the page's previous surface refuses a new one for a
+                    // moment: the page waits and binds again rather than drawing on the CPU.
+                    if let Err(error) = &attached
+                        && error.starts_with(lingxia_view::renderer::gpu::SURFACE_REFUSED)
+                    {
+                        adapter::log(error);
+                        adapter.java(|env, platform| {
+                            env.call_method(platform, jni_str!("gpuRefused"), jni_sig!("()V"), &[])?;
+                            Ok(())
+                        });
+                        return;
+                    }
                     let ok = match attached {
                         Ok(id) => {
                             adapter.gpu.store(id, std::sync::atomic::Ordering::Release);

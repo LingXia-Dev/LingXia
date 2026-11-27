@@ -15,6 +15,8 @@ interface GpuPlatform {
     /** Raster thread: premultiplied RGBA rows, readable only during the call. */
     boolean presentPixels(java.nio.ByteBuffer rgba, int width, int height);
     void gpuAttached(boolean attached);
+    /** The window refused a GPU surface for now; nothing presents until an attach succeeds. */
+    void gpuRefused();
 
     /** 0 focused, 1 focus cleared, 2 input focused, 3 hover enter, 4 hover exit, 5 value changed, 6 content changed. */
     void announce(int event, int id);
