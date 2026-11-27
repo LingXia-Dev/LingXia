@@ -69,6 +69,14 @@ const groups: { title: string; note?: string; swatches: Swatch[] }[] = [
   },
 ];
 
+// Named by the gallery's own theme file (gallery/theme.json), as an app names its colours in its theme.
+const appColours: Swatch[] = [
+  { role: 'trail', use: 'graphic: a route on a map, 3:1 on the surfaces it sits on', sample: 'bg-surface-sunken border-4 border-trail' },
+  { role: 'climb', use: 'text: metres gained, 4.5:1 on the surface', sample: 'bg-surface', ink: 'text-climb' },
+  { role: 'sunrise', use: 'fill: a band that carries words, with on-sunrise', sample: 'bg-sunrise', ink: 'text-on-sunrise' },
+  { role: 'dusk', use: 'fill: with on-dusk', sample: 'bg-dusk', ink: 'text-on-dusk' },
+];
+
 const series = ['bg-chart-1', 'bg-chart-2', 'bg-chart-3', 'bg-chart-4', 'bg-chart-5'];
 
 /** A checker of surface and text squares; the scrim covers its lower half, so it reads as a veil. */
@@ -94,7 +102,7 @@ function SwatchRow({ swatch }: { swatch: Swatch }) {
       {swatch.isVeil ? (
         <Veil sample={swatch.sample} />
       ) : (
-        <view className={`size-11 items-center justify-center rounded-control border border-line ${swatch.sample}`}>
+        <view className={`size-11 shrink-0 items-center justify-center rounded-control border border-line ${swatch.sample}`}>
           {swatch.ink !== undefined && <text className={`text-body font-semibold ${swatch.ink}`}>Aa</text>}
         </view>
       )}
@@ -120,6 +128,23 @@ export function Content() {
           </view>
         </PageSection>
       ))}
+      <PageSection title="App colours">
+        <text className="text-footnote text-muted">
+          Colours an app owns go in its theme's colors, each with a light and a dark value and a use the build proves. They become classes like the roles: bg-sunrise, text-on-sunrise, from-sunrise.
+        </text>
+        <view className="rounded-container border border-line bg-surface divide-y divide-line">
+          {appColours.map(swatch => <SwatchRow key={swatch.role} swatch={swatch} />)}
+          <view className="gap-2 px-4 py-3">
+            <view className="h-14 justify-center rounded-control bg-linear-to-r from-sunrise to-dusk px-4">
+              <text className="text-body font-semibold text-on-sunrise">Golden hour</text>
+            </view>
+            <view className="gap-0.5">
+              <text className="text-body font-medium text-text">sunrise to dusk</text>
+              <text className="text-footnote text-muted">A gradient between app colours; its words are measured against every stop</text>
+            </view>
+          </view>
+        </view>
+      </PageSection>
       <PageSection title="Data">
         <view className="gap-2">
           <view className="flex-row gap-1.5">

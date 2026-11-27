@@ -39,6 +39,9 @@ cpSync(join(liuli, 'gallery', 'zz-tests', 'baseline.test.ts'), join(gallery, 'zz
 const specConfig = JSON.parse(readFileSync(join(liuli, 'gallery', 'zz-tests', 'tsconfig.json'), 'utf8'));
 specConfig.compilerOptions.paths = { '@lingxia/test': [resolve(liuli, '..', 'lingxia-test', 'dist', 'index.d.ts')] };
 writeFileSync(join(gallery, 'zz-tests', 'tsconfig.json'), `${JSON.stringify(specConfig, null, 2)}\n`);
+// The gallery's own app colours come along, so the Colour page still shows them.
+const own = JSON.parse(readFileSync(join(liuli, 'gallery', 'theme.json'), 'utf8'));
+theme.colors = { ...own.colors, ...theme.colors };
 writeFileSync(join(gallery, 'theme.json'), `${JSON.stringify(theme, null, 2)}\n`);
 const manifestPath = join(gallery, 'lxapp.json');
 const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));

@@ -1,0 +1,10 @@
+{
+  "name": "liuli-gallery",
+  "version": 1,
+  "colors": {
+    "trail": { "light": "#0f766e", "dark": "#2dd4bf", "use": "graphic", "on": ["surface", "surface-sunken"] },
+    "climb": { "light": "#15803d", "dark": "#4ade80", "use": "text" },
+    "sunrise": { "light": "#c2410c", "dark": "#fb923c", "use": "fill" },
+    "dusk": { "light": "#6d28d9", "dark": "#a78bfa", "use": "fill" }
+  }
+}
