@@ -180,9 +180,22 @@ fn a_scale_step_decodes_on_the_fields_its_family_lists() {
 fn a_scale_step_outside_its_family_fails_with_the_slot_name() {
     use crate::protocol::field;
     // The element and field the refusal names follow its own text.
+    let radius = step("radius.lg", 1.0, 0.0);
     assert_eq!(
-        styled(field::PADDING_TOP, step("radius.lg", 1.0, 0.0)).unwrap_err(),
-        "UI_SCALE: paddingTop does not take radius.lg (at <column>, field paddingTop)"
+        styled(field::PADDING_TOP, radius.clone()).unwrap_err(),
+        format!(
+            "UI_SCALE: paddingTop does not take radius.lg (at <column>, field paddingTop = {radius})"
+        )
+    );
+    // The test id names the element; a long value is cut short.
+    let long = "x".repeat(80);
+    let error = wire(json!([0, -1, "", "card", "", 1, field::COLOR, long])).unwrap_err();
+    assert!(
+        error.ends_with(&format!(
+            "(at <column> data-testid=\"card\", field color = \"{}…)",
+            "x".repeat(47)
+        )),
+        "{error}"
     );
     let error = |id, value| {
         let error = styled(id, value).unwrap_err();

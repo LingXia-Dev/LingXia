@@ -171,7 +171,7 @@ fn walk(
         {
             return Err("UI_LIMIT: string too large".into());
         }
-        admission::text(tag, &text)?;
+        admission::text(tag, &text).map_err(|error| placed_at(error, tag, &test_id, &key, None))?;
         let count = header[5]
             .as_u64()
             .filter(|v| *v <= FIELDS.len() as u64)
@@ -182,19 +182,8 @@ fn walk(
             .ok_or("UI_BUFFER: truncated fields")?;
         let mut fields = Vec::new();
         let mut steps = Vec::new();
-        // A refused field names the element and the field, after the error's own code.
-        let place = |error: String, id: Option<usize>| {
-            let mut placed = format!("{error} (at <{}>", TAGS[tag]);
-            if !test_id.is_empty() {
-                placed.push_str(&format!(" data-testid={test_id:?}"));
-            } else if !key.is_empty() {
-                placed.push_str(&format!(" key={key:?}"));
-            }
-            if let Some(id) = id {
-                placed.push_str(&format!(", field {}", FIELDS[id].0));
-            }
-            placed.push(')');
-            placed
+        let place = |error: String, field: Option<(usize, &Value)>| {
+            placed_at(error, tag, &test_id, &key, field)
         };
         for pair in pairs.chunks_exact(2) {
             let id = pair[0]
@@ -237,10 +226,11 @@ fn walk(
                 }
                 Ok(())
             };
-            decode_field().map_err(|error| place(error, Some(id)))?;
+            decode_field().map_err(|error| place(error, Some((id, &pair[1]))))?;
         }
         admission::record(tag, parent_tag, &key, &fields).map_err(|error| place(error, None))?;
-        page.rows(records.len(), parent, &key, &fields)?;
+        page.rows(records.len(), parent, &key, &fields)
+            .map_err(|error| place(error, None))?;
         offsets.insert(start as i64, records.len());
         records.push(Record {
             tag,
@@ -265,6 +255,31 @@ fn walk(
         scales: Scales::builtin(),
     };
     Ok((records, wire))
+}
+
+/// A refusal named after its own code by the element, the field and the value it refused:
+/// `UI_STYLE: invalid length (at <column> data-testid="card", field width = "12qu")`.
+fn placed_at(
+    error: String,
+    tag: usize,
+    test_id: &str,
+    key: &str,
+    field: Option<(usize, &Value)>,
+) -> String {
+    let mut placed = format!("{error} (at <{}>", TAGS[tag]);
+    if !test_id.is_empty() {
+        placed.push_str(&format!(" data-testid={test_id:?}"));
+    } else if !key.is_empty() {
+        placed.push_str(&format!(" key={key:?}"));
+    }
+    if let Some((id, value)) = field {
+        let value = value.to_string();
+        let shown: String = value.chars().take(48).collect();
+        let more = if shown.len() < value.len() { "…" } else { "" };
+        placed.push_str(&format!(", field {} = {shown}{more}", FIELDS[id].0));
+    }
+    placed.push(')');
+    placed
 }
 
 /// Element ids are one page-wide namespace, list rows included.
