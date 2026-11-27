@@ -5634,10 +5634,11 @@
   function ariaProps(props) {
     for (let i = 0; i < ariaNames.length; i++) {
       const authored2 = ariaNames[i][0];
-      if (authored2 in props) {
-        props[ariaNames[i][1]] = props[authored2];
-        delete props[authored2];
-      }
+      if (!(authored2 in props)) continue;
+      const value = props[authored2];
+      delete props[authored2];
+      if (authored2 === "aria-label" && typeof value === "string" && !value.trim()) continue;
+      props[ariaNames[i][1]] = value;
     }
     let state;
     for (let i = 0; i < ariaStates.length; i++) {

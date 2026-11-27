@@ -31,6 +31,18 @@ test('a view or button takes pointer enter and leave callbacks as committed hand
   throwsOn(() => h('view', { onPointerLeave: 'nope' }), /UI_PROP/);
 });
 
+test('an empty aria-label is no label, on every element that takes one', () => {
+  for (const label of ['', '  ']) {
+    for (const [tag, children] of [['view', []], ['text', ['Hi']], ['button', ['Go']], ['input', []], ['video', []]]) {
+      const props = tag === 'video' ? { src: 'clip.mp4', 'aria-label': label } : { 'aria-label': label };
+      assert.equal(rendered(() => h(tag, props, ...children)).props.accessibilityLabel, undefined, `${tag} "${label}"`);
+    }
+    // A name the element needs is still missing.
+    throwsOn(() => h('dialog', { open: true, 'aria-label': label }, h('text', {}, 'x')), /UI_A11Y/);
+  }
+  throwsOn(() => h('view', { 'aria-label': 3 }), /UI_PROP/);
+});
+
 test('image alternative text distinguishes descriptions from decorative images and bounds UTF-8', () => {
   for (const alt of ['', 'A mountain lake', '图片'.repeat(170)]) assert.equal(rendered(() => h('image', { src: 'photo.png', alt })).props.imageAlt, alt);
   for (const alt of [null, 1, true, {}, '   ', '\0', '图片'.repeat(171), '\ud800']) throwsOn(() => h('image', { src: 'photo.png', alt }), /UI_IMAGE/);
@@ -51,7 +63,7 @@ test('video takes one source and the image placement styles', () => {
   const video = rendered(() => h('video', { src: 'public/clip.mp4', 'aria-label': 'Trailer', style: { objectFit: 'contain', objectPosition: 'top' } }));
   assert.deepEqual([video.tag, video.props.videoSrc, video.props.imageFit, video.props.accessibilityLabel], ['video', 'public/clip.mp4', 'contain', 'Trailer']);
   assert.ok(video.props.imagePosition);
-  for (const props of [{ src: 42 }, { src: '' }, { src: 'a\0b' }, { src: 'a', 'aria-label': ' ' }]) throwsOn(() => h('video', props), /UI_VIDEO/);
+  for (const props of [{ src: 42 }, { src: '' }, { src: 'a\0b' }]) throwsOn(() => h('video', props), /UI_VIDEO/);
   throwsOn(() => h('video', { src: 'a' }, h('text', {}, 'x')), /UI_CHILD/);
 });
 
@@ -341,7 +353,7 @@ test('boolean control bindings persist and reject invalid values or children', (
   assert.equal(dispatch(first.props.onCheckedChange), true);
   assert.equal(rendered(render).props.checked, 1);
   for (const tag of ['checkbox', 'switch']) {
-    for (const props of [{ value: 1 }, { value: 'true' }, { onChange: 2 }, { bind: { value: false, set() {} } }, { 'aria-label': ' ' }])
+    for (const props of [{ value: 1 }, { value: 'true' }, { onChange: 2 }, { bind: { value: false, set() {} } }])
       throwsOn(() => h(tag, props), /UI_/);
     for (const value of [undefined, null, 0, 'false']) throwsOn(() => h(tag, { bind: useLocal('invalid', value) }), /UI_/);
     throwsOn(() => h(tag, { bind: useLocal('valid', false), value: false }), /UI_/);
@@ -393,7 +405,8 @@ test('composed buttons take their accessible name from descendant text unless la
   assert.deepEqual(button.children[0].children.map(child => child.text), ['Inbox', '3 unread']);
   assert.equal(dispatch(button.props.onClick), true); assert.equal(clicks, 1);
   assert.equal(rendered(render('Open inbox')).props.accessibilityLabel, 'Open inbox');
-  for (const label of ['', ' ', 1, 'x\0y']) throwsOn(render(label), /UI_BUTTON/);
+  for (const label of [1, 'x\0y']) throwsOn(render(label), /UI_BUTTON/);
+  for (const label of ['', ' ']) assert.equal(rendered(render(label)).props.accessibilityLabel, undefined);
   const mixed = rendered(() => h('button', {}, 'plain', h('text', {}, 'child')));
   assert.deepEqual(mixed.children.map(child => [child.tag, child.text]), [['text', 'plain'], ['text', 'child']]);
 });
@@ -483,7 +496,7 @@ test('accessibility roles, heading levels, hidden subtrees and live regions are 
   assert.equal(tree.children[1].props.accessibilityHidden, 1);
   assert.equal(tree.children[2].props.accessibilityLiveRegion, 'assertive');
   for (const props of [{ role: 'banner' }, { headingLevel: 2 }, { role: 'heading', headingLevel: 7 }, { 'aria-hidden': 'yes' },
-    { 'aria-live': 'rude' }, { 'aria-label': '  ' }])
+    { 'aria-live': 'rude' }])
     throwsOn(() => h('view', props), /UI_PROP/);
 });
 
@@ -637,5 +650,5 @@ test('a list takes an accessible name', () => {
   const nodes = decode(prepare(() => h('page', {}, h(listTag, { count: 2, height: () => 40, 'aria-label': 'Messages', 'data-testid': 'thread', row: i => h('text', {}, `row ${i}`) })), { env: {} }));
   commit();
   assert.equal(nodes.find(node => node.testId === 'thread').props.accessibilityLabel, 'Messages');
-  throwsOn(() => h('page', {}, h(listTag, { count: 0, row: () => null, 'aria-label': '' })), /UI_PROP/);
+  throwsOn(() => h('page', {}, h(listTag, { count: 0, row: () => null, 'aria-label': 3 })), /UI_PROP/);
 });

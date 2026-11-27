@@ -9,7 +9,8 @@ test('editor labels are distinct from values and placeholder hints', () => {
   for (const [tag, kind] of [['input', {}], ['textarea', {}], ['input', { type: 'search' }]]) {
     const { props } = rendered(() => h(tag, { ...kind, value: 'Ada', placeholder: 'Your name', 'aria-label': 'Name' }));
     assert.deepEqual([props.accessibilityLabel, props.inputValue, props.placeholder], ['Name', 'Ada', 'Your name']);
-    assert.throws(() => describe(() => h(tag, { ...kind, 'aria-label': '  ' }), {}), /UI_INPUT/);
+    assert.equal(rendered(() => h(tag, { ...kind, 'aria-label': '  ' })).props.accessibilityLabel, undefined);
+    assert.throws(() => describe(() => h(tag, { ...kind, 'aria-label': 7 }), {}), /UI_INPUT/);
   }
 });
 

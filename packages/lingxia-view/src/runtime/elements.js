@@ -447,7 +447,12 @@ const ariaStates = [['aria-pressed', 'pressed'], ['aria-selected', 'selected'], 
 function ariaProps(props) {
   for (let i = 0; i < ariaNames.length; i++) {
     const authored = ariaNames[i][0];
-    if (authored in props) { props[ariaNames[i][1]] = props[authored]; delete props[authored]; }
+    if (!(authored in props)) continue;
+    const value = props[authored];
+    delete props[authored];
+    // An empty name names nothing: it is no label, not an invalid one.
+    if (authored === 'aria-label' && typeof value === 'string' && !value.trim()) continue;
+    props[ariaNames[i][1]] = value;
   }
   let state;
   for (let i = 0; i < ariaStates.length; i++) {
