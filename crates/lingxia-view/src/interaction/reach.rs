@@ -9,8 +9,9 @@ const BATCH: usize = 32;
 #[derive(Default)]
 pub struct ReachTracker {
     entered: HashMap<String, [bool; 2]>,
-    /// What `onScrollEdge` last told the page, per edge; a new scroll starts away from both.
-    told: HashMap<String, [bool; 2]>,
+    /// What `onScrollEdge` last told the page, per edge; `None` until told, so a new scroll
+    /// reports both edges it starts at.
+    told: HashMap<String, [Option<bool>; 2]>,
 }
 
 /// An `onScrollEdge` call, with the scroll it came from so a newer View can rebind it.
@@ -52,7 +53,7 @@ impl ReachTracker {
             {
                 let told = self.told.entry(scroll.id.clone()).or_default();
                 for (edge, name) in ["start", "end"].into_iter().enumerate() {
-                    if told[edge] == at[edge] {
+                    if told[edge] == Some(at[edge]) {
                         continue;
                     }
                     if handles.len() + edges.len() == BATCH {
@@ -64,7 +65,7 @@ impl ReachTracker {
                         identity: node.identity.to_string(),
                         payload: format!(r#"{{"edge":"{name}","at":{}}}"#, at[edge]),
                     });
-                    told[edge] = at[edge];
+                    told[edge] = Some(at[edge]);
                 }
             }
             let state = self.entered.entry(scroll.id.clone()).or_default();

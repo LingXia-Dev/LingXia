@@ -77,8 +77,8 @@ export function render() {
 - The scroll position belongs to the scroll's identity and survives re-renders.
 - `onReachStart` / `onReachEnd` fire once each time the content arrives at that edge, after the frame that
   shows it, and again only after it has left the edge. Use them to load more.
-- `onScrollEdge({ edge, at })` fires when the content reaches (`at: true`) or leaves an edge, on the
-  frame that shows it, and once on mount with the edges it starts at (both when the content fits).
+- `onScrollEdge({ edge, at })` reports edges as state: both edges once on mount, then an edge each
+  time the content reaches (`at: true`) or leaves it, on the frame that shows it.
   Use it for state that follows the position: a header shadow, a "back to top" button.
 - `onVisibleChange({ items, current, timeStamp })` lists the children on screen in order: each element
   with an `id` whose nearest scroll this is (a `<List>`'s rows by key, with `index`), with `ratio` (the

@@ -132,7 +132,7 @@ Children: any elements and text. At most one of `bind` or `snapIndex` (and its `
 | `box` | `Box` |  | A `useBox` handle this element fills with its laid-out size. |
 | `onReachStart` | `() => void` |  | Called when the scroll reaches its start, as for loading older items. |
 | `onReachEnd` | `() => void` |  | Called when the scroll reaches its end, as for loading more items. |
-| `onScrollEdge` | `(event: ScrollEdgeEvent) => void` |  | Called when the scroll reaches or leaves either edge, and on mount with the edges it starts at. |
+| `onScrollEdge` | `(event: ScrollEdgeEvent) => void` |  | Edges as state: called once on mount with both edges, then when the scroll reaches or leaves either. |
 | `onVisibleChange` | `(event: VisibleChangeEvent) => void` |  | Called with the children on screen (an element with an `id`, or a `List` row by its key) when that set, a child's ratio by a quarter step, or the current child changes, and once with exact values when the scroll comes to rest. |
 | `bind` | `Local<number>` |  | A number `useLocal` cell holding the index of the snap point a `scrollSnapType` scroll rests on. |
 | `snapIndex` | `number` |  | The index of the snap point a `scrollSnapType` scroll rests on, with `onSnapChange`; not with `bind`. |
@@ -156,7 +156,7 @@ A component from `@lingxia/view`, rendered as the `list` element.
 | `anchor` | `"end" \| { index: number; align: "start" \| "end"; seq?: number; duration?: number }` |  | `"end"` starts at the last row; `{ index, align, seq }` scrolls there, again whenever `seq` changes. |
 | `onReachStart` | `() => void` |  | Called when the scroll reaches its start, as for loading older items. |
 | `onReachEnd` | `() => void` |  | Called when the scroll reaches its end, as for loading more items. |
-| `onScrollEdge` | `(event: ScrollEdgeEvent) => void` |  | Called when the scroll reaches or leaves either edge, and on mount with the edges it starts at. |
+| `onScrollEdge` | `(event: ScrollEdgeEvent) => void` |  | Edges as state: called once on mount with both edges, then when the scroll reaches or leaves either. |
 | `onVisibleChange` | `(event: VisibleChangeEvent) => void` |  | Called with the children on screen (an element with an `id`, or a `List` row by its key) when that set, a child's ratio by a quarter step, or the current child changes, and once with exact values when the scroll comes to rest. |
 | `aria-label` | `string` |  | The accessible name, spoken in place of its text. |
 

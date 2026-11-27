@@ -762,7 +762,7 @@
     "keepsFocus": "A press leaves the focused editor editing: its caret, selection and keyboard stay, as a format bar above the keyboard needs.",
     "onReachStart": "Called when the scroll reaches its start, as for loading older items.",
     "onReachEnd": "Called when the scroll reaches its end, as for loading more items.",
-    "onScrollEdge": "Called when the scroll reaches or leaves either edge, and on mount with the edges it starts at.",
+    "onScrollEdge": "Edges as state: called once on mount with both edges, then when the scroll reaches or leaves either.",
     "onPaste": "Called when the user pastes, before anything is inserted: `text` raw, `html` as the source app wrote it (unsanitised; absent for a plain paste or a secure editor). Call `event.preventDefault()` synchronously to insert your own result, usually with `replaceRange(selection.start, selection.end, …)`; otherwise the plain text is inserted, a single-line editor taking newlines as spaces.",
     "onVisibleChange": "Called with the children on screen (an element with an `id`, or a `List` row by its key) when that set, a child's ratio by a quarter step, or the current child changes, and once with exact values when the scroll comes to rest.",
     "count": "How many rows the list has.",

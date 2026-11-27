@@ -386,8 +386,11 @@ fn scroll_edge_reports_each_change_of_being_at_an_edge() {
     let mut reach = ReachTracker::default();
     assert_eq!(
         told(&mut reach, 0.0, 200.0),
-        [r#"{"edge":"start","at":true}"#],
-        "a new scroll that does not fit starts at its start only"
+        [
+            r#"{"edge":"start","at":true}"#,
+            r#"{"edge":"end","at":false}"#
+        ],
+        "a new scroll reports both edges it starts at: a remounted body corrects a stale end"
     );
 }
 
