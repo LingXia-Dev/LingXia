@@ -60,6 +60,10 @@ Every `onShow` / `onHide` receives `{ source, reason }`:
 | Host app went to background / came back | `onHide` / `onShow` | `host` | `background` / `foreground` |
 | Screenshot, where the platform reports it | `onScreenshot` | — | — |
 
+- **One `onShow` per foreground.** A link that brings the app forward reaches `onOpen` and
+  then a single `onShow`; with `onOpen` defined, a link arriving just after another show
+  brought the app forward reaches `onOpen` alone.
+
 - **An aside does not hide the main.** `lx.surface.openApp(id, { as: 'aside' })`
   (Control app only) opens beside the main, which gets no `onHide`. Collapsing a docked aside is
   a page event, not an App event: the aside lxapp's App hooks stay quiet (see

@@ -188,16 +188,19 @@ function decideLaunchDestination(appInstance, appConfig, firstShown) {
   };
 }
 
-// A warm App Link reaches `onOpen` before `onShow`; a returned target is navigated to.
+// A warm App Link reaches `onOpen` before `onShow`; a returned target is navigated to. A link
+// that joins the show that just brought the app forward (`repeat`) reaches `onOpen` alone.
 function routeWarmLinksThroughOnOpen(appInstance, appConfig) {
   const onShow = appInstance.onShow;
   appInstance.onShow = function (options) {
+    if (typeof options === "string") options = JSON.parse(options);
     const link = appLink(options);
     if (link) {
       callOnOpen(appInstance, appConfig, link).then((target) => {
         if (target) navigateTo(target, "onOpen");
       });
     }
+    if (link && options.repeat) return undefined;
     return onShow ? onShow.call(appInstance, options) : undefined;
   };
 }
@@ -210,7 +213,7 @@ function hideLinkFields(appInstance) {
     appInstance.onShow = function (options) {
       if (typeof options === "string") options = JSON.parse(options);
       if (options && typeof options === "object") {
-        const { scene: _scene, url: _url, ...shown } = options;
+        const { scene: _scene, url: _url, repeat: _repeat, ...shown } = options;
         options = shown;
       }
       return onShow.call(appInstance, options);

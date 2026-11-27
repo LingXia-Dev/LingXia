@@ -321,6 +321,32 @@ mod launch_destination_tests {
         );
     }
 
+    /// A link that joins the show which just brought the app forward.
+    const REPEAT: &str = "{ scene: 8003, url: 'https://x.app/reset?c=1', path: '', query: { c: '1' }, repeat: true }";
+
+    #[test]
+    fn a_link_joining_this_foreground_reaches_on_open_without_a_second_on_show() {
+        let log = run(&format!(
+            "const app = __registerApp({ORDERED}); \
+             app.onLaunch('{{}}').then(() => {{ app.onShow('{{}}'); log.length = 0; \
+             app.onShow(JSON.stringify({REPEAT})); }});"
+        ));
+        assert_eq!(
+            log,
+            r#"[["onOpen","https://x.app/reset?c=1"],["go",{"page":"reset"}]]"#
+        );
+    }
+
+    #[test]
+    fn without_on_open_a_joining_link_reaches_on_show_without_its_marker() {
+        let log = run(&format!(
+            "const app = __registerApp({{ onShow: (o) => log.push(['onShow', o.path === '' && !('repeat' in o)]) }}); \
+             app.onLaunch('{{}}').then(() => {{ app.onShow('{{}}'); log.length = 0; \
+             app.onShow(JSON.stringify({REPEAT})); }});"
+        ));
+        assert_eq!(log, r#"[["onShow",true]]"#);
+    }
+
     #[test]
     fn a_throwing_warm_on_open_is_reported_and_on_show_still_runs() {
         let log = warm(

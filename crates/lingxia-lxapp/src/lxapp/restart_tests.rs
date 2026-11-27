@@ -440,3 +440,129 @@ async fn restart_survives_the_old_session_being_destroyed_during_the_wait() {
         assert!(!replacement.session.is_cancelled());
     }
 }
+
+fn shows(f: &Fixture) -> Vec<serde_json::Value> {
+    let mut shows = Vec::new();
+    while let Ok(message) = f.messages.try_recv() {
+        if let ServiceMessage::CallAppSvcEvent {
+            event: AppServiceEvent::OnShow,
+            args,
+            ..
+        } = message
+        {
+            shows.push(serde_json::from_str(&args.unwrap()).unwrap());
+        }
+    }
+    shows
+}
+
+const HOST_FOREGROUND: &str = r#"{"source":"host","reason":"foreground"}"#;
+
+#[tokio::test]
+async fn a_cold_launch_shows_once_whichever_comes_first() {
+    let open = r#"{"source":"lxapp","reason":"open"}"#;
+    let link = r#"{"source":"lxapp","reason":"open","scene":8003,"url":"https://x.app/r","path":"pages/r","query":{}}"#;
+    for open_args in [open, link] {
+        for host_first in [true, false] {
+            let f = Fixture::new();
+            let host = || {
+                f.old
+                    .appservice_notify(AppServiceEvent::OnShow, Some(HOST_FOREGROUND.into()))
+                    .unwrap()
+            };
+            if host_first {
+                host();
+            }
+            f.old
+                .appservice_notify(AppServiceEvent::OnShow, Some(open_args.into()))
+                .unwrap();
+            host();
+            let shows = shows(&f);
+            assert_eq!(
+                shows.len(),
+                1,
+                "{open_args} host_first={host_first}: {shows:?}"
+            );
+            assert_eq!(shows[0]["reason"], "open");
+        }
+    }
+}
+
+#[tokio::test]
+async fn the_host_foreground_after_a_background_shows_again() {
+    let f = Fixture::new();
+    let notify = |event, args: &str| f.old.appservice_notify(event, Some(args.into())).unwrap();
+    notify(
+        AppServiceEvent::OnShow,
+        r#"{"source":"lxapp","reason":"open"}"#,
+    );
+    notify(
+        AppServiceEvent::OnHide,
+        r#"{"source":"host","reason":"background"}"#,
+    );
+    notify(AppServiceEvent::OnShow, HOST_FOREGROUND);
+    notify(AppServiceEvent::OnShow, HOST_FOREGROUND);
+    let reasons: Vec<_> = shows(&f)
+        .into_iter()
+        .map(|args| args["reason"].clone())
+        .collect();
+    assert_eq!(reasons, ["open", "foreground"]);
+}
+
+const OPEN: &str = r#"{"source":"lxapp","reason":"open"}"#;
+const LINK_REOPEN: &str =
+    r#"{"source":"lxapp","reason":"switch_back","scene":8003,"url":"https://x.app/r"}"#;
+const BACKGROUND: &str = r#"{"source":"host","reason":"background"}"#;
+
+fn summary(shows: Vec<serde_json::Value>) -> Vec<String> {
+    shows
+        .into_iter()
+        .map(|args| match args.get("repeat") {
+            Some(_) => format!("{} (repeat)", args["reason"].as_str().unwrap()),
+            None => args["reason"].as_str().unwrap().to_owned(),
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn a_warm_link_from_the_background_joins_that_foreground_in_either_order() {
+    for host_first in [true, false] {
+        let f = Fixture::new();
+        let notify = |event, args: &str| f.old.appservice_notify(event, Some(args.into())).unwrap();
+        notify(AppServiceEvent::OnShow, OPEN);
+        notify(AppServiceEvent::OnHide, BACKGROUND);
+        if host_first {
+            notify(AppServiceEvent::OnShow, HOST_FOREGROUND);
+            notify(AppServiceEvent::OnShow, LINK_REOPEN);
+            assert_eq!(
+                summary(shows(&f)),
+                ["open", "foreground", "switch_back (repeat)"]
+            );
+        } else {
+            notify(AppServiceEvent::OnShow, LINK_REOPEN);
+            notify(AppServiceEvent::OnShow, HOST_FOREGROUND);
+            assert_eq!(summary(shows(&f)), ["open", "switch_back"]);
+        }
+    }
+}
+
+#[tokio::test]
+async fn a_link_while_in_front_shows_again_and_a_second_open_does_not() {
+    let f = Fixture::new();
+    let notify = |event, args: &str| f.old.appservice_notify(event, Some(args.into())).unwrap();
+    notify(AppServiceEvent::OnShow, OPEN);
+    notify(AppServiceEvent::OnShow, OPEN);
+    // Long after the foreground began: a new reason to show.
+    *f.old.foreground_since.lock().unwrap() = Some(Instant::now() - Duration::from_secs(10));
+    notify(AppServiceEvent::OnShow, LINK_REOPEN);
+    assert_eq!(summary(shows(&f)), ["open", "switch_back"]);
+}
+
+#[tokio::test]
+async fn a_link_reopen_right_after_a_cold_open_joins_its_show() {
+    let f = Fixture::new();
+    let notify = |event, args: &str| f.old.appservice_notify(event, Some(args.into())).unwrap();
+    notify(AppServiceEvent::OnShow, OPEN);
+    notify(AppServiceEvent::OnShow, LINK_REOPEN);
+    assert_eq!(summary(shows(&f)), ["open", "switch_back (repeat)"]);
+}

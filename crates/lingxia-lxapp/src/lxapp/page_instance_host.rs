@@ -1253,10 +1253,15 @@ impl LxApp {
         event: AppServiceEvent,
         payload_json: Option<String>,
     ) -> Result<(), lingxia_error::Error> {
+        let mut payload_json = payload_json;
         match event {
             AppServiceEvent::OnHide => self.mark_hidden(),
             AppServiceEvent::OnShow => {
-                self.shown.store(true, Ordering::SeqCst);
+                match self.foreground_show(payload_json.as_deref()) {
+                    ForegroundShow::Drop => return Ok(()),
+                    ForegroundShow::Repeat => payload_json = payload_json.map(mark_repeat),
+                    ForegroundShow::New => {}
+                }
                 self.recover_terminated_renderers();
             }
             _ => {}
@@ -1475,6 +1480,72 @@ enum Leave {
     /// An earlier navigation closed it, so its result is settled; closing again does nothing.
     AlreadyClosed,
     Refused(&'static str),
+}
+
+/// A reopen this soon after the show that began a foreground belongs to that foreground.
+const SAME_FOREGROUND: Duration = Duration::from_secs(2);
+
+enum ForegroundShow {
+    /// Starts a foreground, or a reopen while the app is in front.
+    New,
+    /// Repeats this foreground's show: not dispatched.
+    Drop,
+    /// A link reopen joining this foreground's show: `onOpen` runs, `onShow` does not run again.
+    Repeat,
+}
+
+impl LxApp {
+    /// `onShow` runs once per foreground. The host's foreground is dropped while the app is shown
+    /// and before the session's open show, which carries the launch; a second open show is
+    /// dropped; a reopen just after the foreground began joins it.
+    fn foreground_show(&self, payload: Option<&str>) -> ForegroundShow {
+        let args = payload.and_then(|json| serde_json::from_str::<serde_json::Value>(json).ok());
+        let field = |name: &str| {
+            args.as_ref()
+                .and_then(|args| args.get(name))
+                .and_then(|value| value.as_str())
+                .map(str::to_owned)
+        };
+        let opened = self.open_shown.load(Ordering::SeqCst);
+        let shown = opened && self.shown.load(Ordering::SeqCst);
+        let verdict = match (field("source").as_deref(), field("reason").as_deref()) {
+            (Some("host"), _) if shown || !opened => ForegroundShow::Drop,
+            (_, Some("open")) if opened => ForegroundShow::Drop,
+            (_, Some("switch_back")) if shown && self.foreground_age() < SAME_FOREGROUND => {
+                ForegroundShow::Repeat
+            }
+            _ => ForegroundShow::New,
+        };
+        if matches!(verdict, ForegroundShow::New) && !shown {
+            *self
+                .foreground_since
+                .lock()
+                .unwrap_or_else(|e| e.into_inner()) = Some(Instant::now());
+        }
+        if field("source").as_deref() != Some("host") {
+            self.open_shown.store(true, Ordering::SeqCst);
+        }
+        self.shown.store(true, Ordering::SeqCst);
+        verdict
+    }
+
+    fn foreground_age(&self) -> Duration {
+        self.foreground_since
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .map_or(Duration::MAX, |since| since.elapsed())
+    }
+}
+
+/// Marks a reopen's show as part of a show already sent.
+fn mark_repeat(json: String) -> String {
+    match serde_json::from_str::<serde_json::Value>(&json) {
+        Ok(serde_json::Value::Object(mut args)) => {
+            args.insert("repeat".into(), serde_json::Value::Bool(true));
+            serde_json::Value::Object(args).to_string()
+        }
+        _ => json,
+    }
 }
 
 fn leave_outcome(position: Option<usize>, depth: usize, pinned: bool, closed: bool) -> Leave {

@@ -1300,6 +1300,10 @@ pub struct LxApp {
     /// Last app-level visibility event was OnShow. OnHide also fires on
     /// capsule close and app switch, not only when the host backgrounds.
     shown: AtomicBool,
+    /// This session's open has sent its `onShow`; a host foreground before it is that same show.
+    pub(crate) open_shown: AtomicBool,
+    /// When the current foreground's first show went out.
+    foreground_since: Mutex<Option<Instant>>,
     /// When the app last left the screen; a tab's idle clock starts no earlier.
     hidden_since: Mutex<Option<Instant>>,
     /// Session being torn down for a restart, or 0. Page instances must not be
@@ -2388,6 +2392,7 @@ impl LxApp {
         // Terminate AppService (receiver handles its own state)
         let termination = self.executor.terminate_app_svc(self.clone_arc());
         self.app_launch_dispatched.store(false, Ordering::SeqCst);
+        self.open_shown.store(false, Ordering::SeqCst);
         self.launch_settled.send_replace(false);
         self.launch_gate.reset();
         self.clear_open_region();
@@ -2443,6 +2448,8 @@ impl LxApp {
             app_launch_dispatched: AtomicBool::new(false),
             pending_restart_request: AtomicBool::new(false),
             shown: AtomicBool::new(true),
+            open_shown: AtomicBool::new(false),
+            foreground_since: Mutex::new(None),
             hidden_since: Mutex::new(None),
             restart_closing_session: AtomicU64::new(0),
             logic_feature_snapshots: Mutex::new(Default::default()),
@@ -3654,6 +3661,7 @@ impl LxApp {
     /// open still in flight sends its own; replaying then would double it.
     fn relaunch_logic(&self) -> Result<(), lingxia_error::Error> {
         self.app_launch_dispatched.store(false, Ordering::SeqCst);
+        self.open_shown.store(false, Ordering::SeqCst);
         self.launch_settled.send_replace(false);
         self.launch_gate.reset();
         self.ensure_app_launch_dispatched()?;
