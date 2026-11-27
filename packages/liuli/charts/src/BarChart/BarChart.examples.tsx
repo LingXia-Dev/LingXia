@@ -1,6 +1,5 @@
 import { useLocal } from '@lingxia/view';
 import { Held } from '@liulidesign/core/internal/example';
-import { summarize } from '../summary/en';
 import { BarChart } from './BarChart';
 
 const week = [
@@ -19,7 +18,6 @@ export function Orders() {
       label="Orders by weekday"
       title="Orders"
       description="This week"
-      summarize={summarize}
       bind={day}
       data-testid="orders"
     />
@@ -81,7 +79,6 @@ export function Grouped() {
       label="Sales by quarter and channel"
       title="Sales by channel"
       formatValue={thousands}
-      summarize={summarize}
       hiddenSeries={hidden.value}
       onHiddenSeriesChange={hidden.set}
       data-testid="channels"
@@ -100,7 +97,6 @@ export function Stacked() {
       label="Sales by quarter, online and in store"
       title="Sales"
       formatValue={thousands}
-      summarize={summarize}
       data-testid="stacked"
     />
   );
@@ -113,7 +109,7 @@ const cash = [
 
 /** Values on both sides of zero stand on one line. */
 export function Signed() {
-  return <BarChart rows={cash} x="month" y="net" label="Net cash flow by month" title="Net cash flow" formatValue={thousands} summarize={summarize} data-testid="cash" />;
+  return <BarChart rows={cash} x="month" y="net" label="Net cash flow by month" title="Net cash flow" formatValue={thousands} data-testid="cash" />;
 }
 
 /** Each bar takes the tone of what its value means: a gain, a loss. The figures keep their signs, so colour is not the only cue. */
@@ -127,7 +123,6 @@ export function Tones() {
       label="Net cash flow by month"
       title="Net cash flow"
       formatValue={thousands}
-      summarize={summarize}
       data-testid="tones"
     />
   );
@@ -144,7 +139,6 @@ export function Highlight() {
       label="Orders by weekday, today picked out"
       title="Orders"
       description="Today against the week"
-      summarize={summarize}
       data-testid="highlight"
     />
   );
@@ -160,7 +154,7 @@ const minutes = (value: number) => `${Math.floor(value / 60) ? `${Math.floor(val
 export function Horizontal() {
   const app = useLocal<string | null>('app', null);
   return (
-    <BarChart rows={apps} x="app" y="minutes" orientation="horizontal" label="Screen time by app" title="Screen time" description="Today" formatValue={minutes} summarize={summarize} bind={app} data-testid="apps" />
+    <BarChart rows={apps} x="app" y="minutes" orientation="horizontal" label="Screen time by app" title="Screen time" description="Today" formatValue={minutes} bind={app} data-testid="apps" />
   );
 }
 
@@ -194,7 +188,6 @@ export function HorizontalLimit() {
       title="Screen time"
       description="Today"
       formatValue={minutes}
-      summarize={summarize}
       data-testid="apps-limit"
     />
   );

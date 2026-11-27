@@ -263,6 +263,33 @@
   "@liuli.chart.empty": {
     "defaultMessage": "暂无数据"
   },
+  "@liuli.chart.summary.none": {
+    "defaultMessage": "暂无数据。"
+  },
+  "@liuli.chart.summary.named": {
+    "defaultMessage": "{label}：{text}"
+  },
+  "@liuli.chart.summary.single": {
+    "defaultMessage": "{x}，{value}。"
+  },
+  "@liuli.chart.summary.range": {
+    "defaultMessage": "共 {count} 个数值，从{first}到{last}。最低 {min}（{minAt}），最高 {max}（{maxAt}）。"
+  },
+  "@liuli.chart.summary.trend": {
+    "defaultMessage": "{trend, select, up {整体上升} down {整体下降} other {首尾持平}}：起始 {first}，最新 {last}。"
+  },
+  "@liuli.chart.summary.then": {
+    "defaultMessage": "{before}{after}"
+  },
+  "@liuli.chart.summary.onePart": {
+    "defaultMessage": "仅一项：{x}，{value}。"
+  },
+  "@liuli.chart.summary.parts": {
+    "defaultMessage": "共 {count} 项，合计 {total}。最大：{maxAt}，{max}{maxShare}。最小：{minAt}，{min}{minShare}。"
+  },
+  "@liuli.chart.summary.share": {
+    "defaultMessage": "，占 {share}"
+  },
   "@liuli.tryAgain": {
     "defaultMessage": "重试"
   },

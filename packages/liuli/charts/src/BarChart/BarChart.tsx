@@ -7,6 +7,7 @@ import { ReferenceLabels, ReferenceReading, referencePath, useReferences, zonePa
 import { Ticks } from '../internal/Ticks';
 import { laidOutOnce, remember } from '../internal/memo';
 import { barChartRecipe as r } from './BarChart.recipe';
+import { summarize as summarizeFacts } from '../summary';
 
 export type BarChartLabels = 'fit' | 'all' | 'ends' | 'none';
 export type BarChartValueLabels = 'auto' | 'always' | 'none';
@@ -34,7 +35,7 @@ export interface BarChartProps<Row extends ChartRecord<Row> = ChartRow> {
   description?: string;
   /** Turns a number into the text shown and read: units, separators, the locale. By default the number as the page's language writes it, grouped (`Intl.NumberFormat`). */
   formatValue?: (value: number) => string;
-  /** Writes the summary a screen reader hears from the chart's facts; see `@liulidesign/charts/summary/en`. */
+  /** Writes the summary a screen reader hears from the chart's facts. By default, sentences in the page's language (`@liulidesign/charts/summary`). */
   summarize?: ChartSummarize;
   /**
    * Category labels under the bars: `fit` writes as many as fit side by side, each under its
@@ -483,7 +484,7 @@ export function BarChart<Row extends ChartRecord<Row>>({
   );
   const frame = {
     label, title, description, size, isLoading, error, onRetry, retryLabel, emptyHint, emptyLabel, className, legendPosition,
-    summary: summarize?.({ kind: 'bar', count: data.length, series: facts }),
+    summary: (summarize ?? summarizeFacts)({ kind: 'bar', count: data.length, series: facts }),
     plotShape: 'bars' as const,
     isEmpty: !values.length,
     'data-testid': testId,

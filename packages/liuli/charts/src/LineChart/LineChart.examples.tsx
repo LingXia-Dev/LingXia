@@ -1,7 +1,6 @@
 import { useLocal } from '@lingxia/view';
 import { Held } from '@liulidesign/core/internal/example';
 import type { ChartSeries } from '../Chart/Chart';
-import { summarize } from '../summary/en';
 import { LineChart } from './LineChart';
 
 const weight = [
@@ -21,7 +20,6 @@ export function Weight() {
       title="Weight"
       description="Last 8 weeks"
       formatValue={kilos}
-      summarize={summarize}
       hasEndLabel
       data-testid="weight"
     />
@@ -49,7 +47,7 @@ const visits = Array.from({ length: 30 }, (_, index) => ({ day: `${index + 1} Se
 
 /** An area is an amount, so it is measured from zero. */
 export function Area() {
-  return <LineChart rows={visits} x="day" y="visits" label="Visits by day in September" title="Visits" description="September" hasArea summarize={summarize} data-testid="visits" />;
+  return <LineChart rows={visits} x="day" y="visits" label="Visits by day in September" title="Visits" description="September" hasArea data-testid="visits" />;
 }
 
 const day = [
@@ -83,7 +81,6 @@ export function Zone() {
       curve="smooth"
       formatValue={value => value.toFixed(1)}
       references={[{ value: 3.9, to: 10, label: 'Target' }]}
-      summarize={summarize}
       data-testid="glucose"
     />
   );
@@ -141,12 +138,12 @@ export function Spaced() {
 
 /** Steps suit a count that changes at set moments and holds between them: seats on a plan, a price, a limit. */
 export function Steps() {
-  return <LineChart rows={seats} x="month" y="seats" label="Seats on the plan by month" title="Seats" description="This year" curve="step" hasArea summarize={summarize} data-testid="seats" />;
+  return <LineChart rows={seats} x="month" y="seats" label="Seats on the plan by month" title="Seats" description="This year" curve="step" hasArea data-testid="seats" />;
 }
 
 /** Smoothing suits a quantity that changes gradually; the curve passes through every reading and never beyond one. */
 export function Smooth() {
-  return <LineChart rows={day} x="hour" y="c" label="Temperature through the day" title="Temperature" description="Today" curve="smooth" formatValue={degrees} summarize={summarize} data-testid="day" />;
+  return <LineChart rows={day} x="hour" y="c" label="Temperature through the day" title="Temperature" description="Today" curve="smooth" formatValue={degrees} data-testid="day" />;
 }
 
 const plans = [
@@ -165,7 +162,6 @@ export function Series() {
       y={series}
       label="Accounts by plan and month"
       title="Accounts by plan"
-      summarize={summarize}
       hiddenSeries={hidden.value}
       onHiddenSeriesChange={hidden.set}
       data-testid="plans"
@@ -185,7 +181,6 @@ export function Stacked() {
       curve="smooth"
       label="Accounts by plan and month, stacked"
       title="All accounts"
-      summarize={summarize}
       bind={month}
       data-testid="stacked"
     />
@@ -205,7 +200,7 @@ const readings = [
 
 /** Hours without a reading are gaps, never zeros. */
 export function Gaps() {
-  return <LineChart rows={readings} x="hour" y="c" label="Temperature by hour" title="Temperature" formatValue={degrees} summarize={summarize} data-testid="temperature" />;
+  return <LineChart rows={readings} x="hour" y="c" label="Temperature by hour" title="Temperature" formatValue={degrees} data-testid="temperature" />;
 }
 
 export function Sizes() {

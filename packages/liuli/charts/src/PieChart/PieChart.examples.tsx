@@ -1,6 +1,5 @@
 import { useLocal } from '@lingxia/view';
 import { Held } from '@liulidesign/core/internal/example';
-import { summarize } from '../summary/en';
 import { SegmentedControl } from '@liulidesign/core/SegmentedControl';
 import { PieChart } from './PieChart';
 
@@ -25,7 +24,6 @@ export function Spending() {
       description="October"
       formatValue={dollars}
       formatShare={percent}
-      summarize={summarize}
       bind={part}
       data-testid="spending"
     />
@@ -51,7 +49,6 @@ export function Months() {
         title="Spending"
         formatValue={dollars}
         formatShare={percent}
-        summarize={summarize}
         data-testid="months"
       />
     </view>
@@ -62,7 +59,7 @@ const storage = [{ kind: 'Photos', gb: 38 }, { kind: 'Apps', gb: 21 }, { kind: '
 const gigabytes = (value: number) => `${value} GB`;
 
 export function Solid() {
-  return <PieChart rows={storage} nameField="kind" valueField="gb" label="Storage by kind" title="Storage" variant="pie" formatValue={gigabytes} formatShare={percent} summarize={summarize} data-testid="storage" />;
+  return <PieChart rows={storage} nameField="kind" valueField="gb" label="Storage by kind" title="Storage" variant="pie" formatValue={gigabytes} formatShare={percent} data-testid="storage" />;
 }
 
 const languages = [
@@ -84,7 +81,6 @@ export function Merged() {
       otherLabel="Other"
       maxParts={4}
       totalLabel="Readers"
-      summarize={summarize}
       data-testid="languages"
     />
   );

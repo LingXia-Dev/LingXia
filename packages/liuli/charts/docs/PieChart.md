@@ -16,7 +16,6 @@ PieChart shows how one total divides into a few parts: spending by category, sto
 
 ```tsx
 import { useLocal } from '@lingxia/view';
-import { summarize } from '@liulidesign/charts/summary';
 import { PieChart } from '@liulidesign/charts/PieChart';
 
 const spending = [
@@ -39,7 +38,6 @@ export function Spending() {
       description="October"
       formatValue={dollars}
       formatShare={percent}
-      summarize={summarize}
       bind={part}
       data-testid="spending"
     />
@@ -50,7 +48,6 @@ export function Spending() {
 ### A solid pie
 
 ```tsx
-import { summarize } from '@liulidesign/charts/summary';
 import { PieChart } from '@liulidesign/charts/PieChart';
 
 const percent = (share: number) => `${Math.round(share * 100)}%`;
@@ -58,14 +55,13 @@ const storage = [{ kind: 'Photos', gb: 38 }, { kind: 'Apps', gb: 21 }, { kind: '
 const gigabytes = (value: number) => `${value} GB`;
 
 export function Solid() {
-  return <PieChart rows={storage} nameField="kind" valueField="gb" label="Storage by kind" title="Storage" variant="pie" formatValue={gigabytes} formatShare={percent} summarize={summarize} data-testid="storage" />;
+  return <PieChart rows={storage} nameField="kind" valueField="gb" label="Storage by kind" title="Storage" variant="pie" formatValue={gigabytes} formatShare={percent} data-testid="storage" />;
 }
 ```
 
 ### Many parts, the small ones gathered
 
 ```tsx
-import { summarize } from '@liulidesign/charts/summary';
 import { PieChart } from '@liulidesign/charts/PieChart';
 
 const grouped = (value: number) => String(value).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
@@ -89,7 +85,6 @@ export function Merged() {
       otherLabel="Other"
       maxParts={4}
       totalLabel="Readers"
-      summarize={summarize}
       data-testid="languages"
     />
   );
@@ -100,7 +95,6 @@ export function Merged() {
 
 ```tsx
 import { useLocal } from '@lingxia/view';
-import { summarize } from '@liulidesign/charts/summary';
 import { SegmentedControl } from '@liulidesign/core/SegmentedControl';
 import { PieChart } from '@liulidesign/charts/PieChart';
 
@@ -125,7 +119,6 @@ export function Months() {
         title="Spending"
         formatValue={dollars}
         formatShare={percent}
-        summarize={summarize}
         data-testid="months"
       />
     </view>
@@ -146,7 +139,7 @@ export function Months() {
 | `description` | `string` |  |  |
 | `formatValue` | `((value: number) => string)` |  | Turns an amount into the text shown and read. By default the number as the page's language writes it, grouped (`Intl.NumberFormat`). |
 | `formatShare` | `((share: number) => string)` |  | Turns a part of the whole, 0 to 1, into text for the legend: "32%". Without it the legend shows amounts only. |
-| `summarize` | `ChartSummarize` |  | Writes the summary a screen reader hears from the chart's facts; see `@liulidesign/charts/summary/en`. |
+| `summarize` | `ChartSummarize` |  | Writes the summary a screen reader hears from the chart's facts. By default, sentences in the page's language (`@liulidesign/charts/summary`). |
 | `variant` | `PieChartVariant` | `'donut'` | `donut` has a hole for the total; `pie` is solid. |
 | `totalLabel` | `string \| null` |  | Names the total shown in a donut's hole. `null` leaves the hole empty until a part is chosen. A donut's defaults to "Total" in the page's language; a solid pie shows no total without one. |
 | `otherLabel` | `string` |  | Names one part that gathers every part after the first `maxParts`: "Other". Without it every part is drawn up to 24, and any past those are one part named "Other" in the page's language. |

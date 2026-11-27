@@ -150,6 +150,26 @@ test('without a legend each part is still read with its amount and share', async
   assert.deepEqual(list.children.map(textOf), ['Rent: 3, 75%', 'Food: 1, 25%']);
 });
 
+test('without a legend a chart that can choose a part offers each part to choose, as its legend would', async () => {
+  const screen = await renderPage(`
+    import { useLocal } from '@lingxia/view';
+    import { PieChart } from '@liulidesign/charts/PieChart';
+    const rows = [{ k: 'Rent', v: 3 }, { k: 'Food', v: 1 }];
+    export function render() {
+      const chosen = useLocal<string | null>('chosen', null);
+      return <page><PieChart rows={rows} nameField="k" valueField="v" label="Spending" legendPosition="none" bind={chosen} data-testid="pie" /><text data-testid="chosen">{chosen.value ?? 'none'}</text></page>;
+    }
+  `);
+  const part = key => screen.getByTestId(`pie-part-${key}`);
+  assert.equal(part('Food').tag, 'button');
+  assert.equal(textOf(part('Food')), 'Food: 1');
+  screen.press(part('Food'));
+  assert.equal(textOf(screen.getByTestId('chosen')), 'Food');
+  assert.equal(part('Food').props.statePressed, 1);
+  screen.press(part('Food'));
+  assert.equal(textOf(screen.getByTestId('chosen')), 'none');
+});
+
 test('rows that share a key, or are keyed like the remainder, each keep a slice and a legend row', async () => {
   const screen = await renderPage(`
     import { PieChart } from '@liulidesign/charts/PieChart';

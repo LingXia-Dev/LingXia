@@ -246,12 +246,11 @@ test('Gaps: a row without a number breaks the line and is left out of the readin
   assert.ok(!items.some(item => item.startsWith('08:00')));
 });
 
-test('a long series is reduced to 240 points and read by its summary alone', async () => {
+test('a long series is reduced to 240 points and read by its default summary alone', async () => {
   const screen = await renderPage(`
     import { LineChart } from '@liulidesign/charts/LineChart';
-    import { summarize } from '@liulidesign/charts/summary/en';
     const rows = Array.from({ length: 1000 }, (_, index) => ({ t: String(index), v: index === 500 ? 999 : index % 20 }));
-    export function render() { return <page><LineChart rows={rows} x="t" y="v" label="Load" summarize={summarize} data-testid="load" /></page>; }
+    export function render() { return <page><LineChart rows={rows} x="t" y="v" label="Load" data-testid="load" /></page>; }
   `);
   const [line] = drawing(screen).paths;
   assert.equal(points(line.d).length, 240);

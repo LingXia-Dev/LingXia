@@ -7,6 +7,7 @@ import { ReferenceLabels, ReferenceReading, referencePath, useReferences, zonePa
 import { Ticks } from '../internal/Ticks';
 import { laidOutOnce, remember } from '../internal/memo';
 import { lineChartRecipe as r } from './LineChart.recipe';
+import { summarize as summarizeFacts } from '../summary';
 
 export type { ChartCurve } from '../internal/geometry';
 export type LineChartLabels = 'fit' | 'ends' | 'none';
@@ -27,7 +28,7 @@ export interface LineChartProps<Row extends ChartRecord<Row> = ChartRow> {
   description?: string;
   /** Turns a number into the text shown and read. By default the number as the page's language writes it, grouped (`Intl.NumberFormat`). */
   formatValue?: (value: number) => string;
-  /** Writes the summary a screen reader hears from the chart's facts; see `@liulidesign/charts/summary/en`. */
+  /** Writes the summary a screen reader hears from the chart's facts. By default, sentences in the page's language (`@liulidesign/charts/summary`). */
   summarize?: ChartSummarize;
   /** How the line goes between points: `smooth` rounds it without passing above or below them; `step` holds each value level across its point and changes halfway to the next. @default 'straight' */
   curve?: ChartCurve;
@@ -317,7 +318,7 @@ export function LineChart<Row extends ChartRecord<Row>>({
       label={label}
       title={title}
       description={description}
-      summary={summarize?.({ kind: 'line', count: data.length, series: facts })}
+      summary={(summarize ?? summarizeFacts)({ kind: 'line', count: data.length, series: facts })}
       size={size}
       isLoading={isLoading}
       plotShape="line"

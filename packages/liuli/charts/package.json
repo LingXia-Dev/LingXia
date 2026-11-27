@@ -31,8 +31,7 @@
     "./LineChart/recipe": "./src/LineChart/LineChart.recipe.ts",
     "./PieChart": "./src/PieChart/PieChart.tsx",
     "./PieChart/recipe": "./src/PieChart/PieChart.recipe.ts",
-    "./summary/en": "./src/summary/en.ts",
-    "./summary/zh": "./src/summary/zh.ts",
+    "./summary": "./src/summary/index.ts",
     "./package.json": "./package.json",
     "./catalog.json": "./catalog.json",
     "./docs/*": "./docs/*"

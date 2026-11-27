@@ -3,7 +3,6 @@ import { BarChart } from '@liulidesign/charts/BarChart';
 import { LineChart } from '@liulidesign/charts/LineChart';
 import { Sparkline } from '@liulidesign/charts/Sparkline';
 import { Stat } from '@liulidesign/charts/Stat';
-import { summarize } from '@liulidesign/charts/summary/en';
 import { Badge } from '@liulidesign/core/Badge';
 import { Card } from '@liulidesign/core/Card';
 import { SegmentedControl } from '@liulidesign/core/SegmentedControl';
@@ -117,7 +116,6 @@ export function Content() {
             title="Revenue"
             description={period.value === 'year' ? 'By month' : 'By day'}
             formatValue={euros}
-            summarize={summarize}
             curve={period.value === 'week' ? 'straight' : 'smooth'}
             value={day.value}
             onChange={day.set}
@@ -125,7 +123,7 @@ export function Content() {
           />
         </Card>
         <Card>
-          <BarChart rows={channels} x="channel" y="orders" label="Orders by channel" title="Orders by channel" description={span[period.value]} formatValue={value => grouped(value)} summarize={summarize} size={isWide ? 'md' : 'sm'} data-testid="channels" />
+          <BarChart rows={channels} x="channel" y="orders" label="Orders by channel" title="Orders by channel" description={span[period.value]} formatValue={value => grouped(value)} size={isWide ? 'md' : 'sm'} data-testid="channels" />
         </Card>
       </view>
 

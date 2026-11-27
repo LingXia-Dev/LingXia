@@ -16,7 +16,6 @@ BarChart compares amounts across a few categories: orders by weekday, sales by q
 
 ```tsx
 import { useLocal } from '@lingxia/view';
-import { summarize } from '@liulidesign/charts/summary';
 import { BarChart } from '@liulidesign/charts/BarChart';
 
 const week = [
@@ -35,7 +34,6 @@ export function Orders() {
       label="Orders by weekday"
       title="Orders"
       description="This week"
-      summarize={summarize}
       bind={day}
       data-testid="orders"
     />
@@ -47,7 +45,6 @@ export function Orders() {
 
 ```tsx
 import { useLocal } from '@lingxia/view';
-import { summarize } from '@liulidesign/charts/summary';
 import { BarChart } from '@liulidesign/charts/BarChart';
 
 const channels = [
@@ -67,7 +64,6 @@ export function Grouped() {
       label="Sales by quarter and channel"
       title="Sales by channel"
       formatValue={thousands}
-      summarize={summarize}
       hiddenSeries={hidden.value}
       onHiddenSeriesChange={hidden.set}
       data-testid="channels"
@@ -79,7 +75,6 @@ export function Grouped() {
 ### Two series as one bar, its total
 
 ```tsx
-import { summarize } from '@liulidesign/charts/summary';
 import { BarChart } from '@liulidesign/charts/BarChart';
 
 const channels = [
@@ -99,7 +94,6 @@ export function Stacked() {
       label="Sales by quarter, online and in store"
       title="Sales"
       formatValue={thousands}
-      summarize={summarize}
       data-testid="stacked"
     />
   );
@@ -110,7 +104,6 @@ export function Stacked() {
 
 ```tsx
 import { useLocal } from '@lingxia/view';
-import { summarize } from '@liulidesign/charts/summary';
 import { BarChart } from '@liulidesign/charts/BarChart';
 
 const apps = [
@@ -123,7 +116,7 @@ const minutes = (value: number) => `${Math.floor(value / 60) ? `${Math.floor(val
 export function Horizontal() {
   const app = useLocal<string | null>('app', null);
   return (
-    <BarChart rows={apps} x="app" y="minutes" orientation="horizontal" label="Screen time by app" title="Screen time" description="Today" formatValue={minutes} summarize={summarize} bind={app} data-testid="apps" />
+    <BarChart rows={apps} x="app" y="minutes" orientation="horizontal" label="Screen time by app" title="Screen time" description="Today" formatValue={minutes} bind={app} data-testid="apps" />
   );
 }
 ```
@@ -188,7 +181,6 @@ export function HorizontalGrouped() {
 ### A limit marked through lying bars
 
 ```tsx
-import { summarize } from '@liulidesign/charts/summary';
 import { BarChart } from '@liulidesign/charts/BarChart';
 
 const apps = [
@@ -210,7 +202,6 @@ export function HorizontalLimit() {
       title="Screen time"
       description="Today"
       formatValue={minutes}
-      summarize={summarize}
       data-testid="apps-limit"
     />
   );
@@ -220,7 +211,6 @@ export function HorizontalLimit() {
 ### Values above and below zero
 
 ```tsx
-import { summarize } from '@liulidesign/charts/summary';
 import { BarChart } from '@liulidesign/charts/BarChart';
 
 const thousands = (value: number) => `${value < 0 ? '-' : ''}$${Math.abs(value)}k`;
@@ -231,7 +221,7 @@ const cash = [
 
 /** Values on both sides of zero stand on one line. */
 export function Signed() {
-  return <BarChart rows={cash} x="month" y="net" label="Net cash flow by month" title="Net cash flow" formatValue={thousands} summarize={summarize} data-testid="cash" />;
+  return <BarChart rows={cash} x="month" y="net" label="Net cash flow by month" title="Net cash flow" formatValue={thousands} data-testid="cash" />;
 }
 ```
 
@@ -297,7 +287,6 @@ export function Zone() {
 ### Gains and losses in their own tones
 
 ```tsx
-import { summarize } from '@liulidesign/charts/summary';
 import { BarChart } from '@liulidesign/charts/BarChart';
 
 const thousands = (value: number) => `${value < 0 ? '-' : ''}$${Math.abs(value)}k`;
@@ -317,7 +306,6 @@ export function Tones() {
       label="Net cash flow by month"
       title="Net cash flow"
       formatValue={thousands}
-      summarize={summarize}
       data-testid="tones"
     />
   );
@@ -327,7 +315,6 @@ export function Tones() {
 ### One bar picked out, the rest stepped back
 
 ```tsx
-import { summarize } from '@liulidesign/charts/summary';
 import { BarChart } from '@liulidesign/charts/BarChart';
 
 const week = [
@@ -346,7 +333,6 @@ export function Highlight() {
       label="Orders by weekday, today picked out"
       title="Orders"
       description="Today against the week"
-      summarize={summarize}
       data-testid="highlight"
     />
   );
@@ -380,7 +366,7 @@ export function Month() {
 | `title` | `string` |  |  |
 | `description` | `string` |  |  |
 | `formatValue` | `((value: number) => string)` |  | Turns a number into the text shown and read: units, separators, the locale. By default the number as the page's language writes it, grouped (`Intl.NumberFormat`). |
-| `summarize` | `ChartSummarize` |  | Writes the summary a screen reader hears from the chart's facts; see `@liulidesign/charts/summary/en`. |
+| `summarize` | `ChartSummarize` |  | Writes the summary a screen reader hears from the chart's facts. By default, sentences in the page's language (`@liulidesign/charts/summary`). |
 | `xLabels` | `BarChartLabels` | `'fit'` | Category labels under the bars: `fit` writes as many as fit side by side, each under its bar; `all` every one, cut short where it is too long; `ends` the first and last. |
 | `valueLabels` | `BarChartValueLabels` | `'auto'` | How the chart shows its scale. `auto` writes each value over its bar up to eight bars of one series, and otherwise the top of the scale, a round number, above the plot; `always` writes every value of one series; `none` shows neither. |
 | `legendPosition` | `ChartLegendPosition` | `'bottom'` | Shown when there is more than one series. |

@@ -351,6 +351,42 @@
     "defaultMessage": "No data",
     "description": "Shown in place of a chart with nothing to draw."
   },
+  "@liuli.chart.summary.none": {
+    "defaultMessage": "No data.",
+    "description": "A chart's screen-reader summary when it has no data."
+  },
+  "@liuli.chart.summary.named": {
+    "defaultMessage": "{label}: {text}",
+    "description": "One series' summary after its name, when a chart has several."
+  },
+  "@liuli.chart.summary.single": {
+    "defaultMessage": "{x}, {value}.",
+    "description": "The summary of a series with one value: where it is and its value."
+  },
+  "@liuli.chart.summary.range": {
+    "defaultMessage": "{count} values from {first} to {last}. Lowest {min} at {minAt}, highest {max} at {maxAt}.",
+    "description": "The summary of a series: how many values, where it starts and ends, its lowest and highest."
+  },
+  "@liuli.chart.summary.trend": {
+    "defaultMessage": "{trend, select, up {Rising} down {Falling} other {Level}}: {first} first, {last} last.",
+    "description": "A line's trend from its first value to its latest, after its range."
+  },
+  "@liuli.chart.summary.then": {
+    "defaultMessage": "{before} {after}",
+    "description": "Joins two sentences of a chart's summary."
+  },
+  "@liuli.chart.summary.onePart": {
+    "defaultMessage": "One part: {x}, {value}.",
+    "description": "The summary of a pie chart with one part."
+  },
+  "@liuli.chart.summary.parts": {
+    "defaultMessage": "{count} parts, {total} in all. Largest: {maxAt}, {max}{maxShare}. Smallest: {minAt}, {min}{minShare}.",
+    "description": "The summary of a pie chart: how many parts, the total, the largest and smallest."
+  },
+  "@liuli.chart.summary.share": {
+    "defaultMessage": ", {share}",
+    "description": "A part's share of the whole, after its value in a pie chart's summary."
+  },
   "@liuli.tryAgain": {
     "defaultMessage": "Try again",
     "description": "Button that loads something again after it failed."

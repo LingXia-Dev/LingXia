@@ -5,6 +5,7 @@ import { colorOf, keysOf, numberOf, numberIn, roleOf, seriesFacts, textOf } from
 import { box, circle, sector } from '../internal/geometry';
 import { remember } from '../internal/memo';
 import { pieChartRecipe as r } from './PieChart.recipe';
+import { summarize as summarizeFacts } from '../summary';
 
 export type PieChartVariant = 'donut' | 'pie';
 
@@ -26,7 +27,7 @@ export interface PieChartProps<Row extends ChartRecord<Row> = ChartRow> {
   formatValue?: (value: number) => string;
   /** Turns a part of the whole, 0 to 1, into text for the legend: "32%". Without it the legend shows amounts only. */
   formatShare?: (share: number) => string;
-  /** Writes the summary a screen reader hears from the chart's facts; see `@liulidesign/charts/summary/en`. */
+  /** Writes the summary a screen reader hears from the chart's facts. By default, sentences in the page's language (`@liulidesign/charts/summary`). */
   summarize?: ChartSummarize;
   /** `donut` has a hole for the total; `pie` is solid. @default 'donut' */
   variant?: PieChartVariant;
@@ -166,7 +167,7 @@ export function PieChart<Row extends ChartRecord<Row>>({
       label={label}
       title={title}
       description={description}
-      summary={summarize?.({ kind: 'pie', count: parts.length, series: facts ? [facts] : [] })}
+      summary={(summarize ?? summarizeFacts)({ kind: 'pie', count: parts.length, series: facts ? [facts] : [] })}
       // Words under the ring add their height to the plot.
       size={isUnder && !isLoading && error === undefined ? 'fit' : size}
       isLoading={isLoading}
@@ -199,10 +200,19 @@ export function PieChart<Row extends ChartRecord<Row>>({
         {!isUnder && words}
       </view>
       {isUnder && words}
-      {/* Without a legend the parts are still read, each with its amount. */}
+      {/* Without a legend the parts are still read, each with its amount, and chosen as the legend chooses them. */}
       {legendPosition === 'none' && (
         <view role="list" aria-label={legendLabel ?? label} className={r.reading.base}>
-          {parts.map(part => <text key={part.key} role="listitem">{`${part.name}: ${formatValue(part.amount)}${formatShare ? `, ${formatShare(part.amount / total)}` : ''}`}</text>)}
+          {parts.map(part => {
+            const words = `${part.name}: ${formatValue(part.amount)}${formatShare ? `, ${formatShare(part.amount / total)}` : ''}`;
+            if (!onSelect) return <text key={part.key} role="listitem">{words}</text>;
+            return (
+              <view key={part.key} role="listitem">
+                <button aria-pressed={part.key === selectedKey} onClick={() => onSelect(part.key === selectedKey ? null : part.key)}
+                  data-testid={testId === undefined ? undefined : `${testId}-part-${part.key}`}>{words}</button>
+              </view>
+            );
+          })}
         </view>
       )}
     </Chart>

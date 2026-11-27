@@ -15,7 +15,6 @@ LineChart shows how a number moves: a weight over weeks, visits over a month, ac
 ### A line that fits its data
 
 ```tsx
-import { summarize } from '@liulidesign/charts/summary';
 import { LineChart } from '@liulidesign/charts/LineChart';
 
 const weight = [
@@ -35,7 +34,6 @@ export function Weight() {
       title="Weight"
       description="Last 8 weeks"
       formatValue={kilos}
-      summarize={summarize}
       hasEndLabel
       data-testid="weight"
     />
@@ -75,7 +73,6 @@ export function Goal() {
 ### An area, from zero
 
 ```tsx
-import { summarize } from '@liulidesign/charts/summary';
 import { LineChart } from '@liulidesign/charts/LineChart';
 
 const visits = Array.from({ length: 30 }, (_, index) => ({ day: `${index + 1} Sep`, visits: Math.round(1800 + index * 46 + ((index * 53) % 17) * 38 - (index % 7 > 4 ? 520 : 0)) }));
@@ -87,14 +84,13 @@ const day = [
 
 /** An area is an amount, so it is measured from zero. */
 export function Area() {
-  return <LineChart rows={visits} x="day" y="visits" label="Visits by day in September" title="Visits" description="September" hasArea summarize={summarize} data-testid="visits" />;
+  return <LineChart rows={visits} x="day" y="visits" label="Visits by day in September" title="Visits" description="September" hasArea data-testid="visits" />;
 }
 ```
 
 ### A smoothed line
 
 ```tsx
-import { summarize } from '@liulidesign/charts/summary';
 import { LineChart } from '@liulidesign/charts/LineChart';
 
 const day = [
@@ -106,14 +102,13 @@ const degrees = (value: number) => `${value.toFixed(1)}°`;
 
 /** Smoothing suits a quantity that changes gradually; the curve passes through every reading and never beyond one. */
 export function Smooth() {
-  return <LineChart rows={day} x="hour" y="c" label="Temperature through the day" title="Temperature" description="Today" curve="smooth" formatValue={degrees} summarize={summarize} data-testid="day" />;
+  return <LineChart rows={day} x="hour" y="c" label="Temperature through the day" title="Temperature" description="Today" curve="smooth" formatValue={degrees} data-testid="day" />;
 }
 ```
 
 ### A count that holds between changes
 
 ```tsx
-import { summarize } from '@liulidesign/charts/summary';
 import { LineChart } from '@liulidesign/charts/LineChart';
 
 const seats = [
@@ -123,7 +118,7 @@ const seats = [
 
 /** Steps suit a count that changes at set moments and holds between them: seats on a plan, a price, a limit. */
 export function Steps() {
-  return <LineChart rows={seats} x="month" y="seats" label="Seats on the plan by month" title="Seats" description="This year" curve="step" hasArea summarize={summarize} data-testid="seats" />;
+  return <LineChart rows={seats} x="month" y="seats" label="Seats on the plan by month" title="Seats" description="This year" curve="step" hasArea data-testid="seats" />;
 }
 ```
 
@@ -207,7 +202,6 @@ export function Band() {
 ### A target range shaded under the line
 
 ```tsx
-import { summarize } from '@liulidesign/charts/summary';
 import { LineChart } from '@liulidesign/charts/LineChart';
 
 const day = [
@@ -238,7 +232,6 @@ export function Zone() {
       curve="smooth"
       formatValue={value => value.toFixed(1)}
       references={[{ value: 3.9, to: 10, label: 'Target' }]}
-      summarize={summarize}
       data-testid="glucose"
     />
   );
@@ -250,7 +243,6 @@ export function Zone() {
 ```tsx
 import { useLocal } from '@lingxia/view';
 import type { ChartSeries } from '@liulidesign/charts/Chart';
-import { summarize } from '@liulidesign/charts/summary';
 import { LineChart } from '@liulidesign/charts/LineChart';
 
 const plans = [
@@ -271,7 +263,6 @@ export function Stacked() {
       curve="smooth"
       label="Accounts by plan and month, stacked"
       title="All accounts"
-      summarize={summarize}
       bind={month}
       data-testid="stacked"
     />
@@ -284,7 +275,6 @@ export function Stacked() {
 ```tsx
 import { useLocal } from '@lingxia/view';
 import type { ChartSeries } from '@liulidesign/charts/Chart';
-import { summarize } from '@liulidesign/charts/summary';
 import { LineChart } from '@liulidesign/charts/LineChart';
 
 const plans = [
@@ -303,7 +293,6 @@ export function Series() {
       y={series}
       label="Accounts by plan and month"
       title="Accounts by plan"
-      summarize={summarize}
       hiddenSeries={hidden.value}
       onHiddenSeriesChange={hidden.set}
       data-testid="plans"
@@ -335,7 +324,6 @@ export function Selected() {
 ### Missing readings
 
 ```tsx
-import { summarize } from '@liulidesign/charts/summary';
 import { LineChart } from '@liulidesign/charts/LineChart';
 
 const degrees = (value: number) => `${value.toFixed(1)}°`;
@@ -346,7 +334,7 @@ const readings = [
 
 /** Hours without a reading are gaps, never zeros. */
 export function Gaps() {
-  return <LineChart rows={readings} x="hour" y="c" label="Temperature by hour" title="Temperature" formatValue={degrees} summarize={summarize} data-testid="temperature" />;
+  return <LineChart rows={readings} x="hour" y="c" label="Temperature by hour" title="Temperature" formatValue={degrees} data-testid="temperature" />;
 }
 ```
 
@@ -362,7 +350,7 @@ export function Gaps() {
 | `title` | `string` |  |  |
 | `description` | `string` |  |  |
 | `formatValue` | `((value: number) => string)` |  | Turns a number into the text shown and read. By default the number as the page's language writes it, grouped (`Intl.NumberFormat`). |
-| `summarize` | `ChartSummarize` |  | Writes the summary a screen reader hears from the chart's facts; see `@liulidesign/charts/summary/en`. |
+| `summarize` | `ChartSummarize` |  | Writes the summary a screen reader hears from the chart's facts. By default, sentences in the page's language (`@liulidesign/charts/summary`). |
 | `curve` | `ChartCurve` | `'straight'` | How the line goes between points: `smooth` rounds it without passing above or below them; `step` holds each value level across its point and changes halfway to the next. |
 | `hasArea` | `boolean` | `false` | Fills under each line and measures it from zero. |
 | `band` | `LineChartBand<Row>` |  | Shades the range between two fields behind the lines: a day's low and high, a forecast's margin. Each row reads it as `label low–high`. |

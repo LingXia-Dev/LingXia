@@ -48,7 +48,7 @@ export function render() {
 
 | Import | What it is |
 | --- | --- |
-| `@liulidesign/charts/summary/en`, `/summary/zh` | `summarize`: a chart's facts as sentences for a screen reader, in English or Chinese |
+| `@liulidesign/charts/summary` | `summarize`: a chart's facts as sentences in the page's language; every chart reads them to a screen reader unless given its own `summarize` |
 
 Each also exports its class recipe at `@liulidesign/charts/<Name>/recipe`. The reference for each
 component is in `docs/<Name>.md`; `catalog.json` holds the same for agents.
@@ -60,11 +60,10 @@ chart, a pie or a table:
 
 ```tsx
 import { BarChart } from '@liulidesign/charts/BarChart';
-import { summarize } from '@liulidesign/charts/summary/en';
 
 const rows = [{ day: 'Mon', orders: 132 }, { day: 'Tue', orders: 148 }, { day: 'Wed', orders: 121 }];
 
-<BarChart rows={rows} x="day" y="orders" label="Orders by weekday" summarize={summarize}
+<BarChart rows={rows} x="day" y="orders" label="Orders by weekday"
   value={day.value} onChange={day.set} />
 ```
 
