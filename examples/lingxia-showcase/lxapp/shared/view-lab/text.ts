@@ -4,11 +4,12 @@
 /** A catalogue key, or a key with its arguments; `useSay()` speaks either. */
 export type Words = string | { readonly key: string; readonly args: Readonly<Record<string, unknown>> };
 const m = (key: string, args: Readonly<Record<string, unknown>>): Words => ({ key, args });
-export type GroupId = 'drawing' | 'media' | 'controls' | 'layout' | 'text' | 'input' | 'gestures' | 'pointer' | 'overlays' | 'scrolling' | 'motion' | 'appearance' | 'accessibility';
+export type GroupId = 'drawing' | 'media' | 'web' | 'controls' | 'layout' | 'text' | 'input' | 'gestures' | 'pointer' | 'overlays' | 'scrolling' | 'motion' | 'appearance' | 'accessibility';
 
 export const groups: readonly { id: GroupId; page: `view-${GroupId}`; title: Words; line: Words }[] = [
   { id: 'drawing', page: 'view-drawing', title: 'lab.group.drawing.title', line: 'lab.group.drawing.line' },
   { id: 'media', page: 'view-media', title: 'lab.group.media.title', line: 'lab.group.media.line' },
+  { id: 'web', page: 'view-web', title: 'lab.group.web.title', line: 'lab.group.web.line' },
   { id: 'controls', page: 'view-controls', title: 'lab.group.controls.title', line: 'lab.group.controls.line' },
   { id: 'layout', page: 'view-layout', title: 'lab.group.layout.title', line: 'lab.group.layout.line' },
   { id: 'text', page: 'view-text', title: 'lab.group.text.title', line: 'lab.group.text.line' },
@@ -29,16 +30,17 @@ export const demos = {
     rings: { testId: 'lab-rings', title: 'lab.demo.drawing.rings.title', try: 'lab.demo.drawing.rings.try' },
     vectors: { testId: 'lab-vectors', title: 'lab.demo.drawing.vectors.title', try: 'lab.demo.drawing.vectors.try' },
     transforms: { testId: 'lab-transforms', title: 'lab.demo.drawing.transforms.title', try: 'lab.demo.drawing.transforms.try' },
+    plot: { testId: 'lab-plots', title: 'lab.demo.drawing.plot.title', try: 'lab.demo.drawing.plot.try' },
   },
   media: {
     video: { testId: 'lab-video', title: 'lab.demo.media.video.title', try: 'lab.demo.media.video.try' },
-    webview: { testId: 'lab-webview', title: 'lab.demo.media.webview.title', try: 'lab.demo.media.webview.try' },
-    webScheme: { testId: 'lab-web-scheme', title: 'lab.demo.media.webScheme.title', try: 'lab.demo.media.webScheme.try' },
-    webScroll: { testId: 'lab-web-scroll', title: 'lab.demo.media.webScroll.title', try: 'lab.demo.media.webScroll.try' },
-    webMotion: { testId: 'lab-web-motion', title: 'lab.demo.media.webMotion.title', try: 'lab.demo.media.webMotion.try' },
-    webDrags: { testId: 'lab-web-drags', title: 'lab.demo.media.webDrags.title', try: 'lab.demo.media.webDrags.try' },
-    plot: { testId: 'lab-plots', title: 'lab.demo.media.plot.title', try: 'lab.demo.media.plot.try' },
-    progress: { testId: 'lab-progress', title: 'lab.demo.media.progress.title', try: 'lab.demo.media.progress.try' },
+  },
+  web: {
+    webview: { testId: 'lab-webview', title: 'lab.demo.web.webview.title', try: 'lab.demo.web.webview.try' },
+    webScheme: { testId: 'lab-web-scheme', title: 'lab.demo.web.webScheme.title', try: 'lab.demo.web.webScheme.try' },
+    webScroll: { testId: 'lab-web-scroll', title: 'lab.demo.web.webScroll.title', try: 'lab.demo.web.webScroll.try' },
+    webMotion: { testId: 'lab-web-motion', title: 'lab.demo.web.webMotion.title', try: 'lab.demo.web.webMotion.try' },
+    webDrags: { testId: 'lab-web-drags', title: 'lab.demo.web.webDrags.title', try: 'lab.demo.web.webDrags.try' },
   },
   controls: {
     controls: { testId: 'lab-controls', title: 'lab.demo.controls.controls.title', try: 'lab.demo.controls.controls.try' },
@@ -46,6 +48,7 @@ export const demos = {
     shared: { testId: 'lab-choices', title: 'lab.demo.controls.shared.title', try: 'lab.demo.controls.shared.try' },
     blockLink: { testId: 'lab-block-link', title: 'lab.demo.controls.blockLink.title', try: 'lab.demo.controls.blockLink.try' },
     pieces: { testId: 'lab-fragments', title: 'lab.demo.controls.pieces.title', try: 'lab.demo.controls.pieces.try' },
+    progress: { testId: 'lab-progress', title: 'lab.demo.controls.progress.title', try: 'lab.demo.controls.progress.try' },
   },
   layout: {
     show: { testId: 'lab-display', title: 'lab.demo.layout.show.title', try: 'lab.demo.layout.show.try' },
@@ -144,6 +147,7 @@ export const demos = {
 export const missing: Record<GroupId, readonly Words[]> = {
   drawing: [],
   media: [],
+  web: [],
   controls: [],
   layout: [],
   text: [

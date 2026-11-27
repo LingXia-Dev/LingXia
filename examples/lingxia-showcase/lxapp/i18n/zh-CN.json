@@ -1070,6 +1070,12 @@
   "lab.demo.controls.pieces.try": {
     "defaultMessage": "每个术语是两段文字，外面没有包一层方块。点“轮换”：第一个术语整体移到末尾。"
   },
+  "lab.demo.controls.progress.title": {
+    "defaultMessage": "进度"
+  },
+  "lab.demo.controls.progress.try": {
+    "defaultMessage": "有数值的进度条和进度环，以及没有数值的两种。点“增加”加 20。"
+  },
   "lab.demo.controls.select.title": {
     "defaultMessage": "下拉选择"
   },
@@ -1093,6 +1099,12 @@
   },
   "lab.demo.drawing.gradients.try": {
     "defaultMessage": "径向与锥形渐变、经遮罩淡出的填充，以及柔和的光晕。"
+  },
+  "lab.demo.drawing.plot.title": {
+    "defaultMessage": "图表"
+  },
+  "lab.demo.drawing.plot.try": {
+    "defaultMessage": "由数字画出的柱状图、饼图和折线图。点一根柱子即可选中。"
   },
   "lab.demo.drawing.rings.title": {
     "defaultMessage": "方块外的描边环"
@@ -1226,53 +1238,11 @@
   "lab.demo.layout.sizes.try": {
     "defaultMessage": "保持 16:9 的方块、一个正方形，以及在 24 个字符处换行的段落。"
   },
-  "lab.demo.media.plot.title": {
-    "defaultMessage": "图表"
-  },
-  "lab.demo.media.plot.try": {
-    "defaultMessage": "由数字画出的柱状图、饼图和折线图。点一根柱子即可选中。"
-  },
-  "lab.demo.media.progress.title": {
-    "defaultMessage": "进度"
-  },
-  "lab.demo.media.progress.try": {
-    "defaultMessage": "有数值的进度条和进度环，以及没有数值的两种。点“增加”加 20。"
-  },
   "lab.demo.media.video.title": {
     "defaultMessage": "视频"
   },
   "lab.demo.media.video.try": {
     "defaultMessage": "点“播放”：画面开始，时间走动；点“暂停”则都停下。"
-  },
-  "lab.demo.media.webDrags.title": {
-    "defaultMessage": "自己接收拖动的网页"
-  },
-  "lab.demo.media.webDrags.try": {
-    "defaultMessage": "在第一个网页上向上拖：屏幕滚动。在第二个网页上拖：圆点跟着手指移动，屏幕不动。"
-  },
-  "lab.demo.media.webMotion.title": {
-    "defaultMessage": "会淡出的网页"
-  },
-  "lab.demo.media.webMotion.try": {
-    "defaultMessage": "按“淡出”：网页平滑变淡并保持，不会变空白。按“显示”：它恢复不透明，又可以滚动和点按。"
-  },
-  "lab.demo.media.webScheme.title": {
-    "defaultMessage": "跟随页面外观的网页"
-  },
-  "lab.demo.media.webScheme.try": {
-    "defaultMessage": "在系统中切换浅色与深色：下面的网页随之变化，不重新加载，也无需通知。"
-  },
-  "lab.demo.media.webScroll.title": {
-    "defaultMessage": "内部可滚动的网页"
-  },
-  "lab.demo.media.webScroll.try": {
-    "defaultMessage": "在列表内向上拖：它滚到最后一行。到底后再向上拖，屏幕接着滚动。"
-  },
-  "lab.demo.media.webview.title": {
-    "defaultMessage": "内嵌网页"
-  },
-  "lab.demo.media.webview.try": {
-    "defaultMessage": "点绿色网页内部：消息传回 View；切换章节或打开七分屏面板都不会重新加载，可用关闭按钮、点背景或系统返回收起。"
   },
   "lab.demo.motion.drawIn.title": {
     "defaultMessage": "自己画出来的线"
@@ -1514,6 +1484,36 @@
   "lab.demo.text.underlines.try": {
     "defaultMessage": "术语下的点线、链接下的虚线和删除线，各用自己的颜色。"
   },
+  "lab.demo.web.webDrags.title": {
+    "defaultMessage": "自己接收拖动的网页"
+  },
+  "lab.demo.web.webDrags.try": {
+    "defaultMessage": "在第一个网页上向上拖：屏幕滚动。在第二个网页上拖：圆点跟着手指移动，屏幕不动。"
+  },
+  "lab.demo.web.webMotion.title": {
+    "defaultMessage": "会淡出的网页"
+  },
+  "lab.demo.web.webMotion.try": {
+    "defaultMessage": "按“淡出”：网页平滑变淡并保持，不会变空白。按“显示”：它恢复不透明，又可以滚动和点按。"
+  },
+  "lab.demo.web.webScheme.title": {
+    "defaultMessage": "跟随页面外观的网页"
+  },
+  "lab.demo.web.webScheme.try": {
+    "defaultMessage": "在系统中切换浅色与深色：下面的网页随之变化，不重新加载，也无需通知。"
+  },
+  "lab.demo.web.webScroll.title": {
+    "defaultMessage": "内部可滚动的网页"
+  },
+  "lab.demo.web.webScroll.try": {
+    "defaultMessage": "在列表内向上拖：它滚到最后一行。到底后再向上拖，屏幕接着滚动。"
+  },
+  "lab.demo.web.webview.title": {
+    "defaultMessage": "内嵌网页"
+  },
+  "lab.demo.web.webview.try": {
+    "defaultMessage": "点绿色网页内部：消息传回 View；切换章节或打开七分屏面板都不会重新加载，可用关闭按钮、点背景或系统返回收起。"
+  },
   "lab.group.accessibility.line": {
     "defaultMessage": "名称、角色与键盘"
   },
@@ -1527,13 +1527,13 @@
     "defaultMessage": "外观与环境"
   },
   "lab.group.controls.line": {
-    "defaultMessage": "单选、滑块、开关与下拉选择；整棵树共享的值"
+    "defaultMessage": "单选、滑块、开关、下拉选择与进度；整棵树共享的值"
   },
   "lab.group.controls.title": {
     "defaultMessage": "控件与组合"
   },
   "lab.group.drawing.line": {
-    "defaultMessage": "渐变、边框、描边环、矢量与变换"
+    "defaultMessage": "渐变、边框、描边环、矢量、变换与图表"
   },
   "lab.group.drawing.title": {
     "defaultMessage": "绘制"
@@ -1557,10 +1557,10 @@
     "defaultMessage": "布局"
   },
   "lab.group.media.line": {
-    "defaultMessage": "视频、内嵌网页、图表与进度"
+    "defaultMessage": "可播放、暂停和全屏的视频"
   },
   "lab.group.media.title": {
-    "defaultMessage": "媒体与数据"
+    "defaultMessage": "媒体"
   },
   "lab.group.motion.line": {
     "defaultMessage": "淡入淡出、进入与离开、会移动的行"
@@ -1591,6 +1591,12 @@
   },
   "lab.group.text.title": {
     "defaultMessage": "文字"
+  },
+  "lab.group.web.line": {
+    "defaultMessage": "内嵌网页：收发消息、跟随外观、内部滚动、自己接收拖动、淡出"
+  },
+  "lab.group.web.title": {
+    "defaultMessage": "网页"
   },
   "lab.label.add": {
     "defaultMessage": "添加"
@@ -3438,7 +3444,7 @@
     "defaultMessage": "布局"
   },
   "title.viewMedia": {
-    "defaultMessage": "媒体与数据"
+    "defaultMessage": "媒体"
   },
   "title.viewMotion": {
     "defaultMessage": "动效"
@@ -3457,6 +3463,9 @@
   },
   "title.viewText": {
     "defaultMessage": "文字"
+  },
+  "title.viewWeb": {
+    "defaultMessage": "网页"
   },
   "title.wifi": {
     "defaultMessage": "WiFi"

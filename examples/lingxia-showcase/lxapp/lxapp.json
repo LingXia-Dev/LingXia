@@ -1,7 +1,7 @@
 {
   "appId": "lingxia-showcase",
   "appName": "LingXia Showcase",
-  "version": "1.7.4",
+  "version": "1.7.5",
   "minRuntime": "0.30.0",
   "languages": [
     "en-US",
@@ -115,6 +115,10 @@
     {
       "name": "view-media",
       "path": "pages/view-media/index"
+    },
+    {
+      "name": "view-web",
+      "path": "pages/view-web/index"
     },
     {
       "name": "view-controls",

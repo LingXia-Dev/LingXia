@@ -23,9 +23,10 @@ for (const group of groups) {
 
 // The Chinese text of each group, with the app switched to Chinese.
 const zhNames: Record<string, string[]> = {
-  'view-drawing': ['渐变填充', '边框与圆角'],
-  'view-media': ['视频', '内嵌网页', '图表', '进度'],
-  'view-controls': ['下拉选择', '传给所有子元素的值'],
+  'view-drawing': ['渐变填充', '边框与圆角', '图表'],
+  'view-media': ['视频'],
+  'view-web': ['内嵌网页', '跟随页面外观的网页', '内部可滚动的网页'],
+  'view-controls': ['下拉选择', '传给所有子元素的值', '进度'],
   'view-layout': ['网格', '报告自身尺寸的方块'],
   'view-text': ['段落', '选择文字', '已停用的链接'],
   'view-input': ['输入时的建议', '输入框', '双滑块'],
@@ -58,7 +59,7 @@ test('a finger on an index row opens its group', { covers: ['view:catalogue'], s
   const view = t.app.view;
   // A real touch at each row's centre, not a dispatch to the element: the hit test decides.
   // The first rows: on screen on any phone without scrolling.
-  for (const id of ['drawing', 'media', 'controls'] as const) {
+  for (const id of ['drawing', 'media', 'web'] as const) {
     const box = await view.testId(`view-index-${id}`).boundingBox();
     const at = [box.x + box.width / 2, box.y + box.height / 2] as const;
     await view.swipe({ from: at, to: at, durationMs: 60, hold: 0 });

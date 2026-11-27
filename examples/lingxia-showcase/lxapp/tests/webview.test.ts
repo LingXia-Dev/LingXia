@@ -124,11 +124,11 @@ test('embedded webview composites beneath View overlays, suppresses semantics un
   await expect(view.testId('wv-state-epoch')).toContainText('|sheet=false', { timeout: 3_000 });
 });
 
-test('view-media webview demo opens a 70% sheet via floating button and exits via Close, backdrop, or Escape without reload', { start: openDemo('webview') }, async (t) => {
+test('view-web webview demo opens a 70% sheet via floating button and exits via Close, backdrop, or Escape without reload', { start: openDemo('webview') }, async (t) => {
   const view = t.app.view;
   const readout = view.testId('lab-webview-state');
 
-  // Navigate into view-media, back out, and immediately back in: guards against retiring
+  // Navigate into view-web, back out, and immediately back in: guards against retiring
   // native WebView teardown clobbering the replacement controller on the same page path.
   await t.app.nav.reset({ page: 'view' });
   await t.app.nav.go(openDemo('webview'));
@@ -159,14 +159,14 @@ test('view-media webview demo opens a 70% sheet via floating button and exits vi
   await expect(view.testId('lab-webview-sheet')).not.toBeAttached({ timeout: 5_000 });
   await expect(readout).toHaveAttribute('data-state', 'title=Embed Demo hash=#part-1 taps=0 sheet=false', { timeout: 3_000 });
 
-  // 3) Escape / Back close request dismisses the 70% sheet without popping `view-media`.
+  // 3) Escape / Back close request dismisses the 70% sheet without popping `view-web`.
   await view.testId('lab-webview-expand').click();
   const closeBtn = view.testId('lab-webview-sheet-close');
   await expect(closeBtn).toBeVisible({ timeout: 5_000 });
   await closeBtn.press('Escape');
   await expect(view.testId('lab-webview-sheet')).not.toBeAttached({ timeout: 5_000 });
   await expect(readout).toHaveAttribute('data-state', 'title=Embed Demo hash=#part-1 taps=0 sheet=false', { timeout: 3_000 });
-  expect((await t.app.nav.current()).path).toContain('view-media');
+  expect((await t.app.nav.current()).path).toContain('view-web');
 });
 
 // `handlesDrags`: two copies of a page that cannot scroll. A drag on the plain one belongs to the

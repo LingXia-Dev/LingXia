@@ -435,23 +435,24 @@ export function PiecesDemo() {
   );
 }
 
-/** The Drawing, Media & data and Controls & composition groups: every demo the text table names, drawn by its body. */
+/** The Drawing, Media, Web pages and Controls & composition groups: every demo the text table names, drawn by its body. */
 export const drawingDemos = {
   gradients: GradientsDemo,
   borders: BordersDemo,
   rings: RingsDemo,
   vectors: VectorsDemo,
   transforms: TransformsDemo,
+  plot: PlotDemo,
 };
 export const mediaDemos = {
   video: VideoDemo,
+};
+export const webDemos = {
   webview: WebViewDemo,
   webScheme: WebSchemeDemo,
   webScroll: WebScrollDemo,
   webDrags: WebDragsDemo,
   webMotion: WebMotionDemo,
-  plot: PlotDemo,
-  progress: ProgressDemo,
 };
 // The card navigates; the button inside it is its own control and keeps the press to itself.
 export function BlockLinkDemo() {
@@ -484,4 +485,5 @@ export const controlDemos = {
   select: SelectDemo,
   shared: SharedDemo,
   pieces: PiecesDemo,
+  progress: ProgressDemo,
 };

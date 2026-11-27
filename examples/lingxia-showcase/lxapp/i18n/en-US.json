@@ -1427,6 +1427,14 @@
     "defaultMessage": "Each term is two texts with no box around them. Tap Rotate: the first term moves to the end as one.",
     "description": "What to try in a View lab demo."
   },
+  "lab.demo.controls.progress.title": {
+    "defaultMessage": "Progress",
+    "description": "A View lab demo heading."
+  },
+  "lab.demo.controls.progress.try": {
+    "defaultMessage": "A bar and a ring with a value, and both without one. Tap More to add 20.",
+    "description": "What to try in a View lab demo."
+  },
   "lab.demo.controls.select.title": {
     "defaultMessage": "Select",
     "description": "A View lab demo heading."
@@ -1457,6 +1465,14 @@
   },
   "lab.demo.drawing.gradients.try": {
     "defaultMessage": "Radial and conic fills, a fill that fades out through a mask, and a soft glow.",
+    "description": "What to try in a View lab demo."
+  },
+  "lab.demo.drawing.plot.title": {
+    "defaultMessage": "Plot",
+    "description": "A View lab demo heading."
+  },
+  "lab.demo.drawing.plot.try": {
+    "defaultMessage": "Bars, a pie and a line drawn from numbers. Tap a bar to select it.",
     "description": "What to try in a View lab demo."
   },
   "lab.demo.drawing.rings.title": {
@@ -1635,68 +1651,12 @@
     "defaultMessage": "A box that keeps 16:9, a square, and a paragraph that wraps at 24 characters.",
     "description": "What to try in a View lab demo."
   },
-  "lab.demo.media.plot.title": {
-    "defaultMessage": "Plot",
-    "description": "A View lab demo heading."
-  },
-  "lab.demo.media.plot.try": {
-    "defaultMessage": "Bars, a pie and a line drawn from numbers. Tap a bar to select it.",
-    "description": "What to try in a View lab demo."
-  },
-  "lab.demo.media.progress.title": {
-    "defaultMessage": "Progress",
-    "description": "A View lab demo heading."
-  },
-  "lab.demo.media.progress.try": {
-    "defaultMessage": "A bar and a ring with a value, and both without one. Tap More to add 20.",
-    "description": "What to try in a View lab demo."
-  },
   "lab.demo.media.video.title": {
     "defaultMessage": "Video",
     "description": "A View lab demo heading."
   },
   "lab.demo.media.video.try": {
     "defaultMessage": "Tap Play: the picture starts and the time counts. Tap Pause and both stop.",
-    "description": "What to try in a View lab demo."
-  },
-  "lab.demo.media.webDrags.title": {
-    "defaultMessage": "A web page that keeps its drags",
-    "description": "A View lab demo heading."
-  },
-  "lab.demo.media.webDrags.try": {
-    "defaultMessage": "Drag up on the first page: the screen scrolls. Drag on the second: its pin follows your finger and the screen stays.",
-    "description": "What to try in a View lab demo."
-  },
-  "lab.demo.media.webMotion.title": {
-    "defaultMessage": "A web page that fades",
-    "description": "A View lab demo heading."
-  },
-  "lab.demo.media.webMotion.try": {
-    "defaultMessage": "Press Fade: the page fades smoothly and stays faint, never blank. Press Show: it is solid again and scrolls and taps.",
-    "description": "What to try in a View lab demo."
-  },
-  "lab.demo.media.webScheme.title": {
-    "defaultMessage": "A web page in the page's appearance",
-    "description": "A View lab demo heading."
-  },
-  "lab.demo.media.webScheme.try": {
-    "defaultMessage": "Switch the system between light and dark: the page below changes with it, without reloading and without being told.",
-    "description": "What to try in a View lab demo."
-  },
-  "lab.demo.media.webScroll.title": {
-    "defaultMessage": "A web page that scrolls inside",
-    "description": "A View lab demo heading."
-  },
-  "lab.demo.media.webScroll.try": {
-    "defaultMessage": "Drag up inside the list: it scrolls to its last row. Drag up again there and the screen scrolls on.",
-    "description": "What to try in a View lab demo."
-  },
-  "lab.demo.media.webview.title": {
-    "defaultMessage": "Embedded web page",
-    "description": "A View lab demo heading."
-  },
-  "lab.demo.media.webview.try": {
-    "defaultMessage": "Tap inside the green page: its message reaches View. Switch section or open the 70% sheet without reloading; dismiss via Close, the backdrop, or Back.",
     "description": "What to try in a View lab demo."
   },
   "lab.demo.motion.drawIn.title": {
@@ -2019,6 +1979,46 @@
     "defaultMessage": "A dotted line under a term, a dashed one under a link, and a strike, each in a colour of its own.",
     "description": "What to try in a View lab demo."
   },
+  "lab.demo.web.webDrags.title": {
+    "defaultMessage": "A web page that keeps its drags",
+    "description": "A View lab demo heading."
+  },
+  "lab.demo.web.webDrags.try": {
+    "defaultMessage": "Drag up on the first page: the screen scrolls. Drag on the second: its pin follows your finger and the screen stays.",
+    "description": "What to try in a View lab demo."
+  },
+  "lab.demo.web.webMotion.title": {
+    "defaultMessage": "A web page that fades",
+    "description": "A View lab demo heading."
+  },
+  "lab.demo.web.webMotion.try": {
+    "defaultMessage": "Press Fade: the page fades smoothly and stays faint, never blank. Press Show: it is solid again and scrolls and taps.",
+    "description": "What to try in a View lab demo."
+  },
+  "lab.demo.web.webScheme.title": {
+    "defaultMessage": "A web page in the page's appearance",
+    "description": "A View lab demo heading."
+  },
+  "lab.demo.web.webScheme.try": {
+    "defaultMessage": "Switch the system between light and dark: the page below changes with it, without reloading and without being told.",
+    "description": "What to try in a View lab demo."
+  },
+  "lab.demo.web.webScroll.title": {
+    "defaultMessage": "A web page that scrolls inside",
+    "description": "A View lab demo heading."
+  },
+  "lab.demo.web.webScroll.try": {
+    "defaultMessage": "Drag up inside the list: it scrolls to its last row. Drag up again there and the screen scrolls on.",
+    "description": "What to try in a View lab demo."
+  },
+  "lab.demo.web.webview.title": {
+    "defaultMessage": "Embedded web page",
+    "description": "A View lab demo heading."
+  },
+  "lab.demo.web.webview.try": {
+    "defaultMessage": "Tap inside the green page: its message reaches View. Switch section or open the 70% sheet without reloading; dismiss via Close, the backdrop, or Back.",
+    "description": "What to try in a View lab demo."
+  },
   "lab.group.accessibility.line": {
     "defaultMessage": "Names, roles and the keyboard",
     "description": "What a View lab group holds."
@@ -2036,7 +2036,7 @@
     "description": "A View lab group."
   },
   "lab.group.controls.line": {
-    "defaultMessage": "Radios, sliders, switches and selects; values a tree shares",
+    "defaultMessage": "Radios, sliders, switches, selects and progress; values a tree shares",
     "description": "What a View lab group holds."
   },
   "lab.group.controls.title": {
@@ -2044,7 +2044,7 @@
     "description": "A View lab group."
   },
   "lab.group.drawing.line": {
-    "defaultMessage": "Gradients, borders, rings, vectors and transforms",
+    "defaultMessage": "Gradients, borders, rings, vectors, transforms and plots",
     "description": "What a View lab group holds."
   },
   "lab.group.drawing.title": {
@@ -2076,11 +2076,11 @@
     "description": "A View lab group."
   },
   "lab.group.media.line": {
-    "defaultMessage": "Video, embedded web pages, plots and progress",
+    "defaultMessage": "Video that plays, pauses and goes full screen",
     "description": "What a View lab group holds."
   },
   "lab.group.media.title": {
-    "defaultMessage": "Media & data",
+    "defaultMessage": "Media",
     "description": "A View lab group."
   },
   "lab.group.motion.line": {
@@ -2121,6 +2121,14 @@
   },
   "lab.group.text.title": {
     "defaultMessage": "Text",
+    "description": "A View lab group."
+  },
+  "lab.group.web.line": {
+    "defaultMessage": "Embedded pages that send messages, follow the appearance, scroll, keep drags and fade",
+    "description": "What a View lab group holds."
+  },
+  "lab.group.web.title": {
+    "defaultMessage": "Web pages",
     "description": "A View lab group."
   },
   "lab.label.add": {
@@ -4584,7 +4592,7 @@
     "description": "Navigation bar title of the view-layout page."
   },
   "title.viewMedia": {
-    "defaultMessage": "Media & data",
+    "defaultMessage": "Media",
     "description": "Navigation bar title of the view-media page."
   },
   "title.viewMotion": {
@@ -4610,6 +4618,10 @@
   "title.viewText": {
     "defaultMessage": "Text",
     "description": "Navigation bar title of the view-text page."
+  },
+  "title.viewWeb": {
+    "defaultMessage": "Web pages",
+    "description": "Navigation bar title of the view-web page."
   },
   "title.wifi": {
     "defaultMessage": "WiFi",

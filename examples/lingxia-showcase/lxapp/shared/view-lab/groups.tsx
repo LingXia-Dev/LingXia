@@ -3,7 +3,7 @@
 import { GroupPage } from './demo';
 import { accessibilityDemos } from './accessibility';
 import { appearanceDemos } from './appearance';
-import { controlDemos, drawingDemos, mediaDemos } from './elements';
+import { controlDemos, drawingDemos, mediaDemos, webDemos } from './elements';
 import { gestureDemos, pointerDemos } from './gestures';
 import { layoutDemos, pinnedRoom } from './layout';
 import { motionDemos } from './motion';
@@ -17,6 +17,7 @@ export function Group({ id }: { id: GroupId }) {
   switch (id) {
     case 'drawing': return <GroupPage id="drawing" bodies={drawingDemos} />;
     case 'media': return <GroupPage id="media" bodies={mediaDemos} />;
+    case 'web': return <GroupPage id="web" bodies={webDemos} />;
     case 'controls': return <GroupPage id="controls" bodies={controlDemos} />;
     case 'layout': return <GroupPage id="layout" bodies={layoutDemos} endRoom={pinnedRoom} />;
     case 'text': return <GroupPage id="text" bodies={textDemos} />;
