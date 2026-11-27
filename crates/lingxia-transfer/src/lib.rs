@@ -342,16 +342,6 @@ pub fn resume(app_data_dir: &Path, task_id: &str) -> Result<()> {
     download::retry_browser_owned_download(task_id)
 }
 
-#[cfg(test)]
-mod http_status_tests {
-    #[test]
-    fn a_server_failure_gives_its_status_back() {
-        assert_eq!(super::http_status_in("http status 404"), Some(404));
-        assert_eq!(super::http_status_in("http status 503: busy"), Some(503));
-        assert_eq!(super::http_status_in("connection reset"), None);
-    }
-}
-
 impl From<DownloadsError> for lingxia_error::Error {
     fn from(error: DownloadsError) -> Self {
         use lingxia_error::Error;
@@ -363,5 +353,15 @@ impl From<DownloadsError> for lingxia_error::Error {
             DownloadsError::Io(error) => error.into(),
             DownloadsError::Json(error) => error.into(),
         }
+    }
+}
+
+#[cfg(test)]
+mod http_status_tests {
+    #[test]
+    fn a_server_failure_gives_its_status_back() {
+        assert_eq!(super::http_status_in("http status 404"), Some(404));
+        assert_eq!(super::http_status_in("http status 503: busy"), Some(503));
+        assert_eq!(super::http_status_in("connection reset"), None);
     }
 }
