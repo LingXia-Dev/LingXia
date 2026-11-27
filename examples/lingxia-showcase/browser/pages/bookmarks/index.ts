@@ -1,7 +1,6 @@
 import { definePage, lx } from '@lingxia/logic';
 import type { BookmarkEntry, BookmarkGroup, BookmarksView } from '@lingxia/native';
 import { siteIconCache } from '../../shared/siteIcons';
-import { watch } from '../../shared/watch';
 
 interface BookmarksData {
   groups: BookmarkGroup[];
@@ -97,7 +96,7 @@ export default definePage({
       async onLoad() {
         // System pages open in their own stack; the bar shows back only when a page is under them.
         void page.navigationBar.update({ homeButton: 'hidden' });
-        watch((options) => page.native.bookmarks.watch(options), page.signal, apply);
+        page.native.bookmarks.watch(apply, { signal: page.signal });
         await refresh().catch(() => page.update((d) => { d.loading = false; }));
       },
       actions: {

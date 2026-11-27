@@ -1,4 +1,3 @@
-use crate::host::StreamContext;
 use crate::proxy_settings::{
     AutoSwitchRule, DEFAULT_PROXY_SOCKS_PORT, ProxyMode, ProxyRuleAction, ProxySettings,
 };
@@ -1043,33 +1042,14 @@ async fn refresh_gfwlist(app: Arc<LxApp>) -> lingxia_error::Result<ProxySettings
     result
 }
 
-#[lingxia::framework_native("proxy.watch", stream, audience = "control-surface-only")]
-async fn watch_proxy_settings(
+#[lingxia::framework_native("proxy.watch", watch, audience = "control-surface-only")]
+fn watch_proxy_settings(
     app: Arc<LxApp>,
-    mut stream: StreamContext<ProxySettingsResult>,
-) -> lingxia_error::Result<()> {
-    // Subscribe before building the initial snapshot so state changes that
-    // happen in between are not lost.
-    let mut rx = proxy_state_sender().subscribe();
-    let initial = get_proxy_settings_result(&app.app_data_dir())?;
-    stream.send(initial)?;
-
-    loop {
-        tokio::select! {
-            _ = stream.canceled() => return Ok(()),
-            recv = rx.recv() => {
-                match recv {
-                    Ok(event) => stream.send(event)?,
-                    Err(broadcast::error::RecvError::Lagged(skipped)) => {
-                        return Err(lingxia_error::Error::internal(format!(
-                            "proxy stream lagged by {skipped} events"
-                        )));
-                    }
-                    Err(broadcast::error::RecvError::Closed) => return stream.end(()),
-                }
-            }
-        }
-    }
+) -> lingxia_error::Result<impl futures::Stream<Item = ProxySettingsResult> + Send + 'static> {
+    // Subscribe before reading so no change falls between the snapshot and the first event.
+    let changes = proxy_state_sender().subscribe();
+    let state = get_proxy_settings_result(&app.app_data_dir())?;
+    Ok(crate::state_then_changes(state, changes))
 }
 
 pub(crate) fn warmup() {

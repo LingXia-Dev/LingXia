@@ -1,4 +1,4 @@
-use crate::host::{HostCancel, StreamContext, await_or_cancel};
+use crate::host::{HostCancel, await_or_cancel};
 use lingxia_error::Error;
 use lingxia_platform::traits::app_runtime::{AppRuntime, OpenUrlRequest, OpenUrlTarget};
 use lingxia_service::downloads::{
@@ -247,30 +247,37 @@ async fn reveal_download_route(
     .await
 }
 
-#[lingxia::framework_native("downloads.watch", stream, audience = "control-surface-only")]
-async fn watch_downloads(
-    app: Arc<LxApp>,
-    mut stream: StreamContext<DownloadEvent>,
-) -> lingxia_error::Result<()> {
-    let mut rx: broadcast::Receiver<DownloadEvent> =
-        lingxia_service::downloads::subscribe(&app.app_data_dir()).map_err(map_downloads_error)?;
+/// A `downloads.watch` event: the list first, then each change.
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+enum DownloadsWatchEvent {
+    Snapshot { downloads: Vec<DownloadRecord> },
+    Change { event: Box<DownloadEvent> },
+}
 
-    loop {
-        tokio::select! {
-            _ = stream.canceled() => return Ok(()),
-            recv = rx.recv() => {
-                match recv {
-                    Ok(event) => stream.send(event)?,
-                    Err(broadcast::error::RecvError::Lagged(skipped)) => {
-                        return Err(lingxia_error::Error::internal(format!(
-                            "download stream lagged by {skipped} events"
-                        )));
-                    }
-                    Err(broadcast::error::RecvError::Closed) => return stream.end(()),
-                }
-            }
+impl From<DownloadEvent> for DownloadsWatchEvent {
+    fn from(event: DownloadEvent) -> Self {
+        Self::Change {
+            event: Box::new(event),
         }
     }
+}
+
+#[lingxia::framework_native("downloads.watch", watch, audience = "control-surface-only")]
+fn watch_downloads(
+    app: Arc<LxApp>,
+) -> lingxia_error::Result<impl futures::Stream<Item = DownloadsWatchEvent> + Send + 'static> {
+    let dir = app.app_data_dir();
+    // Subscribe before reading so no change falls between the snapshot and the first event.
+    let changes: broadcast::Receiver<DownloadEvent> =
+        lingxia_service::downloads::subscribe(&dir).map_err(map_downloads_error)?;
+    let downloads = lingxia_service::downloads::snapshot(&dir)
+        .map_err(map_downloads_error)?
+        .downloads;
+    Ok(crate::state_then_changes(
+        DownloadsWatchEvent::Snapshot { downloads },
+        changes,
+    ))
 }
 
 #[cfg(test)]

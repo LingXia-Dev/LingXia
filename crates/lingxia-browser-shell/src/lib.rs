@@ -158,6 +158,27 @@ pub fn warmup() {
     proxy::warmup();
 }
 
+/// The current state, then each change: the shape of a `watch` route. The stream ends
+/// when the receiver lags or closes, and the caller's reconnect starts from a fresh state.
+fn state_then_changes<E, T>(
+    state: E,
+    changes: tokio::sync::broadcast::Receiver<T>,
+) -> impl futures::Stream<Item = E> + Send + 'static
+where
+    E: Send + 'static,
+    T: Clone + Into<E> + Send + 'static,
+{
+    use futures::StreamExt;
+    let changes = futures::stream::unfold(changes, |mut changes| async move {
+        changes
+            .recv()
+            .await
+            .ok()
+            .map(|change| (change.into(), changes))
+    });
+    futures::stream::once(std::future::ready(state)).chain(changes)
+}
+
 #[cfg(test)]
 mod tests {
     use super::parse_browser_webui_manifest;

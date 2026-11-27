@@ -1,7 +1,6 @@
 import { localDateTime } from '../../shared/format';
-import { watch } from '../../shared/watch';
 import { definePage, lx } from '@lingxia/logic';
-import type { DownloadEvent, DownloadRecord } from '@lingxia/native';
+import type { DownloadRecord, DownloadsWatchEvent } from '@lingxia/native';
 
 /** A download as the View shows it: when it last happened, in local form, and how fast it runs. */
 type DownloadView = Pick<DownloadRecord, 'taskId' | 'url' | 'fileName' | 'status' | 'downloadedBytes' | 'totalBytes' | 'retry'> & {
@@ -106,7 +105,17 @@ export default definePage({
       }
     }
 
-    function apply(event: DownloadEvent) {
+    function apply(watched: DownloadsWatchEvent) {
+      if (watched.kind === 'snapshot') {
+        page.update((d) => {
+          d.downloads = watched.downloads.map(viewOf);
+          d.loading = false;
+          d.loadFailed = false;
+          stampDays(d);
+        });
+        return;
+      }
+      const { event } = watched;
       const record = event.download;
       // Removals and clears carry no record; the list is the authority for them.
       if (!record || event.kind === 'removed' || event.kind === 'cleared') {
@@ -130,7 +139,8 @@ export default definePage({
       async onLoad() {
         // System pages open in their own stack; the bar shows back only when a page is under them.
         void page.navigationBar.update({ homeButton: 'hidden' });
-        watch((options) => page.native.downloads.watch(options), page.signal, apply, () => { void refresh(); });
+        // The watch opens with the list, then follows each change; the read shows a failure.
+        page.native.downloads.watch(apply, { signal: page.signal });
         await refresh();
       },
       actions: {

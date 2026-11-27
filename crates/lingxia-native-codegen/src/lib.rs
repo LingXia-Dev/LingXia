@@ -21,7 +21,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use syn::ext::IdentExt;
 use syn::punctuated::Punctuated;
 use syn::{Attribute, Expr, Fields, ItemEnum, ItemFn, ItemStruct, Lit, ReturnType, Token};
-use syntax::{Shape, classify};
+use syntax::{Shape, classify, watch_event};
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -155,6 +155,7 @@ enum RouteKind {
     Call,
     SyncCall,
     Stream,
+    Watch,
     Channel,
 }
 
@@ -672,6 +673,8 @@ fn parse_attr(attrs: &[Attribute]) -> Option<(String, RouteKind)> {
             RouteKind::Channel
         } else if args.iter().skip(1).any(is_stream_flag) {
             RouteKind::Stream
+        } else if args.iter().skip(1).any(|arg| is_flag(arg, "watch")) {
+            RouteKind::Watch
         } else if args.iter().skip(1).any(is_sync_flag) {
             RouteKind::SyncCall
         } else {
@@ -707,7 +710,11 @@ fn is_channel_flag(expr: &Expr) -> bool {
 }
 
 fn is_sync_flag(expr: &Expr) -> bool {
-    matches!(expr, Expr::Path(path) if path.path.is_ident("sync"))
+    is_flag(expr, "sync")
+}
+
+fn is_flag(expr: &Expr, name: &str) -> bool {
+    matches!(expr, Expr::Path(path) if path.path.is_ident(name))
 }
 
 fn extract_route_info(
@@ -720,16 +727,19 @@ fn extract_route_info(
         RouteKind::Call => Shape::Call,
         RouteKind::SyncCall => Shape::Sync,
         RouteKind::Stream => Shape::Stream,
+        RouteKind::Watch => Shape::Watch,
         RouteKind::Channel => Shape::Channel,
     };
-    let params = classify(&item_fn.sig, shape)
-        .map_err(|err| anyhow!("{}:{} `{route}`: {err}", loc.file, loc.line))?;
+    let located = |err: syn::Error| anyhow!("{}:{} `{route}`: {err}", loc.file, loc.line);
+    let params = classify(&item_fn.sig, shape).map_err(located)?;
     let text = |ty: Option<&syn::Type>| ty.map(|ty| type_string(ty).replace(' ', ""));
     let input = text(params.payload());
-    let (event, mut output) = params
-        .stream()
-        .map(|(event, result)| (text(event), text(result)))
-        .unwrap_or_default();
+    let (event, mut output) = if kind == RouteKind::Watch {
+        let event = watch_event(&item_fn.sig).map_err(located)?;
+        (text(Some(&event)), Some("void".to_string()))
+    } else {
+        (params.progress().and_then(text), None)
+    };
     let (channel_in, channel_out) = params
         .channel()
         .map(|(inbound, outbound)| (text(inbound), text(outbound)))
@@ -1765,6 +1775,58 @@ const VIEW_ADAPTER_HELPER: &str = r#"function __toTask<E, R>(
 }
 "#;
 
+const WATCH_HELPER: &str = r#"const __WATCH_RETRY_MS = 1_000;
+const __WATCH_RETRY_MAX_MS = 15_000;
+// A reconnect cannot fix these, so they end the watch.
+const __WATCH_LASTING = ["E_NOT_FOUND", "E_PERMISSION_DENIED", "E_INVALID_ARG", "E_NOT_SUPPORTED", "E_CAPABILITY_MISSING"];
+
+function __watch<E>(
+  open: (options: NativeCallOptions) => AsyncIterable<E, unknown, void>,
+  onEvent: (event: E) => void,
+  options?: NativeCallOptions,
+): () => void {
+  const stop = new AbortController();
+  const outer = options?.signal;
+  if (outer?.aborted) stop.abort();
+  else outer?.addEventListener("abort", () => stop.abort(), { once: true });
+  const { signal } = stop;
+  void (async () => {
+    let delay = __WATCH_RETRY_MS;
+    while (!signal.aborted) {
+      // Each attempt gets its own signal, so a finished one leaves no listener behind.
+      const attempt = new AbortController();
+      const relay = () => attempt.abort();
+      signal.addEventListener("abort", relay, { once: true });
+      try {
+        for await (const event of open({ signal: attempt.signal })) {
+          if (signal.aborted) return;
+          delay = __WATCH_RETRY_MS;
+          onEvent(event);
+        }
+      } catch (error) {
+        if (signal.aborted) return;
+        const code = (error as { code?: unknown } | null)?.code;
+        if (typeof code === "string" && __WATCH_LASTING.includes(code)) {
+          console.warn("native watch stopped", error);
+          return;
+        }
+        console.warn("native watch failed; reconnecting", error);
+      } finally {
+        signal.removeEventListener("abort", relay);
+      }
+      if (signal.aborted) return;
+      await new Promise<void>((resolve) => {
+        const done = () => { clearTimeout(timer); signal.removeEventListener("abort", done); resolve(); };
+        const timer = setTimeout(done, delay);
+        signal.addEventListener("abort", done, { once: true });
+      });
+      delay = Math.min(delay * 2, __WATCH_RETRY_MAX_MS);
+    }
+  })();
+  return () => stop.abort();
+}
+"#;
+
 fn render_logic_ts(manifest: &NativeManifest) -> Result<String> {
     let used_types = collect_and_validate_types(manifest)?;
     let mut out = String::new();
@@ -1773,6 +1835,10 @@ fn render_logic_ts(manifest: &NativeManifest) -> Result<String> {
     out.push('\n');
     out.push_str(LOGIC_DISPATCH_HELPER);
     out.push('\n');
+    if manifest.routes.iter().any(|r| r.kind == RouteKind::Watch) {
+        out.push_str(WATCH_HELPER);
+        out.push('\n');
+    }
     out.push_str(&render_dto_types(manifest, &used_types));
     out.push_str(&render_native_error_guard(manifest));
     out.push('\n');
@@ -1797,6 +1863,10 @@ fn render_view_ts(manifest: &NativeManifest) -> Result<String> {
     out.push('\n');
     out.push_str(VIEW_ADAPTER_HELPER);
     out.push('\n');
+    if manifest.routes.iter().any(|r| r.kind == RouteKind::Watch) {
+        out.push_str(WATCH_HELPER);
+        out.push('\n');
+    }
     out.push_str(&render_dto_types(manifest, &used_types));
     out.push_str(&render_native_error_guard(manifest));
     out.push('\n');
@@ -1903,6 +1973,58 @@ const NATIVE_CLIENT_JS_PREAMBLE: &str = r#"// Generated by the lingxia CLI from 
         };
       };
       return task;
+    };
+  }
+  var WATCH_RETRY_MS = 1000;
+  var WATCH_RETRY_MAX_MS = 15000;
+  var WATCH_LASTING = ['E_NOT_FOUND', 'E_PERMISSION_DENIED', 'E_INVALID_ARG', 'E_NOT_SUPPORTED', 'E_CAPABILITY_MISSING'];
+  function watch(parts) {
+    var open = stream(parts);
+    return function () {
+      var withInput = typeof arguments[0] !== 'function';
+      var input = withInput ? arguments[0] : undefined;
+      var onEvent = arguments[withInput ? 1 : 0];
+      var options = arguments[withInput ? 2 : 1];
+      var stop = new AbortController();
+      var outer = options && options.signal;
+      if (outer) {
+        if (outer.aborted) stop.abort();
+        else outer.addEventListener('abort', function () { stop.abort(); }, { once: true });
+      }
+      var signal = stop.signal;
+      (async function () {
+        var delay = WATCH_RETRY_MS;
+        while (!signal.aborted) {
+          var attempt = new AbortController();
+          var relay = function () { attempt.abort(); };
+          signal.addEventListener('abort', relay, { once: true });
+          try {
+            var task = withInput ? open(input, { signal: attempt.signal }) : open({ signal: attempt.signal });
+            for await (var event of task) {
+              if (signal.aborted) return;
+              delay = WATCH_RETRY_MS;
+              onEvent(event);
+            }
+          } catch (error) {
+            if (signal.aborted) return;
+            if (error && WATCH_LASTING.indexOf(error.code) >= 0) {
+              console.warn('native watch stopped', error);
+              return;
+            }
+            console.warn('native watch failed; reconnecting', error);
+          } finally {
+            signal.removeEventListener('abort', relay);
+          }
+          if (signal.aborted) return;
+          await new Promise(function (resolve) {
+            var timer = setTimeout(done, delay);
+            function done() { clearTimeout(timer); signal.removeEventListener('abort', done); resolve(); }
+            signal.addEventListener('abort', done, { once: true });
+          });
+          delay = Math.min(delay * 2, WATCH_RETRY_MAX_MS);
+        }
+      })();
+      return function () { stop.abort(); };
     };
   }
   function channel(parts) {
@@ -2060,6 +2182,14 @@ fn render_route_method(route: &NativeRoute, target: RenderTarget) -> String {
                     )
                 }
             }
+            RouteKind::Watch => {
+                let event = rust_to_ts(route.event.as_deref().unwrap_or("unknown"));
+                let (params, input) = watch_params(&input_arg, &event);
+                format!(
+                    "({params}): (() => void) => __watch<{event}>((options) => __dispatch().stream<{event}, void>(\"{}\", {input}, options, pageId), onEvent, options)",
+                    route.route
+                )
+            }
             RouteKind::Channel => {
                 let inbound = rust_to_ts(route.channel_in.as_deref().unwrap_or("unknown"));
                 let outbound = rust_to_ts(route.channel_out.as_deref().unwrap_or("unknown"));
@@ -2108,6 +2238,20 @@ fn render_route_method(route: &NativeRoute, target: RenderTarget) -> String {
                     )
                 }
             }
+            RouteKind::Watch => {
+                let event = rust_to_ts(route.event.as_deref().unwrap_or("unknown"));
+                let (params, _) = watch_params(&input_arg, &event);
+                let open = match &input_ts {
+                    Some(input_ts) => format!(
+                        "stream<{event}, void, {input_ts}>(\"{}\", input)",
+                        route.route
+                    ),
+                    None => format!("stream<{event}, void>(\"{}\")", route.route),
+                };
+                format!(
+                    "({params}): (() => void) => __watch<{event}>((options) => __toTask({open}, options), onEvent, options)"
+                )
+            }
             RouteKind::Channel => {
                 let inbound = rust_to_ts(route.channel_in.as_deref().unwrap_or("unknown"));
                 let outbound = rust_to_ts(route.channel_out.as_deref().unwrap_or("unknown"));
@@ -2137,7 +2281,18 @@ fn render_js_route_method(route: &NativeRoute) -> String {
     match route.kind {
         RouteKind::Call | RouteKind::SyncCall => format!("call([{parts}])"),
         RouteKind::Stream => format!("stream([{parts}])"),
+        RouteKind::Watch => format!("watch([{parts}])"),
         RouteKind::Channel => format!("channel([{parts}])"),
+    }
+}
+
+/// A watch method's parameters, and the payload expression it sends.
+fn watch_params(input_arg: &str, event: &str) -> (String, &'static str) {
+    let rest = format!("onEvent: (event: {event}) => void, options?: NativeCallOptions");
+    if input_arg.is_empty() {
+        (rest, "undefined")
+    } else {
+        (format!("{input_arg}, {rest}"), "input")
     }
 }
 
@@ -2325,8 +2480,8 @@ mod tests {
             #[lingxia::native("editor.export", stream)]
             pub async fn export(
                 input: ExportInput,
-                ctx: StreamContext<ExportEvent, AdjEvent>,
-            ) -> lingxia::Result<()> { todo!() }
+                progress: Progress<ExportEvent>,
+            ) -> lingxia::Result<AdjEvent> { todo!() }
         "#,
         );
         let logic = render(&manifest, OutputKind::LogicTypeScript).unwrap();
@@ -2700,13 +2855,87 @@ mod tests {
             pub fn describe(cancel: HostCancel, info: LxAppInfo, app: Arc<LxApp>) -> lingxia::Result<()> { todo!() }
 
             #[lingxia::native("apps.watch", stream)]
-            pub async fn watch(ctx: StreamContext<AppEvent>, query: AppQuery) -> lingxia::Result<()> { todo!() }
+            pub async fn watch(progress: Progress<AppEvent>, query: AppQuery) -> lingxia::Result<()> { todo!() }
         "#,
         );
         let route = |name: &str| manifest.routes.iter().find(|r| r.route == name).unwrap();
         assert_eq!(route("apps.describe").input.as_deref(), Some("LxAppInfo"));
         assert_eq!(route("apps.watch").input.as_deref(), Some("AppQuery"));
         assert_eq!(route("apps.watch").event.as_deref(), Some("AppEvent"));
+    }
+
+    #[test]
+    fn a_stream_result_is_its_return_value_and_a_watch_reconnects() {
+        let manifest = scan_source(
+            r#"
+            #[derive(serde::Serialize)]
+            pub struct Step { done: u32 }
+            #[derive(serde::Serialize)]
+            pub struct Summary { rows: u32 }
+            #[derive(serde::Deserialize)]
+            pub struct Filter { tag: String }
+
+            #[lingxia::native("notes.import", stream)]
+            pub async fn import(progress: Progress<Step>) -> Result<Summary, NotesError> { todo!() }
+
+            #[lingxia::native("notes.watch", watch)]
+            pub async fn follow(app: Arc<LxApp>) -> lingxia::Result<impl Stream<Item = Step> + Send + 'static> { todo!() }
+
+            #[lingxia::native("notes.watchTagged", watch)]
+            pub fn follow_tagged(filter: Filter) -> lingxia::Result<impl futures::Stream<Item = Summary>> { todo!() }
+        "#,
+        );
+        let logic = render(&manifest, OutputKind::LogicTypeScript).unwrap();
+        assert!(
+            logic.contains("import: (options?: NativeCallOptions): NativeTask<Step, Summary> =>"),
+            "{logic}"
+        );
+        assert!(
+            logic.contains("watch: (onEvent: (event: Step) => void, options?: NativeCallOptions): (() => void) => __watch<Step>((options) => __dispatch().stream<Step, void>(\"notes.watch\", undefined, options, pageId), onEvent, options)"),
+            "{logic}"
+        );
+        assert!(
+            logic.contains("watchTagged: (input: Filter, onEvent: (event: Summary) => void, options?: NativeCallOptions): (() => void) => __watch<Summary>((options) => __dispatch().stream<Summary, void>(\"notes.watchTagged\", input, options, pageId)"),
+            "{logic}"
+        );
+        assert!(logic.contains("function __watch<E>("), "{logic}");
+
+        let view = render(&manifest, OutputKind::ViewTypeScript).unwrap();
+        assert!(
+            view.contains("__watch<Summary>((options) => __toTask(stream<Summary, void, Filter>(\"notes.watchTagged\", input), options), onEvent, options)"),
+            "{view}"
+        );
+        let js = render(&manifest, OutputKind::BrowserGlobalJs).unwrap();
+        assert!(
+            js.contains("watchTagged: watch([\"notes\", \"watchTagged\"])"),
+            "{js}"
+        );
+
+        let without = scan_source(
+            r#"
+            #[lingxia::native("notes.get")]
+            pub fn get() -> lingxia::Result<()> { todo!() }
+        "#,
+        );
+        let logic = render(&without, OutputKind::LogicTypeScript).unwrap();
+        assert!(!logic.contains("__watch"), "{logic}");
+    }
+
+    #[test]
+    fn a_watch_that_does_not_return_a_stream_fails_with_its_location() {
+        let mut manifest = NativeManifest::default();
+        let err = scan_file_into(
+            r#"
+            #[lingxia::native("notes.watch", watch)]
+            pub async fn follow() -> lingxia::Result<Vec<String>> { todo!() }
+        "#,
+            "src/notes.rs",
+            &mut manifest,
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("src/notes.rs:"), "{err}");
+        assert!(err.contains("impl Stream<Item = Event>"), "{err}");
     }
 
     #[test]
@@ -2817,7 +3046,7 @@ mod tests {
         let manifest = scan_source(
             r#"
             #[lingxia::native("downloads.watch", stream)]
-            pub async fn watch(ctx: StreamContext<String, ()>) -> lingxia::Result<()> { todo!() }
+            pub async fn watch(progress: Progress<String>) -> lingxia::Result<()> { todo!() }
         "#,
         );
         let generated = render(&manifest, OutputKind::BrowserGlobalJs).unwrap();

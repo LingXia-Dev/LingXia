@@ -83,7 +83,8 @@ Parameters are recognized by type, in any order, all optional:
   resources;
 - `lingxia::host::HostCancel` (unary only);
 - `PageState<T>` (unary only);
-- `StreamContext`/`ChannelContext` (required by `stream`/`channel`);
+- `lingxia::Progress<E>` (required by `stream`) or `ChannelContext` (required by
+  `channel`);
 - anything else is the JSON payload (`serde::Deserialize`). Only one: a
   second is a compile error, so put multiple values in one struct.
 
@@ -159,12 +160,9 @@ fn set_account() -> lingxia::Result<()> {
     Ok(())
 }
 
-#[lingxia::native("host.watch", stream, audience = "control-app-or-surface")]
-async fn watch_host(
-    mut stream: lingxia::host::StreamContext<lingxia::host::JsonValue>,
-) -> lingxia::Result<()> {
-    stream.end(())?;
-    Ok(())
+#[lingxia::native("host.status", audience = "control-app-or-surface")]
+fn host_status() -> lingxia::Result<String> {
+    Ok("ready".into())
 }
 ```
 
@@ -207,22 +205,40 @@ struct ExportProgress {
 }
 
 #[lingxia::native("editor.exportPdf", stream)]
-async fn export_pdf(
-    mut stream: lingxia::host::StreamContext<ExportProgress, String>,
-) -> lingxia::Result<()> {
-    for progress in [25, 60] {
-        tokio::select! {
-            _ = stream.canceled() => return Ok(()),
-            _ = tokio::time::sleep(std::time::Duration::from_millis(250)) => {}
-        }
-        stream.send(ExportProgress { progress })?;
+async fn export_pdf(progress: lingxia::Progress<ExportProgress>) -> lingxia::Result<String> {
+    for done in [25, 60] {
+        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+        progress.send(ExportProgress { progress: done })?;
     }
-
-    // `end` consumes the stream.
-    stream.end("/exports/report.pdf".to_string())?;
-    Ok(())
+    Ok("/exports/report.pdf".to_string())
 }
 ```
+
+The client gets a `NativeTask<ExportProgress, string>`: `for await` the events,
+`result` is the return value. On cancel an `async fn` is dropped at its next
+`.await` and the call fails with `E_ABORT`; in a plain `fn`, `send` fails with
+`E_ABORT`, so check `progress.is_canceled()` between steps that do not send.
+
+### Watches
+
+A `watch` route returns a stream whose first item is the current state:
+
+```rust
+#[lingxia::native("notes.watch", watch)]
+fn watch_notes(
+    app: Arc<lingxia::LxApp>,
+) -> lingxia::Result<impl futures::Stream<Item = NotesEvent> + Send + 'static> {
+    let changes = subscribe_notes(); // before the read, so no change is lost
+    let state = NotesEvent::Snapshot { notes: load_notes(&app)? };
+    Ok(futures::stream::once(async move { state }).chain(changes))
+}
+```
+
+`page.native.notes.watch(onEvent, { signal: page.signal })` returns a stop
+function. When the stream ends or fails, the client calls the route again
+(after 1 s, doubling to 15 s), so end the stream to resync. `E_NOT_FOUND`,
+`E_PERMISSION_DENIED`, `E_INVALID_ARG`, `E_NOT_SUPPORTED` and
+`E_CAPABILITY_MISSING` stop it.
 
 ### Channels
 

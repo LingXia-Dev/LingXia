@@ -13,6 +13,7 @@ use std::future::Future;
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, Weak};
 use tokio::sync::{mpsc, oneshot};
 
@@ -1231,99 +1232,102 @@ pub fn serialize_result<T: Serialize>(
         .map_err(|e| lingxia_error::Error::internal(e.to_string()))
 }
 
-/// Imperative stream context passed to `#[native(..., stream)]` handlers.
-///
-/// Handlers emit zero or more events with [`send`](Self::send), then finish
-/// with [`end`](Self::end) or [`error`](Self::error).
-pub struct StreamContext<TEvent, TResult = ()> {
+/// Sends the events of a `#[native(..., stream)]` route; the route's return value is the result.
+pub struct Progress<T> {
     tx: mpsc::UnboundedSender<lingxia_error::Result<HostStreamItem>>,
-    cancel: HostCancel,
-    canceled: bool,
-    _marker: PhantomData<fn(TEvent) -> TResult>,
+    canceled: Arc<AtomicBool>,
+    _marker: PhantomData<fn(T)>,
 }
 
-impl<TEvent, TResult> StreamContext<TEvent, TResult> {
-    /// Resolves when the view cancels the stream.
-    pub async fn canceled(&mut self) -> bool {
-        if self.canceled {
-            return true;
+impl<T> Clone for Progress<T> {
+    fn clone(&self) -> Self {
+        Self {
+            tx: self.tx.clone(),
+            canceled: Arc::clone(&self.canceled),
+            _marker: PhantomData,
         }
-        let _ = (&mut self.cancel).await;
-        self.canceled = true;
-        true
-    }
-
-    #[doc(hidden)]
-    pub fn error_sender(&self) -> mpsc::UnboundedSender<lingxia_error::Result<HostStreamItem>> {
-        self.tx.clone()
     }
 }
 
-impl<TEvent, TResult> StreamContext<TEvent, TResult>
-where
-    TEvent: Serialize,
-    TResult: Serialize,
-{
-    /// Emit one event chunk to the view.
-    pub fn send(&mut self, event: TEvent) -> lingxia_error::Result<()> {
+impl<T: Serialize> Progress<T> {
+    /// Sends one event; fails with `E_ABORT` once the caller has canceled.
+    pub fn send(&self, event: T) -> lingxia_error::Result<()> {
+        if self.is_canceled() {
+            return Err(lingxia_error::Error::aborted("Canceled"));
+        }
         let payload = serde_json::to_string(&event)
             .map_err(|e| lingxia_error::Error::internal(e.to_string()))?;
         self.tx
             .send(Ok(HostStreamItem::Event(payload)))
-            .map_err(|_| lingxia_error::Error::internal("Stream closed"))
+            .map_err(|_| lingxia_error::Error::aborted("Canceled"))
     }
 
-    /// Finish the stream with a final result.
-    pub fn end(self, result: TResult) -> lingxia_error::Result<()> {
-        let payload = serde_json::to_string(&result)
-            .map_err(|e| lingxia_error::Error::internal(e.to_string()))?;
-        self.tx
-            .send(Ok(HostStreamItem::Return(payload)))
-            .map_err(|_| lingxia_error::Error::internal("Stream closed"))
-    }
-
-    /// Finish the stream with a structured bridge error.
-    pub fn error(
-        self,
-        code: impl Into<String>,
-        message: impl Into<String>,
-    ) -> lingxia_error::Result<()> {
-        self.tx
-            .send(Err(crate::error::host_error(
-                code.into(),
-                message.into(),
-                None,
-            )))
-            .map_err(|_| lingxia_error::Error::internal("Stream closed"))
+    /// Whether the caller has canceled. An `async fn` route is dropped at its next
+    /// `.await` instead; a plain `fn` route checks this between steps.
+    pub fn is_canceled(&self) -> bool {
+        self.canceled.load(Ordering::Acquire) || self.tx.is_closed()
     }
 }
 
 #[doc(hidden)]
-pub fn new_stream_context<TEvent, TResult>(
-    cancel: HostCancel,
-) -> (
-    StreamContext<TEvent, TResult>,
-    mpsc::UnboundedReceiver<lingxia_error::Result<HostStreamItem>>,
-) {
-    let (tx, rx) = mpsc::unbounded_channel();
-    (
-        StreamContext {
-            tx,
-            cancel,
-            canceled: false,
+pub mod __stream {
+    use super::*;
+
+    /// Runs a stream route: its events, then its return value as the result.
+    /// On cancel the route is dropped and the call fails with `E_ABORT`.
+    pub fn run<T, R, F, Fut>(mut cancel: HostCancel, start: F) -> HostOutput
+    where
+        F: FnOnce(Progress<T>) -> Fut,
+        Fut: Future<Output = lingxia_error::Result<R>> + Send + 'static,
+        R: Serialize,
+    {
+        let (tx, rx) = mpsc::unbounded_channel();
+        let canceled = Arc::new(AtomicBool::new(false));
+        let work = start(Progress {
+            tx: tx.clone(),
+            canceled: Arc::clone(&canceled),
             _marker: PhantomData,
-        },
-        rx,
-    )
-}
+        });
+        __native::spawn(async move {
+            let last = tokio::select! {
+                biased;
+                _ = &mut cancel => {
+                    canceled.store(true, Ordering::Release);
+                    Err(lingxia_error::Error::aborted("Canceled"))
+                }
+                result = work => result.and_then(|value| {
+                    serde_json::to_string(&value)
+                        .map(HostStreamItem::Return)
+                        .map_err(|e| lingxia_error::Error::internal(e.to_string()))
+                }),
+            };
+            let _ = tx.send(last);
+        });
+        // Ends at the result even while a canceled plain `fn` still holds a `Progress`.
+        HostOutput::Stream(Box::pin(futures::stream::unfold(
+            Some(rx),
+            |rx| async move {
+                let mut rx = rx?;
+                let item = rx.recv().await?;
+                let last = !matches!(item, Ok(HostStreamItem::Event(_)));
+                Some((item, (!last).then_some(rx)))
+            },
+        )))
+    }
 
-#[doc(hidden)]
-pub fn stream_output_from_rx(
-    rx: mpsc::UnboundedReceiver<lingxia_error::Result<HostStreamItem>>,
-) -> HostOutput {
-    HostOutput::Stream(Box::pin(futures::stream::unfold(rx, |mut rx| async move {
-        rx.recv().await.map(|item| (item, rx))
-    })))
+    /// Forwards a watch route's events until the stream ends or the caller cancels.
+    pub fn watch<S, T>(events: S, cancel: HostCancel) -> HostOutput
+    where
+        S: Stream<Item = T> + Send + 'static,
+        T: Serialize,
+    {
+        use futures::StreamExt;
+        HostOutput::Stream(Box::pin(events.take_until(cancel).map(|event| {
+            serde_json::to_string(&event)
+                .map(HostStreamItem::Event)
+                .map_err(|e| lingxia_error::Error::internal(e.to_string()))
+        })))
+    }
 }
 
 pub async fn await_or_cancel<T>(
@@ -1861,6 +1865,81 @@ mod tests {
             err.code(),
             lingxia_error::Error::from(std::io::Error::other("x")).code()
         );
+    }
+
+    async fn stream_items(output: HostOutput) -> Vec<String> {
+        use futures::StreamExt;
+        let HostOutput::Stream(stream) = output else {
+            panic!("expected a stream");
+        };
+        stream
+            .map(|item| match item {
+                Ok(HostStreamItem::Event(json)) => format!("event {json}"),
+                Ok(HostStreamItem::Return(json)) => format!("return {json}"),
+                Err(err) => format!("error {}", err.code()),
+            })
+            .collect()
+            .await
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_stream_sends_its_events_then_its_return_value() {
+        let (_cancel_tx, cancel) = oneshot::channel();
+        let output = __stream::run(cancel, |progress: Progress<u32>| async move {
+            progress.send(1)?;
+            progress.send(2)?;
+            Ok("done")
+        });
+        assert_eq!(
+            stream_items(output).await,
+            ["event 1", "event 2", "return \"done\""]
+        );
+
+        let (_cancel_tx, cancel) = oneshot::channel();
+        let output = __stream::run(cancel, |progress: Progress<u32>| async move {
+            progress.send(1)?;
+            Err::<(), _>(lingxia_error::Error::permission_denied("no grant"))
+        });
+        assert_eq!(
+            stream_items(output).await,
+            ["event 1", "error E_PERMISSION_DENIED"]
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_canceled_stream_ends_at_once_and_refuses_later_events() {
+        let (cancel_tx, cancel) = oneshot::channel();
+        let (kept_tx, kept_rx) = std::sync::mpsc::channel();
+        let output = __stream::run(cancel, move |progress: Progress<u32>| {
+            // Stands in for a plain `fn` route still running on its blocking thread.
+            kept_tx.send(progress.clone()).unwrap();
+            std::future::pending::<lingxia_error::Result<()>>()
+        });
+        let kept = kept_rx.recv().unwrap();
+        assert!(!kept.is_canceled());
+        cancel_tx.send(()).unwrap();
+        assert_eq!(stream_items(output).await, ["error E_ABORT"]);
+        assert!(kept.is_canceled());
+        assert_eq!(kept.send(1).unwrap_err().code(), "E_ABORT");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_watch_forwards_its_events_until_it_ends_or_is_canceled() {
+        use futures::StreamExt;
+        let (_cancel_tx, cancel) = oneshot::channel::<()>();
+        let output = __stream::watch(futures::stream::iter([1u32, 2]), cancel);
+        assert_eq!(stream_items(output).await, ["event 1", "event 2"]);
+
+        let (cancel_tx, cancel) = oneshot::channel();
+        let endless = futures::stream::iter([7u32]).chain(futures::stream::pending());
+        let HostOutput::Stream(mut stream) = __stream::watch(endless, cancel) else {
+            panic!("expected a stream");
+        };
+        assert!(
+            matches!(stream.next().await, Some(Ok(HostStreamItem::Event(json))) if json == "7")
+        );
+        cancel_tx.send(()).unwrap();
+        assert!(stream.next().await.is_none());
     }
 
     struct ThreadRecordingSyncHandler(Arc<Mutex<Option<std::thread::ThreadId>>>);

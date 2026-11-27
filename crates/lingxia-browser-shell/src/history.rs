@@ -4,7 +4,6 @@
 //! than rewriting a JSON document after each navigation. Bookmarks remain in
 //! JSON because they are small and edited infrequently.
 
-use crate::host::StreamContext;
 use crate::url_match::normalize_url;
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lxapp::LxApp;
@@ -520,39 +519,22 @@ fn clear_history(app: Arc<LxApp>, input: ClearInput) -> lingxia_error::Result<Cl
     clear_since_in(&app.app_data_dir(), input.since_ms).map(|removed| ClearResult { removed })
 }
 
-#[lingxia::framework_native("history.watch", stream, audience = "control-surface-only")]
-async fn watch_history(
+#[lingxia::framework_native("history.watch", watch, audience = "control-surface-only")]
+fn watch_history(
     app: Arc<LxApp>,
-    mut stream: StreamContext<HistoryWatchEvent>,
-) -> lingxia_error::Result<()> {
-    let mut receiver = channel().subscribe();
-    {
+) -> lingxia_error::Result<impl futures::Stream<Item = HistoryWatchEvent> + Send + 'static> {
+    // Subscribe before reading so no change falls between the snapshot and the first event.
+    let changes = channel().subscribe();
+    let entries = {
         let _guard = store_lock()
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        let snapshot = load(&app.app_data_dir())?;
-        stream.send(HistoryWatchEvent::Snapshot {
-            entries: snapshot.entries,
-        })?;
-    }
-    loop {
-        tokio::select! {
-            _ = stream.canceled() => return Ok(()),
-            received = receiver.recv() => {
-                match received {
-                    Ok(event) => stream.send(event)?,
-                    Err(broadcast::error::RecvError::Lagged(_)) => {
-                        let _guard = store_lock().lock().unwrap_or_else(|error| error.into_inner());
-                        let snapshot = load(&app.app_data_dir())?;
-                        stream.send(HistoryWatchEvent::Snapshot {
-                            entries: snapshot.entries,
-                        })?;
-                    }
-                    Err(broadcast::error::RecvError::Closed) => return stream.end(()),
-                }
-            }
-        }
-    }
+        load(&app.app_data_dir())?.entries
+    };
+    Ok(crate::state_then_changes(
+        HistoryWatchEvent::Snapshot { entries },
+        changes,
+    ))
 }
 
 #[cfg(test)]

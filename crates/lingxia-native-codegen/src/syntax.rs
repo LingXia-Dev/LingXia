@@ -4,7 +4,9 @@
 //! parameter can never be a payload to one and an extractor to the other.
 
 use syn::spanned::Spanned;
-use syn::{FnArg, GenericArgument, PatType, PathArguments, Signature, Type};
+use syn::{
+    FnArg, GenericArgument, PatType, PathArguments, ReturnType, Signature, Type, TypeParamBound,
+};
 
 /// How a route is invoked, from its attribute flags.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -12,11 +14,13 @@ pub enum Shape {
     Call,
     Sync,
     Stream,
+    Watch,
     Channel,
 }
 
 /// One parameter, in declaration order. Everything that is not an extractor is the payload.
 #[derive(Debug, Clone)]
+#[allow(clippy::large_enum_variant)] // a handful per route, at build time
 pub enum Param {
     /// `Arc<LxApp>`
     LxApp,
@@ -26,11 +30,8 @@ pub enum Param {
     Cancel,
     /// `PageState<T>`; the whole type.
     PageState(Type),
-    /// `StreamContext<Event, Result>`; absent generics stay `None`.
-    Stream {
-        event: Option<Type>,
-        result: Option<Type>,
-    },
+    /// `Progress<Event>`; an absent generic stays `None`.
+    Progress(Option<Type>),
     /// `ChannelContext<In, Out>`; one generic means both directions carry it.
     Channel {
         inbound: Option<Type>,
@@ -51,9 +52,10 @@ impl Params {
         })
     }
 
-    pub fn stream(&self) -> Option<(Option<&Type>, Option<&Type>)> {
+    /// The event type of a stream route's `Progress<Event>`.
+    pub fn progress(&self) -> Option<Option<&Type>> {
         self.0.iter().find_map(|param| match param {
-            Param::Stream { event, result } => Some((event.as_ref(), result.as_ref())),
+            Param::Progress(event) => Some(event.as_ref()),
             _ => None,
         })
     }
@@ -115,9 +117,9 @@ pub fn classify(sig: &Signature, shape: Shape) -> syn::Result<Params> {
     }
 
     let missing = match shape {
-        Shape::Stream if !seen.contains(&"StreamContext") => {
-            Some("#[native(..., stream)] function must take a `StreamContext` argument")
-        }
+        Shape::Stream if !seen.contains(&"Progress") => Some(
+            "#[native(..., stream)] function must take a `Progress<Event>` argument; its return value is the result",
+        ),
         Shape::Channel if !seen.contains(&"ChannelContext") => {
             Some("#[native(..., channel)] function must take a `ChannelContext` argument")
         }
@@ -138,12 +140,15 @@ fn extractor(ty: &Type) -> syn::Result<Option<Param>> {
         "HostInvocationContext" => Param::Invocation,
         "HostCancel" => Param::Cancel,
         "PageState" => Param::PageState(ty.clone()),
-        "StreamContext" => {
-            let mut args = bounded(ty, "StreamContext")?.into_iter();
-            Param::Stream {
-                event: args.next(),
-                result: args.next(),
+        "Progress" => {
+            let args = generics(ty)?;
+            if args.len() > 1 {
+                return Err(syn::Error::new_spanned(
+                    ty,
+                    "`Progress` takes one generic argument, the event; the route's return value is the result",
+                ));
             }
+            Param::Progress(args.into_iter().next())
         }
         "ChannelContext" => {
             let mut args = bounded(ty, "ChannelContext")?.into_iter();
@@ -160,14 +165,14 @@ fn misplaced(param: &Param, shape: Shape) -> Option<&'static str> {
         (Param::Cancel, Shape::Sync) => {
             Some("#[native(..., sync)] cannot take HostCancel: a sync route is never cancelled")
         }
-        (Param::Cancel, Shape::Stream | Shape::Channel) => Some(
-            "HostCancel is for unary routes; a stream or channel is cancelled through its context",
+        (Param::Cancel, Shape::Stream | Shape::Watch | Shape::Channel) => Some(
+            "HostCancel is for unary routes; a stream, watch or channel stops when its caller cancels",
         ),
-        (Param::PageState(_), Shape::Stream | Shape::Channel) => {
+        (Param::PageState(_), Shape::Stream | Shape::Watch | Shape::Channel) => {
             Some("PageState<T> is supported on unary routes only")
         }
-        (Param::Stream { .. }, shape) if shape != Shape::Stream => {
-            Some("`StreamContext` needs `#[native(..., stream)]`")
+        (Param::Progress(_), shape) if shape != Shape::Stream => {
+            Some("`Progress` needs `#[native(..., stream)]`")
         }
         (Param::Channel { .. }, shape) if shape != Shape::Channel => {
             Some("`ChannelContext` needs `#[native(..., channel)]`")
@@ -182,7 +187,7 @@ fn name(param: &Param) -> &'static str {
         Param::Invocation => "HostInvocationContext",
         Param::Cancel => "HostCancel",
         Param::PageState(_) => "PageState",
-        Param::Stream { .. } => "StreamContext",
+        Param::Progress(_) => "Progress",
         Param::Channel { .. } => "ChannelContext",
         Param::Payload(_) => "payload",
     }
@@ -224,6 +229,46 @@ fn bounded(ty: &Type, name: &str) -> syn::Result<Vec<Type>> {
         ));
     }
     Ok(args)
+}
+
+/// The event type of a `watch` route: `T` in `-> Result<impl Stream<Item = T>, E>`.
+pub fn watch_event(sig: &Signature) -> syn::Result<Type> {
+    let shape_error = |span| {
+        syn::Error::new(
+            span,
+            "a `watch` route returns `Result<impl Stream<Item = Event>, E>`; its first item is the current state",
+        )
+    };
+    let ReturnType::Type(_, ty) = &sig.output else {
+        return Err(shape_error(sig.ident.span()));
+    };
+    let ok = match last_segment(ty) {
+        Some(segment) if segment.ident == "Result" => generics(ty)?.into_iter().next(),
+        _ => None,
+    };
+    let Some(Type::ImplTrait(stream)) = ok else {
+        return Err(shape_error(ty.span()));
+    };
+    stream
+        .bounds
+        .iter()
+        .find_map(|bound| {
+            let TypeParamBound::Trait(bound) = bound else {
+                return None;
+            };
+            let segment = bound.path.segments.last()?;
+            if segment.ident != "Stream" {
+                return None;
+            }
+            let PathArguments::AngleBracketed(args) = &segment.arguments else {
+                return None;
+            };
+            args.args.iter().find_map(|arg| match arg {
+                GenericArgument::AssocType(item) if item.ident == "Item" => Some(item.ty.clone()),
+                _ => None,
+            })
+        })
+        .ok_or_else(|| shape_error(stream.span()))
 }
 
 #[cfg(test)]
@@ -274,13 +319,12 @@ mod tests {
     #[test]
     fn a_context_may_lead_its_payload() {
         let stream = classify(
-            &parse("async fn f(stream: StreamContext<Ev, Done>, input: Query) {}"),
+            &parse("async fn f(progress: Progress<Ev>, input: Query) {}"),
             Shape::Stream,
         )
         .expect("stream");
-        let (event, result) = stream.stream().expect("stream context");
+        let event = stream.progress().expect("progress");
         assert_eq!(event.unwrap().to_token_stream().to_string(), "Ev");
-        assert_eq!(result.unwrap().to_token_stream().to_string(), "Done");
         assert!(stream.payload().is_some());
 
         let channel = classify(
@@ -310,8 +354,7 @@ mod tests {
     fn misplaced_and_repeated_extractors_are_errors() {
         assert!(error("fn f(c: HostCancel) {}", Shape::Sync).contains("never cancelled"));
         assert!(
-            error("fn f(c: HostCancel, s: StreamContext) {}", Shape::Stream)
-                .contains("unary routes")
+            error("fn f(c: HostCancel, p: Progress<E>) {}", Shape::Stream).contains("unary routes")
         );
         assert!(
             error(
@@ -320,13 +363,19 @@ mod tests {
             )
             .contains("unary routes only")
         );
-        assert!(error("fn f(s: StreamContext) {}", Shape::Call).contains("stream)]"));
-        assert!(error("fn f(x: Query) {}", Shape::Stream).contains("must take a `StreamContext`"));
+        assert!(error("fn f(p: Progress<E>) {}", Shape::Call).contains("stream)]"));
+        assert!(error("fn f(p: Progress<E>) {}", Shape::Watch).contains("stream)]"));
+        assert!(
+            error("fn f(x: Query) {}", Shape::Stream).contains("must take a `Progress<Event>`")
+        );
         assert!(
             error("fn f(x: Query) {}", Shape::Channel).contains("must take a `ChannelContext`")
         );
         assert!(error("fn f(a: Arc<LxApp>, b: Arc<LxApp>) {}", Shape::Call).contains("only once"));
-        assert!(error("fn f(s: StreamContext<A, B, C>) {}", Shape::Stream).contains("at most two"));
+        assert!(error("fn f(p: Progress<A, B>) {}", Shape::Stream).contains("one generic"));
+        assert!(
+            error("fn f(c: ChannelContext<A, B, C>) {}", Shape::Channel).contains("at most two")
+        );
     }
 
     #[test]
@@ -337,5 +386,34 @@ mod tests {
         )
         .expect("classify");
         assert_eq!(kinds(&params), ["PageState", "PageState", "payload"]);
+    }
+
+    #[test]
+    fn a_watch_event_is_the_streams_item() {
+        let item = |src: &str| watch_event(&parse(src)).map(|ty| ty.to_token_stream().to_string());
+        assert_eq!(
+            item("async fn f() -> lingxia::Result<impl Stream<Item = Ev> + Send + 'static> {}")
+                .unwrap(),
+            "Ev"
+        );
+        assert_eq!(
+            item("fn f(q: Query) -> Result<impl futures::Stream<Item = Vec<Ev>>, MyError> {}")
+                .unwrap(),
+            "Vec < Ev >"
+        );
+        for wrong in [
+            "async fn f() -> impl Stream<Item = Ev> {}",
+            "async fn f() -> lingxia::Result<Vec<Ev>> {}",
+            "async fn f() -> lingxia::Result<impl Iterator<Item = Ev>> {}",
+            "async fn f() {}",
+        ] {
+            assert!(
+                item(wrong)
+                    .unwrap_err()
+                    .to_string()
+                    .contains("impl Stream<Item = Event>"),
+                "{wrong}"
+            );
+        }
     }
 }

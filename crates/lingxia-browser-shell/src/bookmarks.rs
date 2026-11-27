@@ -7,7 +7,7 @@
 //! when the native chrome toggles a star.
 
 use crate::bookmarks_html::{ImportedBookmark, export_netscape_html, parse_netscape_html};
-use crate::host::{HostCancel, StreamContext, await_or_cancel};
+use crate::host::{HostCancel, await_or_cancel};
 use crate::url_match::normalize_url;
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lingxia_service::file::{FileDialogFilter, PickFileRequest};
@@ -1155,36 +1155,17 @@ fn export_html_bookmarks(app: Arc<LxApp>) -> lingxia_error::Result<ExportResult>
     })
 }
 
-#[lingxia::framework_native("bookmarks.watch", stream, audience = "control-surface-only")]
-async fn watch_bookmarks(
+#[lingxia::framework_native("bookmarks.watch", watch, audience = "control-surface-only")]
+fn watch_bookmarks(
     app: Arc<LxApp>,
-    mut stream: StreamContext<BookmarksView>,
-) -> lingxia_error::Result<()> {
-    let mut rx = channel().subscribe();
-    // Seed subscribers with the current state so the page renders from the
-    // stream alone.
-    {
+) -> lingxia_error::Result<impl futures::Stream<Item = BookmarksView> + Send + 'static> {
+    use futures::StreamExt;
+    let changes = channel().subscribe();
+    let snapshot = {
         let _guard = store_lock().lock().unwrap_or_else(|e| e.into_inner());
-        let snapshot = load(&app.app_data_dir())?;
-        stream.send(bookmarks_view(snapshot))?;
-    }
-    loop {
-        tokio::select! {
-            _ = stream.canceled() => return Ok(()),
-            recv = rx.recv() => {
-                match recv {
-                    Ok(snapshot) => stream.send(bookmarks_view(snapshot))?,
-                    Err(broadcast::error::RecvError::Lagged(_)) => {
-                        // Snapshots are self-contained; resync from disk.
-                        let _guard = store_lock().lock().unwrap_or_else(|e| e.into_inner());
-                        let snapshot = load(&app.app_data_dir())?;
-                        stream.send(bookmarks_view(snapshot))?;
-                    }
-                    Err(broadcast::error::RecvError::Closed) => return stream.end(()),
-                }
-            }
-        }
-    }
+        load(&app.app_data_dir())?
+    };
+    Ok(crate::state_then_changes(snapshot, changes).map(bookmarks_view))
 }
 
 #[cfg(test)]

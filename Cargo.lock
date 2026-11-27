@@ -3946,6 +3946,7 @@ dependencies = [
  "android_logger",
  "anyhow",
  "base64 0.23.1",
+ "futures",
  "futures-core",
  "jni",
  "lingxia-app-context",

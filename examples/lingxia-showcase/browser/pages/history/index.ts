@@ -1,6 +1,5 @@
 import { hostOf, localDateTime, originOf } from '../../shared/format';
 import { siteIconCache } from '../../shared/siteIcons';
-import { watch } from '../../shared/watch';
 import { definePage, lx } from '@lingxia/logic';
 import type { ClearBrowsingDataInput, HistoryEntry, HistoryWatchEvent } from '@lingxia/native';
 
@@ -116,7 +115,7 @@ export default definePage({
         // System pages open in their own stack; the bar shows back only when a page is under them.
         void page.navigationBar.update({ homeButton: 'hidden' });
         // The watch opens with a snapshot of the store, then follows each change.
-        watch((options) => page.native.history.watch(options), page.signal, apply);
+        page.native.history.watch(apply, { signal: page.signal });
       },
       actions: {
         async search({ query }: { query: string }) {

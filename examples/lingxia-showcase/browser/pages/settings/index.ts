@@ -1,5 +1,4 @@
 import { localDateTime } from '../../shared/format';
-import { watch } from '../../shared/watch';
 import { definePage, lx, type } from '@lingxia/logic';
 import type {
   AppInfo,
@@ -179,7 +178,7 @@ export default definePage({
         }, { signal: page.signal });
         // Proxy routes exist only where the local proxy runs; without them the section stays hidden.
         // The watch opens with the saved settings, then follows each change.
-        watch((options) => page.native.proxy.watch(options), page.signal, showProxy);
+        page.native.proxy.watch(showProxy, { signal: page.signal });
 
         const [info, download, site]: [AppInfo | null, DownloadSettingsResult | null, SiteDataContext | null] = await Promise.all([
           page.native.app.getInfo().catch(() => null),

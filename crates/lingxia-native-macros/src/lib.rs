@@ -1,4 +1,4 @@
-use lingxia_native_codegen::syntax::{Param, Params, Shape, classify};
+use lingxia_native_codegen::syntax::{Param, Params, Shape, classify, watch_event};
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use syn::parse::Parser;
@@ -111,6 +111,9 @@ fn expand_host_attribute(
         HostMode::Stream => {
             expand_stream(route_lit.clone(), namespace, method, options, input_fn).into()
         }
+        HostMode::Watch => {
+            expand_watch(route_lit.clone(), namespace, method, options, input_fn).into()
+        }
         HostMode::Channel => {
             expand_channel(route_lit.clone(), namespace, method, options, input_fn).into()
         }
@@ -167,6 +170,15 @@ fn parse_host_attr(
                 }
                 mode = HostMode::Channel;
             }
+            Expr::Path(path) if path.path.is_ident("watch") => {
+                if !matches!(mode, HostMode::Unary) {
+                    return Err(syn::Error::new_spanned(
+                        arg,
+                        format!("duplicate or conflicting mode flag in #[{macro_name}(...)]"),
+                    ));
+                }
+                mode = HostMode::Watch;
+            }
             Expr::Path(path) if path.path.is_ident("blocking") => {
                 return Err(syn::Error::new_spanned(
                     arg,
@@ -208,7 +220,7 @@ fn parse_host_attr(
                 return Err(syn::Error::new_spanned(
                     arg,
                     format!(
-                        "expected a mode flag (`sync`, `stream`, or `channel`) or `audience = \"…\"` in #[{macro_name}(...)]"
+                        "expected a mode flag (`sync`, `stream`, `watch`, or `channel`) or `audience = \"…\"` in #[{macro_name}(...)]"
                     ),
                 ));
             }
@@ -247,6 +259,7 @@ fn parse_host_attr(
 enum HostMode {
     Unary,
     Stream,
+    Watch,
     Channel,
 }
 
@@ -375,15 +388,17 @@ fn expand_host(
     let call_expr = call_plan.call_expr(&fn_ident, is_async);
     let ctor_ident = match options.mode {
         HostMode::Unary => format_ident!("new"),
-        HostMode::Stream => format_ident!("stream"),
-        HostMode::Channel => unreachable!("channel mode is handled by expand_channel"),
+        HostMode::Stream | HostMode::Watch | HostMode::Channel => {
+            unreachable!("stream, watch and channel modes have their own expansion")
+        }
     };
     let serialize_expr = match options.mode {
         HostMode::Unary => quote! {
             ::lingxia::host::serialize_result(__lingxia_result)
         },
-        HostMode::Stream => unreachable!("stream mode is handled by expand_stream"),
-        HostMode::Channel => unreachable!("channel mode is handled by expand_channel"),
+        HostMode::Stream | HostMode::Watch | HostMode::Channel => {
+            unreachable!("stream, watch and channel modes have their own expansion")
+        }
     };
     quote! {
         #input_fn
@@ -437,14 +452,12 @@ impl Plan {
         })
     }
 
-    fn stream_types(&self) -> (Type, Type) {
-        let (event, result) = self.params.stream().unwrap_or_default();
-        (
-            event
-                .cloned()
-                .unwrap_or_else(|| syn::parse_quote!(::lingxia::host::JsonValue)),
-            result.cloned().unwrap_or_else(|| syn::parse_quote!(())),
-        )
+    fn progress_event(&self) -> Type {
+        self.params
+            .progress()
+            .flatten()
+            .cloned()
+            .unwrap_or_else(|| syn::parse_quote!(::lingxia::host::JsonValue))
     }
 
     fn channel_types(&self) -> (Type, Type) {
@@ -466,7 +479,7 @@ impl Plan {
                 Param::LxApp => call_args.push(quote! { __lingxia_invocation.lxapp() }),
                 Param::Invocation => call_args.push(quote! { __lingxia_invocation.clone() }),
                 Param::Cancel => call_args.push(quote! { __lingxia_cancel }),
-                Param::Stream { .. } => call_args.push(quote! { __lingxia_stream }),
+                Param::Progress(_) => call_args.push(quote! { __lingxia_progress }),
                 Param::Channel { .. } => call_args.push(quote! { __lingxia_channel }),
                 Param::Payload(input_ty) => {
                     let parse = quote! { ::lingxia::host::parse_input(__lingxia_input.as_deref()) };
@@ -522,7 +535,7 @@ impl Plan {
     }
 }
 
-// ===== Stream expansion =====
+// ===== Stream and watch expansion =====
 
 fn expand_stream(
     route_lit: LitStr,
@@ -531,19 +544,63 @@ fn expand_stream(
     options: HostOptions,
     input_fn: ItemFn,
 ) -> proc_macro2::TokenStream {
-    let fn_ident = input_fn.sig.ident.clone();
+    let plan = match Plan::new(&input_fn, Shape::Stream) {
+        Ok(p) => p,
+        Err(err) => return err.to_compile_error(),
+    };
+    let call_expr = plan.call_expr(&input_fn.sig.ident, input_fn.sig.asyncness.is_some());
+    let event_ty = plan.progress_event();
+    let body = quote! {
+        Ok(::lingxia::host::__stream::run::<#event_ty, _, _, _>(
+            __lingxia_cancel,
+            move |__lingxia_progress| async move {
+                let __lingxia_result = #call_expr;
+                __lingxia_result.map_err(::core::convert::Into::<::lingxia::Error>::into)
+            },
+        ))
+    };
+    stream_route(route_lit, namespace, method, options, input_fn, body)
+}
+
+fn expand_watch(
+    route_lit: LitStr,
+    namespace: &str,
+    method: &str,
+    options: HostOptions,
+    input_fn: ItemFn,
+) -> proc_macro2::TokenStream {
+    let plan = match Plan::new(&input_fn, Shape::Watch) {
+        Ok(p) => p,
+        Err(err) => return err.to_compile_error(),
+    };
+    if let Err(err) = watch_event(&input_fn.sig) {
+        return err.to_compile_error();
+    }
+    let call_expr = plan.call_expr(&input_fn.sig.ident, input_fn.sig.asyncness.is_some());
+    let body = quote! {
+        let __lingxia_result = #call_expr;
+        let __lingxia_events =
+            __lingxia_result.map_err(::core::convert::Into::<::lingxia::Error>::into)?;
+        Ok(::lingxia::host::__stream::watch(__lingxia_events, __lingxia_cancel))
+    };
+    stream_route(route_lit, namespace, method, options, input_fn, body)
+}
+
+/// A route on the stream wire: `body` builds its `HostOutput`.
+fn stream_route(
+    route_lit: LitStr,
+    namespace: &str,
+    method: &str,
+    options: HostOptions,
+    input_fn: ItemFn,
+    body: proc_macro2::TokenStream,
+) -> proc_macro2::TokenStream {
+    let fn_ident = &input_fn.sig.ident;
     let helper_ident = format_ident!("{}_host", fn_ident);
     let handler_ident = format_ident!("__LingxiaStreamHandler_{}", fn_ident);
     let namespace_lit = LitStr::new(namespace, route_lit.span());
     let method_lit = LitStr::new(method, route_lit.span());
     let audience = options.audience.tokens();
-
-    let plan = match Plan::new(&input_fn, Shape::Stream) {
-        Ok(p) => p,
-        Err(err) => return err.to_compile_error(),
-    };
-    let call_expr = plan.call_expr(&fn_ident, input_fn.sig.asyncness.is_some());
-    let (event_ty, result_ty) = plan.stream_types();
 
     quote! {
         #input_fn
@@ -559,26 +616,7 @@ fn expand_stream(
                 __lingxia_input: Option<String>,
                 __lingxia_cancel: ::lingxia::host::HostCancel,
             ) -> ::lingxia::host::HostFuture<'a> {
-                Box::pin(async move {
-                    let (__lingxia_stream, __lingxia_rx) =
-                        ::lingxia::host::new_stream_context::<#event_ty, #result_ty>(__lingxia_cancel);
-                    let __lingxia_error_tx = __lingxia_stream.error_sender();
-
-                    ::lingxia::host::__native::spawn(async move {
-                        let __lingxia_result: ::lingxia::Result<()> = {
-                            let __lingxia_invocation = __lingxia_invocation;
-                            let __lingxia_input = __lingxia_input;
-                            let __lingxia_stream = __lingxia_stream;
-                            #call_expr
-                        }
-                        .map_err(::core::convert::Into::<::lingxia::Error>::into);
-                        if let Err(err) = __lingxia_result {
-                            let _ = __lingxia_error_tx.send(Err(err));
-                        }
-                    });
-
-                    Ok(::lingxia::host::stream_output_from_rx(__lingxia_rx))
-                })
+                Box::pin(async move { #body })
             }
         }
 
@@ -717,6 +755,11 @@ mod tests {
                 RouteAudience::ControlAppOrSurface,
                 HostMode::Channel,
             ),
+            (
+                quote!("demo.watch", watch, audience = "control-surface-only"),
+                RouteAudience::ControlSurfaceOnly,
+                HostMode::Watch,
+            ),
         ];
 
         for (args, audience, mode) in cases {
@@ -728,6 +771,7 @@ mod tests {
                 (options.mode, mode),
                 (HostMode::Unary, HostMode::Unary)
                     | (HostMode::Stream, HostMode::Stream)
+                    | (HostMode::Watch, HostMode::Watch)
                     | (HostMode::Channel, HostMode::Channel)
             ));
         }
@@ -773,7 +817,7 @@ mod tests {
         };
         let stream: ItemFn = syn::parse_quote! {
             async fn scoped_stream(
-                stream: lingxia::host::StreamContext<String>,
+                progress: lingxia::Progress<String>,
                 input: Query,
                 context: lingxia::host::HostInvocationContext,
             ) -> Result<()> {
@@ -802,7 +846,7 @@ mod tests {
             )
         );
         assert!(call(&stream, Shape::Stream).contains(
-            "scoped_stream(__lingxia_stream,__lingxia_payload,__lingxia_invocation.clone())"
+            "scoped_stream(__lingxia_progress,__lingxia_payload,__lingxia_invocation.clone())"
         ));
         assert!(
             call(&channel, Shape::Channel)
@@ -843,6 +887,7 @@ mod tests {
             .unwrap();
         match options.mode {
             HostMode::Stream => expand_stream(route, &namespace, &method, options, item),
+            HostMode::Watch => expand_watch(route, &namespace, &method, options, item),
             HostMode::Channel => expand_channel(route, &namespace, &method, options, item),
             HostMode::Unary => expand_host(route, &namespace, &method, options, item),
         }
@@ -880,13 +925,57 @@ mod tests {
         assert!(out.contains("fetch().await"), "{out}");
 
         let stream: ItemFn = syn::parse_quote! {
-            fn export(stream: lingxia::host::StreamContext<u32>) -> lingxia::Result<()> { Ok(()) }
+            fn export(progress: lingxia::Progress<u32>) -> lingxia::Result<String> { Ok(String::new()) }
         };
         let out = expand(quote!("demo.export", stream), stream);
         assert!(
-            out.contains("call_blocking(move||export(__lingxia_stream))"),
+            out.contains("call_blocking(move||export(__lingxia_progress))"),
             "{out}"
         );
+    }
+
+    #[test]
+    fn a_stream_returns_its_result_and_a_watch_returns_its_events() {
+        let stream: ItemFn = syn::parse_quote! {
+            async fn import(input: Query, progress: lingxia::Progress<Step>) -> Result<Summary, NotesError> {
+                todo!()
+            }
+        };
+        let out = expand(quote!("notes.import", stream), stream);
+        assert!(
+            out.contains("::lingxia::host::__stream::run::<Step,_,_,_>(__lingxia_cancel"),
+            "{out}"
+        );
+        assert!(
+            out.contains("import(__lingxia_payload,__lingxia_progress).await"),
+            "{out}"
+        );
+
+        let watch: ItemFn = syn::parse_quote! {
+            async fn follow(app: Arc<LxApp>) -> lingxia::Result<impl Stream<Item = Change> + Send + 'static> {
+                todo!()
+            }
+        };
+        let out = expand(quote!("notes.watch", watch), watch);
+        assert!(
+            out.contains("::lingxia::host::__stream::watch(__lingxia_events,__lingxia_cancel)"),
+            "{out}"
+        );
+        assert!(out.contains("HostRegistration::stream("), "{out}");
+
+        let not_a_stream: ItemFn = syn::parse_quote! {
+            async fn follow() -> lingxia::Result<Vec<Change>> { todo!() }
+        };
+        let out = expand(quote!("notes.watch", watch), not_a_stream);
+        assert!(out.contains("implStream<Item=Event>"), "{out}");
+
+        let with_progress: ItemFn = syn::parse_quote! {
+            async fn follow(progress: lingxia::Progress<Change>) -> lingxia::Result<impl Stream<Item = Change>> {
+                todo!()
+            }
+        };
+        let out = expand(quote!("notes.watch", watch), with_progress);
+        assert!(out.contains("needs`#[native(...,stream)]`"), "{out}");
     }
 
     #[test]

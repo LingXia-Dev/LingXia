@@ -38,22 +38,40 @@ struct StreamEvent {
 }
 
 #[lingxia::native("facade.stream", stream)]
-async fn facade_stream(
-    mut stream: lingxia::host::StreamContext<StreamEvent, String>,
-) -> lingxia::Result<()> {
-    stream.send(StreamEvent { value: 1 })?;
-    stream.end("done".to_string())?;
-    Ok(())
+async fn facade_stream(progress: lingxia::Progress<StreamEvent>) -> lingxia::Result<String> {
+    progress.send(StreamEvent { value: 1 })?;
+    Ok("done".to_string())
 }
 
 #[lingxia::native("facade.scopeStream", stream)]
-async fn facade_scope_stream(
+fn facade_scope_stream(
     context: lingxia::host::HostInvocationContext,
-    stream: lingxia::host::StreamContext<StreamEvent, String>,
-) -> lingxia::Result<()> {
-    let app_id = context.app_scope().identity().app_id().to_string();
-    stream.end(app_id)?;
-    Ok(())
+    progress: lingxia::Progress<StreamEvent>,
+    input: EchoInput,
+) -> lingxia::Result<String> {
+    if progress.is_canceled() {
+        return Err(lingxia::Error::aborted("Canceled"));
+    }
+    Ok(format!(
+        "{}:{}",
+        context.app_scope().identity().app_id(),
+        input.value
+    ))
+}
+
+#[lingxia::native("facade.watch", watch)]
+fn facade_watch(
+    input: EchoInput,
+) -> lingxia::Result<impl futures::Stream<Item = StreamEvent> + Send + 'static> {
+    let value = input.value.len() as u32;
+    Ok(futures::stream::iter([StreamEvent { value }]))
+}
+
+#[lingxia::native("facade.asyncWatch", watch)]
+async fn facade_async_watch(
+    _app: Arc<lingxia::LxApp>,
+) -> Result<impl futures::Stream<Item = StreamEvent> + Send + 'static, NotesError> {
+    Ok(futures::stream::empty())
 }
 
 #[derive(serde::Deserialize)]
@@ -121,9 +139,7 @@ fn facade_app_error(id: i64) -> Result<(), NotesError> {
 }
 
 #[lingxia::native("facade.anyhowError", stream)]
-async fn facade_anyhow_error(
-    _stream: lingxia::host::StreamContext<StreamEvent, String>,
-) -> anyhow::Result<()> {
+async fn facade_anyhow_error(_progress: lingxia::Progress<StreamEvent>) -> anyhow::Result<String> {
     anyhow::bail!("disk full")
 }
 
@@ -179,6 +195,8 @@ fn native_macro_accepts_lingxia_result_handlers() {
     let _ = facade_scope_host();
     let _ = facade_stream_host();
     let _ = facade_scope_stream_host();
+    let _ = facade_watch_host();
+    let _ = facade_async_watch_host();
     let _ = facade_channel_host();
     let _ = facade_scope_channel_host();
     let _ = facade_control_host();
