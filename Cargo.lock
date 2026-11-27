@@ -3941,7 +3941,7 @@ checksum = "d4a5ff6bcca6c4867b1c4fd4ef63e4db7436ef363e0ad7531d1558856bae64f4"
 
 [[package]]
 name = "lingxia"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "android_logger",
  "anyhow",
@@ -3998,7 +3998,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-automation"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "base64 0.23.1",
  "futures",
@@ -4026,7 +4026,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-browser"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "base64 0.23.1",
  "http",
@@ -4050,7 +4050,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-browser-shell"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "futures",
  "html5ever",
@@ -4079,7 +4079,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-cli"
-version = "0.30.1"
+version = "0.31.0"
 dependencies = [
  "Inflector",
  "aes",
@@ -4170,7 +4170,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-control-commands"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "anyhow",
  "base64 0.23.1",
@@ -4187,7 +4187,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-control-protocol"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "interprocess",
  "libc",
@@ -4201,7 +4201,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-control-runtime"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "base64 0.23.1",
  "libc",
@@ -4227,7 +4227,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-device-io"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "base64 0.23.1",
  "dispatch2",
@@ -4249,7 +4249,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-devtools-cli"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "anyhow",
  "base64 0.23.1",
@@ -4283,7 +4283,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-error"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "anyhow",
  "jni",
@@ -4293,7 +4293,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-host-config"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "language-tags",
  "semver",
@@ -4304,7 +4304,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-i18n"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "chrono",
  "serde_json",
@@ -4313,7 +4313,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-log"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "lingxia-provider",
  "serde",
@@ -4325,7 +4325,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-logic"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "base64 0.23.1",
  "futures",
@@ -4358,7 +4358,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-lxapp"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "base64 0.23.1",
  "bytes",
@@ -4409,7 +4409,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-media"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "lingxia-error",
  "lingxia-platform",
@@ -4419,14 +4419,14 @@ dependencies = [
 
 [[package]]
 name = "lingxia-messaging"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "tokio",
 ]
 
 [[package]]
 name = "lingxia-native-codegen"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "anyhow",
  "quote",
@@ -4437,7 +4437,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-native-macros"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "lingxia-native-codegen",
  "proc-macro2",
@@ -4447,7 +4447,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-network-dev"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "base64 0.23.1",
  "bytes",
@@ -4470,7 +4470,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-platform"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "android_logger",
  "async-trait",
@@ -4520,14 +4520,14 @@ dependencies = [
 
 [[package]]
 name = "lingxia-provider"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "lingxia-error",
 ]
 
 [[package]]
 name = "lingxia-proxy"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "base64 0.23.1",
  "fast-socks5",
@@ -4547,7 +4547,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-runner-config"
-version = "0.30.1"
+version = "0.31.0"
 dependencies = [
  "lingxia-provider",
  "serde",
@@ -4557,7 +4557,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-runner-lib"
-version = "0.30.1"
+version = "0.31.0"
 dependencies = [
  "libc",
  "lingxia",
@@ -4569,7 +4569,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-runner-windows"
-version = "0.30.1"
+version = "0.31.0"
 dependencies = [
  "lingxia",
  "lingxia-control-runtime",
@@ -4583,7 +4583,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-service"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "http",
  "lingxia-error",
@@ -4605,7 +4605,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-settings"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "dashmap 6.2.1",
  "lingxia-error",
@@ -4620,7 +4620,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-shell"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "log",
  "serde",
@@ -4631,7 +4631,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-surface"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -4640,7 +4640,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-terminal"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "alacritty_terminal",
  "base64 0.23.1",
@@ -4656,7 +4656,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-terminal-config"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "lingxia-host-config",
  "lingxia-terminal",
@@ -4671,7 +4671,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-theme"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "libm",
  "serde",
@@ -4680,7 +4680,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-transfer"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "bytes",
  "dashmap 6.2.1",
@@ -4703,7 +4703,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-update"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "base64 0.23.1",
  "ed25519-dalek",
@@ -4719,7 +4719,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-view"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "ash",
  "glifo",
@@ -4751,7 +4751,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-view-android"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "jni",
  "lingxia-view",
@@ -4763,7 +4763,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-view-apple"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "lingxia-view",
  "log",
@@ -4777,7 +4777,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-view-harmony"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "libc",
  "lingxia-view",
@@ -4790,7 +4790,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-view-windows"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "lingxia-view",
  "log",
@@ -4802,7 +4802,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-webview"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "android_logger",
  "async-trait",
@@ -4838,7 +4838,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-windows-build"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "serde_json",
  "tempfile",
@@ -4847,7 +4847,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-windows-contract"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "lingxia-webview",
  "log",
@@ -4857,7 +4857,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-windows-sdk"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "image",
  "lingxia",

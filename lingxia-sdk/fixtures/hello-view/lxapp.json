@@ -2,7 +2,7 @@
   "appId": "hello-view",
   "appName": "Hello View",
   "version": "0.1.0",
-  "minRuntime": "0.30.0",
+  "minRuntime": "0.31.0",
   "logic": false,
   "pages": [{ "name": "home", "path": "pages/home/index" }]
 }

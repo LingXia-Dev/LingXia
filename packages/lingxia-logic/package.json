@@ -1,6 +1,6 @@
 {
   "name": "@lingxia/logic",
-  "version": "0.30.0",
+  "version": "0.31.0",
   "description": "What an lxapp's Logic imports: lx, definePage, type, isLxError and every API type",
   "type": "module",
   "repository": {
@@ -37,7 +37,7 @@
     "test": "npm run build && node --test tests/*.test.mjs && node --experimental-strip-types --test tests/*.test.ts && tsc -p tests/tsconfig.json"
   },
   "dependencies": {
-    "@lingxia/types": "~0.30.0"
+    "@lingxia/types": "~0.31.0"
   },
   "devDependencies": {
     "@lingxia/types": "file:../lingxia-types",

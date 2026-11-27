@@ -2,7 +2,7 @@
   "appId": "lingxia-showcase-web",
   "appName": "LingXia Showcase (WebView)",
   "version": "1.1.1",
-  "minRuntime": "0.30.0",
+  "minRuntime": "0.31.0",
   "languages": ["en-US", "zh-CN"],
   "pages": [
     { "name": "home", "path": "pages/home/index" },

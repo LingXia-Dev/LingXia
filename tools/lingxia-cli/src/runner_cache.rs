@@ -836,7 +836,7 @@ mod tests {
         runner_dir(root, "0.27.0", None);
         fs::write(root.join("0.26.0"), "").unwrap();
         runner_dir(root, "0.25.0", Some(release_of("0.24.0")));
-        runner_dir(root, "0.30.0-gpu-main", Some(release_of("0.30.0-gpu-main")));
+        runner_dir(root, "0.31.0-gpu-main", Some(release_of("0.31.0-gpu-main")));
         runner_dir(root, "0.22.0-native", Some(local("abcdef0")));
         runner_dir(root, ".prev-runner-0.10.1", Some(release_of("0.10.1")));
         assert_eq!(prunable(root, "0.30.1", &[]), vec![oldest]);

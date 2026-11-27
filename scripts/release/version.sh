@@ -333,7 +333,11 @@ manifests = (
     + sorted(root.glob("examples/*/browser/lxapp.json"))
     # The terminal settings lxapp the showcase bundles.
     + [root / "examples/lingxia-showcase/terminal-settings/lxapp.json"]
+    + [root / "packages/liuli/gallery/lxapp.json"]
+    + [root / "lingxia-sdk/fixtures/hello-view/lxapp.json"]
 )
+# jinshu-showcase is versioned by its owner.
+manifests = [m for m in manifests if "jinshu-showcase" not in m.parts]
 pattern = re.compile(r'("minRuntime"\s*:\s*")([^"]+)(")')
 for manifest in manifests:
     text = manifest.read_text()
@@ -402,6 +406,7 @@ def is_local(key, entry):
 locks = [root / "packages/package-lock.json"]
 locks += sorted(root.glob("examples/*/package-lock.json"))
 locks += sorted(root.glob("examples/*/*/package-lock.json"))
+locks = [lock for lock in locks if "jinshu-showcase" not in lock.parts]
 
 for lock in locks:
     if not lock.is_file():
