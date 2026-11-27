@@ -198,7 +198,8 @@ convert OS events and report pointer state; they compute no geometry.
 - `semantics::contract::check` reports what a page left out of its role contracts: names,
   composite items and owners, required states, one choice per tab list, twin siblings, and
   one Tab stop per composite. Role behaviour itself (arrows, RTL, Escape, focus return) is the
-  engine's and is not checked there.
+  engine's and is not checked there. `dev` builds run it on each new commit and log each
+  violation once as `UI_A11Y <rule>`; release builds never run it.
 - Editor focus survives reorder by token; disable, removal and reset end it.
 
 ## Images

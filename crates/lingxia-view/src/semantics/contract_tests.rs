@@ -118,3 +118,18 @@ fn a_composite_nested_in_another_counts_toward_itself_alone() {
     assert!(!has(&found, Rule::TabStops, "bar"), "{found:?}");
     assert!(!has(&found, Rule::TabStops, "align"), "{found:?}");
 }
+
+#[test]
+fn rule_codes_match_their_serialized_names() {
+    for rule in [
+        Rule::Name,
+        Rule::Items,
+        Rule::Owner,
+        Rule::State,
+        Rule::Chosen,
+        Rule::Distinct,
+        Rule::TabStops,
+    ] {
+        assert_eq!(serde_json::to_value(rule).unwrap(), rule.as_str());
+    }
+}

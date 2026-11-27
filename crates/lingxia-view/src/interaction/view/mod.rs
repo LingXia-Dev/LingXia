@@ -695,12 +695,12 @@ impl ViewInteraction {
             edges,
             more,
         });
+        let new_commit = previous
+            .as_ref()
+            .is_none_or(|previous| previous.commit != next.commit);
         // A frame answering `showPicker()` opens the picker through the editor dispatch a tap
         // takes; only the first presentation of its commit does, not its repaints.
-        if previous
-            .as_ref()
-            .is_none_or(|previous| previous.commit != next.commit)
-        {
+        if new_commit {
             for (node, snapshot) in next.nodes.iter().enumerate() {
                 if snapshot
                     .input
@@ -718,6 +718,10 @@ impl ViewInteraction {
             }
         }
         self.frame = Some(next);
+        #[cfg(feature = "dev")]
+        if new_commit && let Some(semantics) = self.semantics() {
+            crate::semantics::contract::warn(&semantics);
+        }
         if let Some(point) = self.exploring {
             let target = self
                 .semantics()

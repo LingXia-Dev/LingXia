@@ -8,7 +8,7 @@ use crate::interaction::keyboard;
 use serde::Serialize;
 use std::collections::HashSet;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Rule {
     /// A control or named container without an accessible name.
@@ -36,6 +36,51 @@ pub struct Violation {
     /// The element's stable path, for nodes without a test id.
     pub identity: String,
     pub message: String,
+}
+
+impl Rule {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Name => "name",
+            Self::Items => "items",
+            Self::Owner => "owner",
+            Self::State => "state",
+            Self::Chosen => "chosen",
+            Self::Distinct => "distinct",
+            Self::TabStops => "tab-stops",
+        }
+    }
+}
+
+/// `lingxia dev` builds log each violation once, under the compiler's `UI_A11Y` code, so one
+/// log search finds both. Bounded: a page that keeps minting identities stops logging.
+pub fn warn(projection: &Projection) {
+    static LOGGED: std::sync::Mutex<Option<HashSet<(Rule, String, String)>>> =
+        std::sync::Mutex::new(None);
+    let found = check(projection);
+    if found.is_empty() {
+        return;
+    }
+    let mut logged = LOGGED.lock().unwrap_or_else(|p| p.into_inner());
+    let logged = logged.get_or_insert_with(Default::default);
+    for violation in found {
+        if logged.len() >= 512 {
+            return;
+        }
+        let at = if violation.test_id.is_empty() {
+            violation.identity.clone()
+        } else {
+            format!("data-testid=\"{}\"", violation.test_id)
+        };
+        if logged.insert((violation.rule, violation.identity, violation.name)) {
+            log::warn!(
+                target: "lingxia_view",
+                "UI_A11Y {}: {} at {at}",
+                violation.rule.as_str(),
+                violation.message
+            );
+        }
+    }
 }
 
 /// Every contract violation on the page.
