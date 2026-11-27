@@ -14,6 +14,8 @@ export const inputGroupRecipe = {
   text: {
     base: 'shrink-0 flex-row items-center px-3 border border-line-strong bg-surface-sunken',
     size: { sm: 'min-h-control-sm', md: 'min-h-control-md', lg: 'min-h-control-lg' } satisfies Record<FieldSize, string>,
+    /** Alone, outside a group: round on every corner. */
+    alone: 'rounded-control',
   },
   textLabel: {
     base: 'text-muted whitespace-nowrap tabular-nums',

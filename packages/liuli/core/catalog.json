@@ -11333,7 +11333,8 @@
           "--spacing-control-lg",
           "--text-footnote",
           "--text-body",
-          "--text-callout"
+          "--text-callout",
+          "--radius-control"
         ],
         "roles": [
           "line-strong",

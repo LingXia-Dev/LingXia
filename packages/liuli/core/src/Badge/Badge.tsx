@@ -46,7 +46,8 @@ export function Badge(props: BadgeProps) {
   const { label, size = 'md', startIcon, className, 'data-testid': testId } = props;
   const hue = props.hue;
   const { highContrast } = useEnv();
-  const soft = hue !== undefined || props.emphasis !== 'solid' || props.tone === undefined || props.tone === 'neutral';
+  // Only a status tone comes solid, so `emphasis: 'solid'` alone says the badge is solid.
+  const soft = hue !== undefined || props.emphasis !== 'solid';
   const look = hue !== undefined
     ? r.root.hue[hue]
     : props.tone === undefined || props.tone === 'neutral'

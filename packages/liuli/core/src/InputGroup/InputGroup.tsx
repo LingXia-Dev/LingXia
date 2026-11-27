@@ -52,7 +52,7 @@ export function InputGroupText({ children, size: ownSize, className, 'data-testi
   const size = useControlSize(ownSize ?? group?.size);
   const edge = group?.edge ?? 'only';
   return (
-    <view data-testid={testId} className={cx(r.text.base, r.text.size[size], edge === 'only' ? 'rounded-control' : joinedCorners[edge], joinedPlace[edge], className)}>
+    <view data-testid={testId} className={cx(r.text.base, r.text.size[size], edge === 'only' ? r.text.alone : joinedCorners[edge], joinedPlace[edge], className)}>
       <text className={cx(r.textLabel.base, r.textLabel.size[size])}>{children}</text>
     </view>
   );

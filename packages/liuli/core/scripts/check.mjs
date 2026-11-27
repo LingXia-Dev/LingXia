@@ -31,7 +31,8 @@ const kind = path => {
 };
 
 const oldLayoutTags = new Set(['column', 'row', 'grid', 'stack', 'spacer']);
-const engineGlobals = new Set(['Intl', 'globalThis', 'window', 'document', 'navigator', 'setTimeout', 'setInterval', 'requestAnimationFrame']);
+// `Intl` is standard on every engine a page runs on (QuickJS through rong, JavaScriptCore, V8).
+const engineGlobals = new Set(['globalThis', 'window', 'document', 'navigator', 'setTimeout', 'setInterval', 'requestAnimationFrame']);
 // Physical sides; Liuli uses logical ones so every recipe mirrors in RTL.
 const physical = /^(?:[a-z-]+:)*-?(?:pl|pr|ml|mr|left|right|border-l|border-r|rounded-l|rounded-r|rounded-tl|rounded-tr|rounded-bl|rounded-br|text-left|text-right|scroll-ml|scroll-mr)(?:-|$)/;
 // Raw steps of the pack's ramps and raw timings; a recipe uses Liuli's names, so a pack moves every component together.

@@ -7,6 +7,7 @@ import { describedBy } from '../internal/describedBy';
 import { Glyph, glyphGrowth, useTextGrowth } from '../internal/Glyph';
 import { SpinnerMark } from '../internal/spinner';
 import { textInputRecipe as r } from './TextInput.recipe';
+import { inputGroupRecipe } from '../InputGroup/InputGroup.recipe';
 import { joinedCorners, joinedPlace, useJoined } from '../internal/joined';
 import { dataOf } from '../internal/data';
 
@@ -118,7 +119,7 @@ export function TextInput(props: TextInputProps) {
       isDisabled={isDisabled}
       disabledMessage={disabledMessage}
       size={size}
-      className={cx(joined && joinedPlace[joined], joined && joined !== 'only' && 'grow basis-0 min-w-0', className)}
+      className={cx(joined && joinedPlace[joined], joined && joined !== 'only' && inputGroupRecipe.grows, className)}
     >
       {control => (
         <view className={cx(r.box.base, r.box.size[size], joined && joinedCorners[joined], status && r.box.status[status.type], isReadOnly && r.box.readOnly, isDisabled && r.box.disabled, controlClassName)}>
