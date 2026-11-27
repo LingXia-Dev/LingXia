@@ -283,7 +283,7 @@ fn described_invalid_required_fields_and_group_tooltip_roles_project() {
     let zip = semantic(&frame, "zip").unwrap();
     assert_eq!(
         zip.description.as_deref(),
-        Some("Five digits Not a ZIP here")
+        Some("Five digits, Not a ZIP, here")
     );
     assert_eq!((zip.invalid, zip.required), (Some(true), Some(true)));
     let tip = semantic(&frame, "tip").unwrap();
@@ -292,6 +292,40 @@ fn described_invalid_required_fields_and_group_tooltip_roles_project() {
         (Role::Tooltip, "Where we deliver")
     );
     assert_eq!(semantic(&frame, "g").unwrap().invalid, None);
+}
+
+#[test]
+fn a_description_pauses_between_blocks_without_doubling_punctuation() {
+    let described = |targets: &str| {
+        let frame = frame(&format!(
+            "h('view',{{}},h('input',{{'data-testid':'f','aria-label':'Field','aria-describedby':'a b'}}),{targets})"
+        ));
+        semantic(&frame, "f").unwrap().description.unwrap()
+    };
+    assert_eq!(
+        described("h('text',{id:'a'},'Five digits'),h('text',{id:'b'},'Required')"),
+        "Five digits, Required"
+    );
+    assert_eq!(
+        described("h('text',{id:'a'},'Five digits.'),h('text',{id:'b'},'Required')"),
+        "Five digits. Required",
+        "a block that ends a sentence takes a space"
+    );
+    assert_eq!(
+        described("h('text',{id:'a'},'五位数字'),h('text',{id:'b'},'必填。'),h('text',{},'x')"),
+        "五位数字, 必填。"
+    );
+    assert_eq!(
+        described("h('text',{id:'a'},'必填。'),h('text',{id:'b'},'五位数字')"),
+        "必填。 五位数字"
+    );
+    // Blocks inside one target pause too; runs inside a paragraph keep their space and are read once.
+    assert_eq!(
+        described(
+            "h('view',{id:'a'},h('text',{},'Not a ',h('span',{},'ZIP')),h('text',{},'Try again')),h('text',{id:'b'},'Required')"
+        ),
+        "Not a ZIP, Try again, Required"
+    );
 }
 
 #[test]

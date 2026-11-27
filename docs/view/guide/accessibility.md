@@ -46,6 +46,8 @@ reader. Every element has a role from what it is; you add names, structural role
 Give icon-only buttons an `aria-label`. Labels are non-empty, at most 1 KiB, and do not
 change what is painted.
 
+A description (`aria-describedby`) reads its elements' text in order, blocks joined by ", ", or by a space after a block ending in `. ! ? : ;` (or `。！？：；`).
+
 ## Roles
 
 Controls, editors, scrolls, images and text get their roles automatically. Any other element can

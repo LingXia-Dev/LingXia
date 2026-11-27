@@ -964,15 +964,29 @@ impl Projection<'_> {
                 {
                     return Some(label.to_owned());
                 }
-                let text: Vec<&str> = std::iter::once(target)
+                // A text node's runs are in its text already.
+                let mut covered: Option<String> = None;
+                let blocks: Vec<&str> = std::iter::once(target)
                     .chain(readable_descendants(nodes, at))
+                    .filter(|other| {
+                        if covered
+                            .as_ref()
+                            .is_some_and(|under| other.identity.starts_with(under.as_str()))
+                        {
+                            return false;
+                        }
+                        let read = !other.text.trim().is_empty();
+                        if read {
+                            covered = Some(format!("{}/", other.identity));
+                        }
+                        read
+                    })
                     .map(|other| other.text.trim())
-                    .filter(|text| !text.is_empty())
                     .collect();
-                (!text.is_empty()).then(|| text.join(" "))
+                (!blocks.is_empty()).then(|| join_blocks(blocks))
             })
             .collect();
-        (!parts.is_empty()).then(|| parts.join(" "))
+        (!parts.is_empty()).then(|| join_blocks(parts.iter().map(String::as_str)))
     }
 
     fn owning_list(&self, item: &NodeSnapshot) -> Option<&NodeSnapshot> {
@@ -1082,6 +1096,23 @@ fn spoken(frame: &PresentedFrame, node: &NodeSnapshot) -> String {
 
 /// The nodes under `nodes[at]`, in order, without any `aria-hidden` subtree: hidden text is
 /// never read into another node's name or description.
+/// Blocks read with a pause: ", " between them, or one space after a block that already ends in
+/// terminal punctuation, so a reader never hears doubled punctuation.
+fn join_blocks<'a>(blocks: impl IntoIterator<Item = &'a str>) -> String {
+    let mut out = String::new();
+    for block in blocks {
+        if let Some(last) = out.chars().last() {
+            let ended = matches!(
+                last,
+                '.' | '!' | '?' | ':' | ';' | '。' | '！' | '？' | '：' | '；'
+            );
+            out.push_str(if ended { " " } else { ", " });
+        }
+        out.push_str(block);
+    }
+    out
+}
+
 fn readable_descendants(nodes: &[NodeSnapshot], at: usize) -> impl Iterator<Item = &NodeSnapshot> {
     let prefix = format!("{}/", nodes[at].identity);
     let mut hidden: Option<String> = None;
