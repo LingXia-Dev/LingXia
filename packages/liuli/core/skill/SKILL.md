@@ -2,8 +2,8 @@
 name: liuli
 description: >-
   Liuli (@liulidesign/core), the component library for LingXia GPU View pages.
-  TRIGGER when a page imports `@liulidesign/core`, or a GPU View needs a button, field,
-  list row, menu, sheet, dialog, banner, toast, table or icon. Read before building UI by hand.
+  TRIGGER when a page imports `@liulidesign/core`, `@liulidesign/charts` or `@liulidesign/jinshu`, or a GPU View
+  needs a button, field, list row, menu, sheet, dialog, banner, toast, table, chart, document or icon. Read before building UI by hand.
 ---
 
 # Liuli
@@ -23,6 +23,16 @@ Liuli parts are TSX source compiled with your GPU pages: import each from its ow
   `node_modules/@liulidesign/charts`. Never hand-draw a chart.
 - Rows that belong together go in `ItemList` (each `Item` is read with its position); choices that
   belong together go in their group (`RadioGroup`, `ClickableCardGroup`).
+- Documents an agent writes or a person edits (notes, reports, lessons) come from
+  `@liulidesign/jinshu`: `JinshuView` to read, `JinshuEditor` to edit, `JinshuOutline`, `JinshuDiff`.
+  Short message text is core's `Markdown`.
+
+## 1a. One page for phone and desktop
+
+- A list and the chosen row's detail is `ListDetail`; main content with a companion beside it is
+  `Split`. Both go side by side when wide and stack on a phone, folds included; do not branch the page.
+- A page's own header row is `TopBar`. Change layout with `regular:` classes, or
+  `useView().env.sizeClass` when the tree itself differs.
 
 ## 2. Roles and steps, never raw colours or sizes
 
