@@ -515,10 +515,15 @@ fn scan(src_dir: &Path) -> Result<NativeManifest> {
         scan_file_into(&source, &file_label, &mut manifest)?;
     }
 
-    let mut seen = BTreeSet::new();
+    let mut seen: BTreeMap<&str, &SourceLoc> = BTreeMap::new();
     for r in &manifest.routes {
-        if !seen.insert(r.route.clone()) {
-            return Err(anyhow!("duplicate native route `{}`", r.route));
+        if let Some(first) = seen.insert(&r.route, &r.loc) {
+            bail!(
+                "native route `{}` is declared twice, at {} and {}",
+                r.route,
+                first.display(),
+                r.loc.display()
+            );
         }
     }
 
@@ -556,6 +561,29 @@ fn file_module(file_label: &str) -> Vec<String> {
     parts
 }
 
+/// `#[cfg(test)]`: never in a client, and free to reuse a DTO name.
+fn is_test_only(attrs: &[Attribute]) -> bool {
+    attrs.iter().any(|attr| {
+        attr.path().is_ident("cfg")
+            && attr
+                .meta
+                .require_list()
+                .is_ok_and(|list| list.tokens.to_string() == "test")
+    })
+}
+
+fn item_attrs(item: &syn::Item) -> &[Attribute] {
+    match item {
+        syn::Item::Fn(item) => &item.attrs,
+        syn::Item::Struct(item) => &item.attrs,
+        syn::Item::Enum(item) => &item.attrs,
+        syn::Item::Type(item) => &item.attrs,
+        syn::Item::Use(item) => &item.attrs,
+        syn::Item::Mod(item) => &item.attrs,
+        _ => &[],
+    }
+}
+
 fn scan_items(
     items: &[syn::Item],
     source: &str,
@@ -564,6 +592,9 @@ fn scan_items(
     manifest: &mut NativeManifest,
 ) -> Result<()> {
     for item in items {
+        if is_test_only(item_attrs(item)) {
+            continue;
+        }
         match item {
             syn::Item::Fn(item_fn) => {
                 if let Some((route, kind)) = parse_attr(&item_fn.attrs) {
@@ -1058,36 +1089,57 @@ fn unwrap_result(ty: &str) -> Option<String> {
     }
 }
 
-fn is_builtin_rust_type(name: &str) -> bool {
+/// Types from outside the crate that serde writes as a string.
+fn is_outside_string_type(name: &str) -> bool {
     matches!(
         name,
-        "String"
-            | "str"
-            | "char"
-            | "bool"
-            | "u8"
-            | "u16"
-            | "u32"
-            | "u64"
-            | "u128"
-            | "usize"
-            | "i8"
-            | "i16"
-            | "i32"
-            | "i64"
-            | "i128"
-            | "isize"
-            | "f32"
-            | "f64"
-            | "()"
-            | "void"
-            | "Value"
-            | "JsonValue"
-            | "unknown"
-            | "string"
-            | "number"
-            | "boolean"
+        "PathBuf"
+            | "Path"
+            | "OsString"
+            | "Uuid"
+            | "Url"
+            | "DateTime"
+            | "NaiveDate"
+            | "NaiveDateTime"
+            | "NaiveTime"
+            | "IpAddr"
+            | "Ipv4Addr"
+            | "Ipv6Addr"
+            | "SocketAddr"
     )
+}
+
+fn is_builtin_rust_type(name: &str) -> bool {
+    is_outside_string_type(name)
+        || matches!(
+            name,
+            "String"
+                | "str"
+                | "char"
+                | "bool"
+                | "u8"
+                | "u16"
+                | "u32"
+                | "u64"
+                | "u128"
+                | "usize"
+                | "i8"
+                | "i16"
+                | "i32"
+                | "i64"
+                | "i128"
+                | "isize"
+                | "f32"
+                | "f64"
+                | "()"
+                | "void"
+                | "Value"
+                | "JsonValue"
+                | "unknown"
+                | "string"
+                | "number"
+                | "boolean"
+        )
 }
 
 fn collect_refs_from_type(ty: &str, out: &mut BTreeSet<String>) {
@@ -1290,6 +1342,7 @@ fn rust_to_ts(ty: &str) -> String {
     }
     match base {
         "String" | "str" | "char" => "string".to_string(),
+        name if is_outside_string_type(name) => "string".to_string(),
         "bool" => "boolean".to_string(),
         "u8" | "u16" | "u32" | "u64" | "u128" | "usize" | "i8" | "i16" | "i32" | "i64" | "i128"
         | "isize" | "f32" | "f64" => "number".to_string(),
@@ -1333,8 +1386,41 @@ fn wire_warnings(manifest: &NativeManifest) -> Result<Vec<String>> {
             .collect();
         (!names.is_empty()).then(|| names.join(", "))
     };
+    let wide = |fields: &[StructField]| {
+        fields
+            .iter()
+            .filter(|f| is_wide_integer(&f.ty))
+            .map(|f| format!("`{}`", f.name))
+            .collect::<Vec<_>>()
+    };
     let mut out = Vec::new();
     for name in collect_and_validate_types(manifest)?.into_keys() {
+        let wide_fields = match (manifest.structs.get(&name), manifest.enums.get(&name)) {
+            (Some(def), _) => match &def.kind {
+                StructDefKind::Named(fields) => Some((&def.loc, wide(fields))),
+                _ => None,
+            },
+            (None, Some(def)) => Some((
+                &def.loc,
+                def.variants
+                    .iter()
+                    .flat_map(|v| match &v.payload {
+                        VariantPayload::Struct(fields) => wide(fields),
+                        _ => Vec::new(),
+                    })
+                    .collect(),
+            )),
+            _ => None,
+        };
+        if let Some((loc, fields)) = wide_fields
+            && !fields.is_empty()
+        {
+            out.push(format!(
+                "{}: `{name}` sends {} to JS as a number, which is exact only up to 2^53; use a narrower integer or a String if values can be larger",
+                loc.display(),
+                fields.join(", ")
+            ));
+        }
         if let Some(def) = manifest.structs.get(&name)
             && let StructDefKind::Named(fields) = &def.kind
             && let Some(names) = snake(fields)
@@ -1363,6 +1449,14 @@ fn wire_warnings(manifest: &NativeManifest) -> Result<Vec<String>> {
         }
     }
     Ok(out)
+}
+
+/// A 64-bit or wider integer, bare or in `Option`/`Vec`.
+fn is_wide_integer(ty: &str) -> bool {
+    let ty = ty.replace(' ', "");
+    ["u64", "i64", "u128", "i128"]
+        .iter()
+        .any(|wide| ty == *wide || ty.ends_with(&format!("<{wide}>")))
 }
 
 fn render(manifest: &NativeManifest, output_kind: OutputKind) -> Result<String> {
@@ -1425,6 +1519,40 @@ fn registry_cfgs(manifest: &NativeManifest, route: &NativeRoute) -> Result<Vec<S
     }
     out.extend(route.cfgs.iter().cloned());
     Ok(out)
+}
+
+/// The routes with every `#[cfg]` that gates them, their modules' included.
+fn gated_routes(manifest: &NativeManifest) -> Result<Vec<NativeRoute>> {
+    manifest
+        .routes
+        .iter()
+        .map(|route| {
+            let mut route = route.clone();
+            route.cfgs = registry_cfgs(manifest, &route)?;
+            Ok(route)
+        })
+        .collect()
+}
+
+/// A TS doc line for a route that only some builds register.
+fn cfg_doc(route: &NativeRoute, pad: &str) -> String {
+    if route.cfgs.is_empty() {
+        return String::new();
+    }
+    let conditions: Vec<&str> = route
+        .cfgs
+        .iter()
+        .map(|cfg| {
+            cfg.trim()
+                .trim_start_matches("# [cfg (")
+                .trim_end_matches(")]")
+                .trim()
+        })
+        .collect();
+    format!(
+        "{pad}/** Only where `cfg({})`; elsewhere the call fails with `E_NOT_FOUND`. */\n",
+        conditions.join(") and cfg(")
+    )
 }
 
 fn render_dto_types(manifest: &NativeManifest, used_types: &BTreeMap<String, Dir>) -> String {
@@ -1843,7 +1971,7 @@ fn render_logic_ts(manifest: &NativeManifest) -> Result<String> {
     out.push_str(&render_native_error_guard(manifest));
     out.push('\n');
 
-    let tree = RouteNode::build(&manifest.routes)?;
+    let tree = RouteNode::build(&gated_routes(manifest)?)?;
     out.push_str("export function createNative(pageId?: string) {\n  return ");
     out.push_str(&tree.render(2, RenderTarget::Logic));
     out.push_str(";\n}\n\n");
@@ -1871,7 +1999,7 @@ fn render_view_ts(manifest: &NativeManifest) -> Result<String> {
     out.push_str(&render_native_error_guard(manifest));
     out.push('\n');
 
-    let tree = RouteNode::build(&manifest.routes)?;
+    let tree = RouteNode::build(&gated_routes(manifest)?)?;
     out.push_str("export const native = ");
     out.push_str(&tree.render(0, RenderTarget::View));
     out.push_str(";\n");
@@ -2101,6 +2229,9 @@ impl RouteNode {
         let child_pad = " ".repeat(indent + 2);
         let mut out = String::from("{\n");
         for (name, child) in &self.children {
+            if let Some(route) = &child.route {
+                out.push_str(&cfg_doc(route, &child_pad));
+            }
             out.push_str(&format!(
                 "{child_pad}{}: {},\n",
                 safe_ts_property(name),
@@ -3073,6 +3204,115 @@ mod tests {
         );
         assert!(
             generated.contains("::lingxia::host::register_host_entry(crate::close_device_host())")
+        );
+    }
+
+    #[test]
+    fn test_only_code_never_reaches_a_client() {
+        let manifest = scan_source(
+            r#"
+            #[derive(serde::Serialize)]
+            pub struct Note { title: String }
+
+            #[lingxia::native("notes.get")]
+            pub fn get() -> lingxia::Result<Note> { todo!() }
+
+            #[cfg(test)]
+            mod tests {
+                struct Note { id: u32, body: Vec<u8> }
+
+                #[lingxia::native("notes.fixture")]
+                fn fixture() -> lingxia::Result<Note> { todo!() }
+            }
+
+            #[cfg(test)]
+            #[lingxia::native("notes.probe")]
+            fn probe() -> lingxia::Result<()> { todo!() }
+        "#,
+        );
+        let routes: Vec<_> = manifest.routes.iter().map(|r| r.route.as_str()).collect();
+        assert_eq!(routes, ["notes.get"]);
+        let logic = render(&manifest, OutputKind::LogicTypeScript).unwrap();
+        assert!(logic.contains("title: string;"), "{logic}");
+    }
+
+    #[test]
+    fn outside_string_types_and_wide_integers() {
+        let manifest = scan_source(
+            r#"
+            use chrono::{DateTime, Utc};
+            #[derive(serde::Serialize)]
+            #[serde(rename_all = "camelCase")]
+            pub struct Upload {
+                id: uuid::Uuid,
+                path: std::path::PathBuf,
+                at: DateTime<Utc>,
+                source: Option<url::Url>,
+                bytes: u64,
+                chunks: Vec<i64>,
+                count: u32,
+            }
+
+            #[lingxia::native("files.upload")]
+            pub fn upload() -> lingxia::Result<Upload> { todo!() }
+        "#,
+        );
+        let logic = render(&manifest, OutputKind::LogicTypeScript).unwrap();
+        for field in [
+            "id: string;",
+            "path: string;",
+            "at: string;",
+            "source: string | null;",
+        ] {
+            assert!(logic.contains(field), "{field}: {logic}");
+        }
+        let warnings = wire_warnings(&manifest).unwrap();
+        assert_eq!(warnings.len(), 1, "{warnings:?}");
+        assert!(warnings[0].contains("`bytes`, `chunks`"), "{warnings:?}");
+        assert!(warnings[0].contains("2^53"), "{warnings:?}");
+    }
+
+    #[test]
+    fn a_cfg_gated_route_says_where_it_exists() {
+        let manifest = scan_source(
+            r#"
+            #[cfg(target_os = "android")]
+            #[lingxia::native("device.vibrate")]
+            pub fn vibrate() -> lingxia::Result<()> { todo!() }
+
+            #[lingxia::native("device.name")]
+            pub fn name() -> String { todo!() }
+        "#,
+        );
+        let logic = render(&manifest, OutputKind::LogicTypeScript).unwrap();
+        assert!(
+            logic.contains("/** Only where `cfg(target_os = \"android\")`; elsewhere the call fails with `E_NOT_FOUND`. */\n      vibrate:"),
+            "{logic}"
+        );
+        assert!(logic.contains("name: (): Promise<string>"), "{logic}");
+        assert!(!logic.contains("Only where `cfg(target_os = \"android\")`; elsewhere the call fails with `E_NOT_FOUND`. */\n      name"), "{logic}");
+    }
+
+    #[test]
+    fn a_route_declared_twice_names_both_places() {
+        let root = std::env::temp_dir().join(format!("lingxia-native-dup-{}", std::process::id()));
+        let src = root.join("src");
+        fs::create_dir_all(&src).unwrap();
+        fs::write(
+            src.join("lib.rs"),
+            "mod a;\n#[lingxia::native(\"notes.get\")]\npub fn get() -> String { todo!() }\n",
+        )
+        .unwrap();
+        fs::write(
+            src.join("a.rs"),
+            "\n#[lingxia::native(\"notes.get\")]\npub fn other() -> String { todo!() }\n",
+        )
+        .unwrap();
+        let err = scan(&src).unwrap_err().to_string();
+        let _ = fs::remove_dir_all(&root);
+        assert!(
+            err.contains("`notes.get` is declared twice, at a.rs:3 and lib.rs:3"),
+            "{err}"
         );
     }
 }
