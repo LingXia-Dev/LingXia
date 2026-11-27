@@ -32,6 +32,9 @@ public final class GpuOverlays {
     /** Window {@code window} can show no overlay: what it holds settles. */
     private static native void closed(long window);
     private static native void run(long task);
+    /** The app went to the background or memory runs low: kept overlays close. */
+    private static native void release();
+    private static boolean watchingMemory;
 
     private GpuOverlays() {}
 
@@ -50,6 +53,27 @@ public final class GpuOverlays {
             OVERLAYS.put(token, overlay);
             overlay.attach(activity);
             opened(token);
+            watchMemory(activity);
+        });
+    }
+
+    /** Hide overlay {@code token}, keeping its window and surface for {@link #show}. */
+    public static void hide(long token) {
+        MAIN.post(() -> { Overlay overlay = OVERLAYS.get(token); if (overlay != null) overlay.hide(true); });
+    }
+
+    public static void show(long token) {
+        MAIN.post(() -> { Overlay overlay = OVERLAYS.get(token); if (overlay != null) overlay.hide(false); });
+    }
+
+    /** UI_HIDDEN is the whole app leaving the screen; an activity's onStop is also a page push. */
+    private static void watchMemory(Activity activity) {
+        if (watchingMemory) return;
+        watchingMemory = true;
+        activity.getApplicationContext().registerComponentCallbacks(new android.content.ComponentCallbacks2() {
+            @Override public void onTrimMemory(int level) { release(); }
+            @Override public void onLowMemory() { release(); }
+            @Override public void onConfigurationChanged(android.content.res.Configuration configuration) { }
         });
     }
 
@@ -102,7 +126,11 @@ public final class GpuOverlays {
         final GpuView page;
         final Root root;
         Activity host;
+        /** Added to the host's window manager; attachment to the window follows a traversal later. */
+        boolean added;
         boolean blocking, focused;
+        /** Kept for the next item: transparent and paused, its surface retained. */
+        boolean hidden;
         /** The view that had focus before a dialog took it. */
         View previous;
         /** The activity content a dialog hides from accessibility, as any modal does, and its prior setting. */
@@ -127,7 +155,7 @@ public final class GpuOverlays {
         }
 
         void attach(Activity activity) {
-            if (host == activity && root.isAttachedToWindow()) return;
+            if (host == activity && added) return;
             IBinder token = activity.getWindow().getDecorView().getWindowToken();
             if (token == null) {
                 // Its window is not up yet: attach once it is.
@@ -137,8 +165,17 @@ public final class GpuOverlays {
             detach();
             host = activity;
             activity.getWindowManager().addView(root, params(token));
+            added = true;
             if (blocking) silence(activity);
-            page.resume();
+            if (!hidden) page.resume();
+        }
+
+        void hide(boolean hide) {
+            if (hidden == hide) return;
+            hidden = hide;
+            if (hide) { focus(false); block(false); page.pause(); }
+            relayout();
+            if (!hide && host != null) page.resume();
         }
 
         void detach() {
@@ -146,7 +183,8 @@ public final class GpuOverlays {
             if (focused) focus(false);
             silence(null);
             page.pause();
-            if (root.isAttachedToWindow()) host.getWindowManager().removeViewImmediate(root);
+            if (added) host.getWindowManager().removeViewImmediate(root);
+            added = false;
             host = null;
         }
 
@@ -156,6 +194,8 @@ public final class GpuOverlays {
                 WindowManager.LayoutParams.TYPE_APPLICATION_PANEL, flags(), PixelFormat.TRANSLUCENT);
             params.token = token;
             params.setTitle("LingXia overlay");
+            // The window's layer, and the page's surface under it, stay but compose to nothing.
+            params.alpha = hidden ? 0f : 1f;
             params.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING;
             if (Build.VERSION.SDK_INT >= 28)
                 params.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
@@ -172,9 +212,10 @@ public final class GpuOverlays {
         }
 
         void relayout() {
-            if (host == null || !root.isAttachedToWindow()) return;
+            if (host == null || !added) return;
             WindowManager.LayoutParams params = (WindowManager.LayoutParams) root.getLayoutParams();
             params.flags = flags();
+            params.alpha = hidden ? 0f : 1f;
             host.getWindowManager().updateViewLayout(root, params);
         }
 

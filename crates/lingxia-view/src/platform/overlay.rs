@@ -55,6 +55,13 @@ pub trait OverlaySurface: Send + Sync {
     fn automation(&self, request: serde_json::Value, reply: OverlayAutomationReply);
     /// A runtime environment push, as a page takes one (`{"kind": "contrast", …}`).
     fn update_environment(&self, update: serde_json::Value);
+    /// Hide the overlay but keep its window, surface and page for the next [`Self::show`]: a
+    /// new window costs the system a surface. False where the host cannot; it is dropped then.
+    fn keep_hidden(&self) -> bool {
+        false
+    }
+    /// Show an overlay [`Self::keep_hidden`] kept.
+    fn show(&self) {}
 }
 
 /// Answers one overlay automation request.

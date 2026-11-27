@@ -1,5 +1,6 @@
 //! The window feedback layer: `lx.ui.toast` and its dialogs, one GPU View page per window on the
-//! platform's window overlay surface. It opens with the first item and closes after the last.
+//! platform's window overlay surface. It opens with the first item and hides after the last,
+//! kept for the next until the app goes to the background or memory runs low.
 // Each platform installs it as it gains the overlay surface.
 #![allow(dead_code)]
 #[cfg(target_os = "android")]
@@ -100,6 +101,10 @@ struct Layer {
     /// The lxapp whose accent the page has, and the theme push's revision.
     accent: Option<String>,
     theme_revision: u64,
+    /// Kept by the host while empty; shown again by the next item.
+    hidden: bool,
+    /// Released while it showed: it closes, not hides, once empty.
+    release_when_idle: bool,
 }
 
 /// Surface calls collected under the lock and made after it.
@@ -185,7 +190,10 @@ impl Feedback {
         appid: &str,
     ) -> Option<Arc<dyn lingxia_automation::gpu::GpuPageAutomation>> {
         let window = self.overlays.window_of(Some(appid))?;
-        let surface = self.windows.lock().unwrap().get(&window)?.surface.clone()?;
+        let surface = (self.windows.lock().unwrap().get(&window))
+            .filter(|layer| !layer.hidden)?
+            .surface
+            .clone()?;
         Some(Arc::new(crate::gpu_page::automation::GpuAutomation {
             native: Arc::downgrade(&surface),
         }))
@@ -210,6 +218,22 @@ impl Feedback {
         for surface in surfaces {
             surface.update_environment(contrast());
         }
+    }
+
+    /// The app went to the background or memory runs low: kept layers close now, showing ones
+    /// once they empty. The next item pays for a new surface.
+    pub(crate) fn release(&self) {
+        let mut windows = self.windows.lock().unwrap();
+        let idle: Vec<WindowId> = (windows.iter_mut())
+            .filter_map(|(window, layer)| {
+                layer.release_when_idle = true;
+                layer.model.is_empty().then_some(*window)
+            })
+            .collect();
+        let released: Vec<Layer> = idle.iter().filter_map(|w| windows.remove(w)).collect();
+        // Surfaces drop after the lock: dropping one closes its overlay.
+        drop(windows);
+        drop(released);
     }
 
     pub(crate) fn window_closed(&self, window: WindowId) {
@@ -262,6 +286,10 @@ impl Feedback {
         let Some(value) = change(&mut layer.model) else {
             return Ok(None);
         };
+        let shown = layer.hidden && !layer.model.is_empty();
+        if shown {
+            layer.hidden = false;
+        }
         let calls = self.sync(window, layer);
         // The item in front draws in its lxapp's accent; an empty layer keeps it for the exit.
         let accent = match layer.model.front_appid() {
@@ -274,6 +302,9 @@ impl Feedback {
         };
         let surface = layer.surface.clone();
         drop(windows);
+        if let (true, Some(surface)) = (shown, &surface) {
+            surface.show();
+        }
         // The theme file is read outside the lock, and pushed before the state that shows it.
         if let (Some((appid, revision)), Some(surface)) = (accent, &surface) {
             let pack = accent_pack((self.themes)(&appid).as_deref());
@@ -315,15 +346,22 @@ impl Feedback {
 
     fn close_if_idle(&self, window: WindowId, generation: u64) {
         let mut windows = self.windows.lock().unwrap();
-        let idle = windows
-            .get(&window)
-            .is_some_and(|layer| layer.generation == generation && layer.model.is_empty());
-        if idle {
-            // The surface drops after the lock: dropping it closes the overlay.
-            let layer = windows.remove(&window);
-            drop(windows);
-            drop(layer);
+        let Some(layer) = windows.get_mut(&window) else {
+            return;
+        };
+        if layer.generation != generation || !layer.model.is_empty() || layer.hidden {
+            return;
         }
+        let kept = !layer.release_when_idle
+            && layer.surface.as_ref().is_some_and(|surface| surface.keep_hidden());
+        if kept {
+            layer.hidden = true;
+            return;
+        }
+        // The surface drops after the lock: dropping it closes the overlay.
+        let layer = windows.remove(&window);
+        drop(windows);
+        drop(layer);
     }
 
     fn on_page_messages(&self, window: WindowId, messages: Vec<ToLogic>) {

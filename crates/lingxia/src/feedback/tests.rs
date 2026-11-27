@@ -18,6 +18,9 @@ struct Surface {
     focus: Mutex<Vec<bool>>,
     replies: Mutex<Vec<(String, bool)>>,
     environment: Mutex<Vec<Value>>,
+    /// The host keeps a hidden overlay; `shown` records each hide (false) and show (true).
+    keeps: bool,
+    shown: Mutex<Vec<bool>>,
 }
 
 /// Dropping the boxed surface is the platform closing it.
@@ -58,6 +61,15 @@ impl OverlaySurface for Handle {
     ) {
         reply(Ok(serde_json::json!({ "asked": request })));
     }
+    fn keep_hidden(&self) -> bool {
+        if self.0.keeps {
+            self.0.shown.lock().unwrap().push(false);
+        }
+        self.0.keeps
+    }
+    fn show(&self) {
+        self.0.shown.lock().unwrap().push(true);
+    }
 }
 
 #[derive(Default)]
@@ -67,6 +79,7 @@ struct Overlays {
     opened: Mutex<Vec<(WindowId, Arc<Surface>, OverlayLogic)>>,
     closed: Arc<Mutex<u32>>,
     timers: Mutex<Vec<(Duration, Task)>>,
+    keeps: bool,
 }
 
 impl WindowOverlays for Overlays {
@@ -85,7 +98,10 @@ impl WindowOverlays for Overlays {
         logic: OverlayLogic,
     ) -> Result<Box<dyn OverlaySurface>, String> {
         assert!(std::ptr::eq(module, PAGE));
-        let surface = Arc::new(Surface::default());
+        let surface = Arc::new(Surface {
+            keeps: self.keeps,
+            ..Surface::default()
+        });
         self.opened
             .lock()
             .unwrap()
@@ -104,7 +120,17 @@ struct Fixture {
 
 impl Fixture {
     fn new() -> Self {
-        let overlays = Arc::new(Overlays::default());
+        Self::on(Overlays::default())
+    }
+    /// A host that keeps a hidden overlay for the next item.
+    fn keeping() -> Self {
+        Self::on(Overlays {
+            keeps: true,
+            ..Overlays::default()
+        })
+    }
+    fn on(overlays: Overlays) -> Self {
+        let overlays = Arc::new(overlays);
         let feedback = Feedback::with_themes(overlays.clone(), themes);
         Self { overlays, feedback }
     }
@@ -603,4 +629,59 @@ fn the_built_page_draws_a_dialog_and_answers_its_buttons() {
         _ => None,
     });
     assert_eq!(answer, Some(json!({"key": 7, "choice": "confirm"})));
+}
+
+#[test]
+fn an_emptied_layer_hides_and_the_next_item_shows_it_again_without_a_new_surface() {
+    let f = Fixture::keeping();
+    f.feedback.toast("app.a", toast("Saved", Some(1500))).unwrap();
+    f.fire(Duration::from_millis(1500));
+    f.fire(CLOSE_AFTER);
+    assert_eq!((f.opened(), f.closed()), (1, 0), "kept, not closed");
+    assert_eq!(*f.surface(0).shown.lock().unwrap(), [false]);
+    #[cfg(feature = "automation")]
+    assert!(f.feedback.automation("app.a").is_none(), "a hidden layer is not open");
+
+    f.feedback.toast("app.a", toast("Again", None)).unwrap();
+    assert_eq!(f.opened(), 1, "the kept surface shows it");
+    assert_eq!(*f.surface(0).shown.lock().unwrap(), [false, true]);
+    assert_eq!(f.data(0)["toast"]["title"], "Again");
+}
+
+#[test]
+fn release_closes_a_kept_layer_and_the_next_item_opens_a_new_one() {
+    let f = Fixture::keeping();
+    f.feedback.toast("app.a", toast("Saved", Some(1500))).unwrap();
+    f.fire(Duration::from_millis(1500));
+    f.fire(CLOSE_AFTER);
+    f.feedback.release();
+    assert_eq!(f.closed(), 1);
+
+    f.feedback.toast("app.a", toast("Again", None)).unwrap();
+    assert_eq!(f.opened(), 2);
+}
+
+#[test]
+fn a_layer_released_while_it_shows_closes_once_it_empties() {
+    let f = Fixture::keeping();
+    f.feedback.toast("app.a", toast("Saved", Some(1500))).unwrap();
+    f.feedback.release();
+    assert_eq!(f.closed(), 0, "the toast stays for its time");
+    f.fire(Duration::from_millis(1500));
+    f.fire(CLOSE_AFTER);
+    assert_eq!(f.closed(), 1, "closed, not kept");
+    assert!(f.surface(0).shown.lock().unwrap().is_empty());
+}
+
+#[test]
+fn a_hidden_layer_stays_hidden_through_changes_that_add_nothing() {
+    let f = Fixture::keeping();
+    f.feedback.toast("app.a", toast("Saved", Some(1500))).unwrap();
+    f.fire(Duration::from_millis(1500));
+    f.fire(CLOSE_AFTER);
+    f.feedback.hide_toast("app.a");
+    f.feedback.dismiss("app.a");
+    f.fire(CLOSE_AFTER);
+    assert_eq!(*f.surface(0).shown.lock().unwrap(), [false]);
+    assert_eq!(f.closed(), 0);
 }

@@ -233,6 +233,9 @@ below the system viewers, with an input pass-through/block toggle and a focus
 toggle. The overlay knows nothing of its page; Rust is that page's Logic. The
 window feedback layer (`lx.ui.toast` and its dialogs, `lingxia::feedback`) is
 its user; its page is built by `node crates/lingxia/feedback/build.mjs`.
+Budget: the first feedback of a session is visible within 200 ms of the Logic
+call; every later one takes at most one frame and creates no window. So a closed
+layer is hidden, not destroyed, and released on background or memory pressure.
 An overlay's frames are see-through (`DisplayList::set_see_through`): no frame
 fill, a surface that composites with alpha, and no kept opaque bases.
 

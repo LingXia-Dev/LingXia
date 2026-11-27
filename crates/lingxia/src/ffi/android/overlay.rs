@@ -73,6 +73,7 @@ pub(super) fn initialize(env: &mut Env) -> Result<(), jni::errors::Error> {
                 method!("opened", "(J)V", opened),
                 method!("closed", "(J)V", closed),
                 method!("run", "(J)V", run),
+                method!("release", "()V", release),
             ],
         )?;
     }
@@ -228,6 +229,15 @@ impl OverlaySurface for AndroidSurface {
         }
     }
 
+    fn keep_hidden(&self) -> bool {
+        call(jni_str!("hide"), self.token, None);
+        true
+    }
+
+    fn show(&self) {
+        call(jni_str!("show"), self.token, None);
+    }
+
     fn automation(&self, request: serde_json::Value, reply: OverlayAutomationReply) {
         let id = super::gpu_page::keep_reply(reply);
         let sent = CLASS
@@ -289,6 +299,13 @@ extern "system" fn opened(_: EnvUnowned<'_>, _: JClass<'_>, token: i64) {
 extern "system" fn closed(_: EnvUnowned<'_>, _: JClass<'_>, window: i64) {
     if let Some(feedback) = FEEDBACK.get() {
         feedback.window_closed(WindowId(window as u64));
+    }
+}
+
+/// Main thread: the app went to the background or memory runs low.
+extern "system" fn release(_: EnvUnowned<'_>, _: JClass<'_>) {
+    if let Some(feedback) = FEEDBACK.get() {
+        feedback.release();
     }
 }
 
