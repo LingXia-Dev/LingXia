@@ -37,7 +37,7 @@ export const doc: ComponentDoc = {
     contrast: [
       { what: 'icons and time', pair: ['on-media', 'media'], minimum: '4.5:1' },
       { what: 'progress line', pair: ['on-media', 'media'], minimum: '3:1' },
-      { what: 'progress against the unplayed track', pair: ['on-media', 'on-media/25'], over: 'media', minimum: '3:1' },
+      { what: 'progress against the unplayed track', pair: ['on-media', 'on-media/20'], over: 'media', minimum: '3:1' },
       { what: 'chosen speed or quality', pair: ['media', 'on-media'], minimum: '4.5:1' },
       { what: 'speed or quality under the picture', pair: ['text', 'text/8'], over: 'surface', minimum: '4.5:1' },
       { what: 'chosen speed or quality under the picture', pair: ['on-accent-solid', 'accent-solid'], minimum: '4.5:1' },

@@ -496,6 +496,26 @@ fn at_contrast(h: f64, c: f64, ratio: f64, surface: Rgba, dark: bool) -> Rgba {
     .rgba(255)
 }
 
+/// `color` moved in OKLCH lightness toward `end`, as little as `passes` allows, or all the way
+/// when nothing short of it passes. Alpha is kept.
+fn away(color: Rgba, end: f64, passes: impl Fn(Rgba) -> bool) -> Rgba {
+    let tone = color.oklch();
+    let at = |l: f64| Oklch { l, ..tone }.rgba(color.0[3]);
+    if !passes(at(end)) {
+        return at(end);
+    }
+    let (mut near, mut far) = (tone.l, end);
+    for _ in 0..40 {
+        let mid = (near + far) / 2.0;
+        if passes(at(mid)) {
+            far = mid;
+        } else {
+            near = mid;
+        }
+    }
+    at(far)
+}
+
 /// One palette being filled in. `written` marks what the pack set; `strong` builds against the
 /// high-contrast thresholds; `movable` lets a status colour move to carry its text.
 pub(crate) struct Build<'a> {
@@ -541,6 +561,8 @@ impl Build<'_> {
         for [status, on, soft, mark] in STATUSES {
             self.family(status, on, soft, mark, tint, self.movable);
         }
+        // Before the solids, info and the knob are taken from the colours it moves.
+        self.text_on_tints();
         match self.light_seed(seed) {
             Some(ink) => {
                 self.put(Role::AccentSolid, seed);
@@ -570,8 +592,121 @@ impl Build<'_> {
         self.info(seed);
         self.categorical(seed, sides);
         self.neutral_soft();
+        self.late_text_on_tints();
         self.line_on_tints();
         self.surface_lines();
+    }
+
+    /// Under high contrast each text role reads 7:1 on the tints Liuli draws it on: soft fills, the
+    /// sunken well, the overlay and `text/6`/`text/12` washes. The text moves first; a soft fill
+    /// gives way toward its floor only when the text has reached black or white.
+    fn text_on_tints(&mut self) {
+        if !(self.strong && self.movable) {
+            return;
+        }
+        let (washes, text) = (self.washes(), crate::boosted(4.5));
+        let statuses = [Role::SuccessSoft, Role::WarningSoft, Role::DangerSoft];
+        for (role, grounds, washed) in [
+            (
+                Role::TextMuted,
+                &[Role::SurfaceSunken, Role::AccentSoft][..],
+                true,
+            ),
+            (Role::Accent, &statuses[..], true),
+            (Role::Accent, &[Role::SurfaceOverlay][..], false),
+            (
+                Role::Danger,
+                &[Role::DangerSoft, Role::Canvas, Role::Surface][..],
+                false,
+            ),
+            (Role::Success, &[Role::SuccessSoft][..], false),
+        ] {
+            self.hold(
+                role,
+                grounds,
+                if washed { &washes } else { &[] },
+                true,
+                text,
+            );
+        }
+    }
+
+    /// The tints made after the accent family: info's soft fill gives way to the accent on it,
+    /// the chart colours a code block borrows read on its wash, and a strong edge on the well.
+    fn late_text_on_tints(&mut self) {
+        if !(self.strong && self.movable) {
+            return;
+        }
+        let (washes, text) = (self.washes(), crate::boosted(4.5));
+        self.hold(Role::Accent, &[Role::InfoSoft], &[], false, text);
+        for chart in [Role::Chart4, Role::Chart5] {
+            self.hold(chart, &[], &washes, true, text);
+        }
+        self.hold(
+            Role::LineStrong,
+            &[Role::SurfaceSunken],
+            &[],
+            true,
+            crate::boosted(3.0),
+        );
+    }
+
+    /// `text/6` over surface and canvas, and `text/12` over surface.
+    fn washes(&self) -> [Rgba; 3] {
+        let Rgba([r, g, b, _]) = self.get(Role::Text);
+        let wash = |alpha: u8, floor: Role| over(Rgba([r, g, b, alpha]), self.get(floor));
+        [
+            wash(0x0f, Role::Surface),
+            wash(0x0f, Role::Canvas),
+            wash(0x1f, Role::Surface),
+        ]
+    }
+
+    /// Holds `role` `need` off each ground. With `moves`, it goes away from them, as far as black or
+    /// white; a soft ground it still misses then fades toward the surface. A role or a soft fill
+    /// the pack wrote as a derived role stays as written.
+    fn hold(&mut self, role: Role, grounds: &[Role], washes: &[Rgba], moves: bool, need: f64) {
+        let floor = self.get(Role::Surface);
+        let mut all: Vec<Rgba> = grounds
+            .iter()
+            .map(|&ground| over(self.get(ground), floor))
+            .collect();
+        all.extend_from_slice(washes);
+        let passes = |color: Rgba| all.iter().all(|&ground| contrast(color, ground) >= need);
+        let fixed = |me: &Self, role: Role| me.has(role) && role.tier() == crate::Tier::Derived;
+        let color = self.get(role);
+        if passes(color) {
+            return;
+        }
+        if moves && !fixed(self, role) {
+            // A colour with solids keeps room for their hover and pressed steps.
+            let room = if matches!(role, Role::Accent | Role::Danger) {
+                2.0 * SHADE_STEP + 0.01
+            } else {
+                0.0
+            };
+            let end = if self.dark { 1.0 - room } else { room };
+            let toward = if self.dark { 1.0 } else { -1.0 };
+            if (end - color.oklch().l) * toward > 0.0 {
+                self.palette[role as usize] = away(color, end, passes);
+            }
+        }
+        let text = self.get(role);
+        for &ground in grounds {
+            if !SOFT_FILLS.contains(&ground) || fixed(self, ground) {
+                continue;
+            }
+            let fill = self.get(ground);
+            if contrast(text, over(fill, floor)) >= need {
+                continue;
+            }
+            // Lighter in light, darker in dark: the tint fades toward the floor until the text reads.
+            let end = if self.dark { 0.0 } else { 1.0 };
+            let faded = away(fill, end, |candidate| {
+                contrast(text, over(candidate, floor)) >= need
+            });
+            self.palette[ground as usize] = faded;
+        }
     }
 
     /// Under high contrast a separator stands 3:1 off every ground it is drawn on: the floors,
@@ -781,10 +916,12 @@ impl Build<'_> {
             Role::OnDangerSolid
         };
         let (fill, label) = (self.get(solid), self.get(on));
-        let deeper = states(fill, false);
-        if deeper.iter().all(|&shade| contrast(label, shade) >= need) {
-            return deeper;
+        // High contrast steps away from the ink, so a press never lowers it; otherwise a press deepens.
+        let first = states(fill, self.strong && label.oklch().l < 0.5);
+        if first.iter().all(|&shade| contrast(label, shade) >= need) {
+            return first;
         }
+        let deeper = states(fill, false);
         if !self.has(solid) && !self.has(on) && label == WHITE {
             let fill = carrying_white(fill, need.max(SOLID_WHITE));
             self.put(solid, fill);

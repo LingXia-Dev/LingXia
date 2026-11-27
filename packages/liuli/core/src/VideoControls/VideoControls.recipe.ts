@@ -73,7 +73,7 @@ export const videoControlsRecipe = {
     full: 'absolute start-4 end-4 bottom-3 rounded-dialog border border-on-media/20 bg-media px-0.5 pt-4 pb-1',
   },
   scrubber: {
-    base: 'absolute start-3 end-3 px-0 pb-0 track:rounded-full track:bg-on-media/25 secondary:rounded-full secondary:bg-on-media/45 range:rounded-full range:bg-on-media thumb:size-3 thumb:rounded-full thumb:bg-transparent track:h-0.75 secondary:h-0.75 range:h-0.75 active:track:h-1.25 active:secondary:h-1.25 active:range:h-1.25 active:thumb:bg-knob focus-visible:thumb:bg-on-media focus-visible:thumb:ring-2 focus-visible:thumb:ring-focus',
+    base: 'absolute start-3 end-3 px-0 pb-0 track:rounded-full track:bg-on-media/20 secondary:rounded-full secondary:bg-on-media/45 range:rounded-full range:bg-on-media thumb:size-3 thumb:rounded-full thumb:bg-transparent track:h-0.75 secondary:h-0.75 range:h-0.75 active:track:h-1.25 active:secondary:h-1.25 active:range:h-1.25 active:thumb:bg-knob focus-visible:thumb:bg-on-media focus-visible:thumb:ring-2 focus-visible:thumb:ring-focus',
     inline: '-top-7.5 h-11 pt-10',
     full: '-top-8 h-12 pt-11',
   },
