@@ -67,12 +67,12 @@ impl ViewSession {
         let _ = video::install(
             &self.context,
             self.renderer.videos.scope(),
-            self.renderer.videos.orientation_writer(),
+            self.renderer.videos.presentation_writer(),
         );
         let _ = video::install(
             &other.context,
             other.renderer.videos.scope(),
-            other.renderer.videos.orientation_writer(),
+            other.renderer.videos.presentation_writer(),
         );
         self.loud_sent.set(None);
         other.loud_sent.set(None);

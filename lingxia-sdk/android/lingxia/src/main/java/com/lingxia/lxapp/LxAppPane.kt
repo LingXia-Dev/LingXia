@@ -125,9 +125,15 @@ internal class LxAppPane(
             (value as? GpuPage)?.setChromeListener(gpuChromeListener)
             (value as? GpuPage)?.setTopLayerListener(gpuTopLayerListener)
             (value as? GpuPage)?.setChromeSnapshotListener(gpuChromeSnapshotListener)
+            (value as? GpuPage)?.setVideoFullscreenListener(gpuVideoFullscreenListener)
             applyGpuChrome((value as? GpuPage)?.chrome)
             applyGpuTopLayer((value as? GpuPage)?.hasTopLayer() == true)
+            if (isMain) activity.presentVideoFullscreen((value as? GpuPage)?.hasVideoFullscreen() == true)
         }
+
+    internal val gpuVideoFullscreenListener = java.util.function.BiConsumer<GpuPage, Boolean> { page, on ->
+        if (page === currentWebView && isMain) activity.presentVideoFullscreen(on)
+    }
 
     internal val gpuTopLayerListener = java.util.function.BiConsumer<GpuPage, Boolean> { page, modal ->
         if (page === currentWebView) applyGpuTopLayer(modal)

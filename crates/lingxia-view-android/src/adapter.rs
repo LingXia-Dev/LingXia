@@ -136,6 +136,7 @@ pub(super) struct AndroidAdapter {
     reconcile_us: AtomicU64,
     /// A dialog of the top layer is open: the page sits above the host's bars.
     modal: std::sync::atomic::AtomicBool,
+    fullscreen: std::sync::atomic::AtomicBool,
     /// The bar-snapshot generation the last presented frame draws; 0 when none.
     chrome_snapshot: AtomicU64,
     orientation: Mutex<Option<lingxia_view::scene::video::Orientation>>,
@@ -202,6 +203,7 @@ impl AndroidAdapter {
             raster: OnceLock::new(),
             reconcile_us: AtomicU64::new(0),
             modal: Default::default(),
+            fullscreen: Default::default(),
             chrome_snapshot: AtomicU64::new(0),
             orientation: Default::default(),
             see_through: Default::default(),
@@ -816,6 +818,10 @@ impl HostEvents for AndroidAdapter {
         let modal = frame.metrics.top_layer_open;
         if self.modal.swap(modal, Ordering::Relaxed) != modal {
             self.flag(jni_str!("topLayer"), modal);
+        }
+        let fullscreen = frame.metrics.video_fullscreen;
+        if self.fullscreen.swap(fullscreen, Ordering::Relaxed) != fullscreen {
+            self.flag(jni_str!("videoFullscreen"), fullscreen);
         }
         // The host hides a bar only once a frame on screen draws its snapshot.
         let chrome = frame.metrics.chrome_snapshot;

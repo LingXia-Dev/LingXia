@@ -34,6 +34,9 @@ pub struct FrameMetrics {
     /// The window orientation a full-screen video asks for; hosts lock to it while set.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub video_orientation: Option<crate::scene::video::Orientation>,
+    /// A player is shown full screen; hosts give the page the whole window, bars hidden.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub video_fullscreen: bool,
     /// The host lifts the page over its chrome: see [`crate::DisplayList::top_layer_open`].
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub top_layer_open: bool,

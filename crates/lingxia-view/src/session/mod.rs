@@ -385,7 +385,7 @@ impl ViewSession {
         let dev_warnings = crate::engine::DevWarnings::default();
         let renderer = Renderer::default();
         let video_scope = renderer.videos.scope();
-        let video_orientation = renderer.videos.orientation_writer();
+        let video_orientation = renderer.videos.presentation_writer();
         let (initialized, _) = budget.run(module_limit(), module_limit(), || {
             crate::engine::compatibility::install(&context)?;
             crate::engine::install_dev_globals(&context, &dev_warnings)?;

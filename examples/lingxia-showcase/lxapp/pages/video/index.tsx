@@ -1,4 +1,4 @@
-import { t, List, useVideo } from '@lingxia/view';
+import { t, List, useVideo, useView } from '@lingxia/view';
 import { VideoControls } from '@liulidesign/core/VideoControls';
 import '../../theme/index.css';
 import { PUBLIC_STREAM, PUBLIC_VIDEO } from '../../shared/public-video';
@@ -131,8 +131,10 @@ function Stream() {
 }
 
 export function render({ actions }: View) {
+  const { insets, safeArea } = useView().env;
   return (
-    <page>
+    // What the page is given at the top, which full screen takes back from bars: specs measure it.
+    <page data-testid="video-page" data-inset-top={String(insets.top)} data-safe-top={String(safeArea.top)}>
       <List
         items={items}
         getKey={row => row.id}

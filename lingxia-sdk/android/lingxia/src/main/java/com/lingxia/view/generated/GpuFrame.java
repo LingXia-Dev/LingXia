@@ -169,6 +169,8 @@ public final class GpuFrame {
         public ViewPhases viewPhases() { JSONObject o = json.optJSONObject("viewPhases"); return o == null ? null : new ViewPhases(o); }
         /** `videoOrientation`: VideoOrientation? */
         public String videoOrientation() { return json.isNull("videoOrientation") ? null : json.optString("videoOrientation", null); }
+        /** `videoFullscreen`: bool? */
+        public Boolean videoFullscreen() { if (json.isNull("videoFullscreen")) return null; return json.optBoolean("videoFullscreen"); }
         /** `topLayerOpen`: bool? */
         public Boolean topLayerOpen() { if (json.isNull("topLayerOpen")) return null; return json.optBoolean("topLayerOpen"); }
         /** `chromeSnapshot`: u64? */

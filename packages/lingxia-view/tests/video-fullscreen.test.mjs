@@ -52,6 +52,17 @@ test('a page that draws no full screen view gets the bare picture on black, whic
   done();
 });
 
+test('the window turns to the full screen picture: tall turns portrait, square stays free but full screen', () => {
+  const { nodes, report, turns, done } = setup();
+  dispatch(by(nodes(), 'enter').props.onClick);
+  report({ videoWidth: 360, videoHeight: 640 });
+  report({ videoWidth: 500, videoHeight: 500 });
+  assert.equal(escapeOverlay(), true);
+  nodes();
+  assert.deepEqual(turns, ['landscape', 'portrait', 'free', '']);
+  done();
+});
+
 test('a page that draws its own full screen dialog with the player gets no second one', () => {
   const draw = hero => h('dialog', { open: true, closedby: 'closerequest', onClose: () => hero.exitFullscreen(), 'data-testid': 'mine', 'aria-label': 'Hero' },
     h('video', { player: hero }),

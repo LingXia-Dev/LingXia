@@ -136,6 +136,7 @@ public struct GpuFrameFrameMetrics: Decodable, Sendable {
     public let backdropCache: GpuFrameBackdropCacheStats?
     public let viewPhases: GpuFrameViewPhases?
     public let videoOrientation: String?
+    public let videoFullscreen: Bool?
     public let topLayerOpen: Bool?
     public let chromeSnapshot: UInt64?
     public let renderer: String?
@@ -170,6 +171,7 @@ public struct GpuFrameFrameMetrics: Decodable, Sendable {
         case backdropCache = "backdropCache"
         case viewPhases = "viewPhases"
         case videoOrientation = "videoOrientation"
+        case videoFullscreen = "videoFullscreen"
         case topLayerOpen = "topLayerOpen"
         case chromeSnapshot = "chromeSnapshot"
         case renderer = "renderer"

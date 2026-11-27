@@ -22,11 +22,11 @@ export const fullscreenPlayer = () => fullscreenName;
 export function resetVideos() { fullscreenName = null; latest.clear(); syncOrientation(); }
 
 // The window turns to the full-screen picture's shape: landscape until a picture says it is tall,
-// and left be for a square one.
+// and left free for a square one.
 let orientation = '';
 function syncOrientation() {
   const { videoWidth: w = 0, videoHeight: h = 0 } = (fullscreenName !== null && latest.get(fullscreenName)) || {};
-  const next = fullscreenName === null || (w === h && w > 0) ? '' : h > w && w > 0 ? 'portrait' : 'landscape';
+  const next = fullscreenName === null ? '' : w === h && w > 0 ? 'free' : h > w && w > 0 ? 'portrait' : 'landscape';
   if (next === orientation) return;
   orientation = next;
   globalThis.__lingxiaVideoOrientation?.(next);

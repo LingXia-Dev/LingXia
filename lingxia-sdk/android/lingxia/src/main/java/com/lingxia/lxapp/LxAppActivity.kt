@@ -1111,6 +1111,23 @@ class LxAppActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
+    private var videoFullscreenUi: com.lingxia.lxapp.APIs.media.ImmersiveWindowUi.Snapshot? = null
+
+    /** A GPU page's player is full screen: the page takes the whole window, every bar hidden. */
+    internal fun presentVideoFullscreen(on: Boolean) {
+        if (on == (videoFullscreenUi != null)) return
+        if (on) {
+            videoFullscreenUi = com.lingxia.lxapp.APIs.media.ImmersiveWindowUi.capture(window)
+            enterMediaFullscreen()
+            com.lingxia.lxapp.APIs.media.ImmersiveWindowUi.apply(window, keepScreenOn = true)
+        } else {
+            val snapshot = videoFullscreenUi ?: return
+            videoFullscreenUi = null
+            exitMediaFullscreen()
+            com.lingxia.lxapp.APIs.media.ImmersiveWindowUi.restore(window, snapshot)
+        }
+    }
+
     fun enterMediaFullscreen() {
         if (isMediaFullscreen) return
         val navBar = mainPane.navigationBar

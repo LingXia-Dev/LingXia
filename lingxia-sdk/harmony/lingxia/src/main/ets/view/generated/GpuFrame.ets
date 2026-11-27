@@ -173,6 +173,7 @@ export interface GpuFrameFrameMetrics {
   backdropCache?: GpuFrameBackdropCacheStats | null;
   viewPhases?: GpuFrameViewPhases | null;
   videoOrientation?: string | null;
+  videoFullscreen?: boolean | null;
   topLayerOpen?: boolean | null;
   chromeSnapshot?: number | null;
   renderer?: string | null;

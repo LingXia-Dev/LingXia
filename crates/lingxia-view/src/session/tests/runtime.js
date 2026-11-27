@@ -4373,7 +4373,7 @@
   var orientation = "";
   function syncOrientation() {
     const { videoWidth: w = 0, videoHeight: h2 = 0 } = fullscreenName !== null && latest2.get(fullscreenName) || {};
-    const next = fullscreenName === null || w === h2 && w > 0 ? "" : h2 > w && w > 0 ? "portrait" : "landscape";
+    const next = fullscreenName === null ? "" : w === h2 && w > 0 ? "free" : h2 > w && w > 0 ? "portrait" : "landscape";
     if (next === orientation) return;
     orientation = next;
     globalThis.__lingxiaVideoOrientation?.(next);

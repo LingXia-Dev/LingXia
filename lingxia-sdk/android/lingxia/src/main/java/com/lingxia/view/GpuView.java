@@ -124,6 +124,8 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         default void onChrome(Chrome chrome) { }
         /** A top-layer dialog opened or closed; the host lifts the page above its bars meanwhile. */
         default void onTopLayer(boolean modal) { }
+        /** A player went full screen or left it; the host hides its bars meanwhile. */
+        default void onVideoFullscreen(boolean on) { }
         /** A frame on screen draws the bar snapshots up to {@code generation}; 0 when none. */
         default void onChromeSnapshot(long generation) { }
         /** Whether the recovery panel offers Back: the user's back path leaves this page. */
@@ -1107,6 +1109,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         @Override public void clicked() { onMain(() -> { surface.performClick(); }); }
         @Override public void haptic() { onMain(() -> { surface.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS); }); }
         @Override public void topLayer(boolean modal) { onMain(() -> { listener.onTopLayer(modal); }); }
+        @Override public void videoFullscreen(boolean on) { onMain(() -> { if (!destroyed) listener.onVideoFullscreen(on); }); }
         @Override public void chromeSnapshot(long generation) { onMain(() -> { if (!destroyed) listener.onChromeSnapshot(generation); }); }
         @Override public int editText(int index, String text, int start, int end) {
             JSONObject node = surface.node(index);

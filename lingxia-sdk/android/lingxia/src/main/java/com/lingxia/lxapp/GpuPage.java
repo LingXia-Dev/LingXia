@@ -55,6 +55,10 @@ public final class GpuPage extends FrameLayout {
                     topLayer = modal;
                     if (topLayerListener != null) topLayerListener.accept(GpuPage.this, modal);
                 }
+                public void onVideoFullscreen(boolean on) {
+                    videoFullscreen = on;
+                    if (videoFullscreenListener != null) videoFullscreenListener.accept(GpuPage.this, on);
+                }
                 public void onChromeSnapshot(long generation) {
                     if (chromeSnapshotListener != null) chromeSnapshotListener.accept(GpuPage.this, generation);
                 }
@@ -80,6 +84,11 @@ public final class GpuPage extends FrameLayout {
     /** Whoever shows this page lifts it above its bars while a dialog is open. */
     public void setTopLayerListener(java.util.function.BiConsumer<GpuPage, Boolean> listener) { topLayerListener = listener; }
     public boolean hasTopLayer() { return topLayer; }
+    private java.util.function.BiConsumer<GpuPage, Boolean> videoFullscreenListener;
+    private boolean videoFullscreen;
+    /** Whoever shows this page gives it the whole window while a player is full screen. */
+    public void setVideoFullscreenListener(java.util.function.BiConsumer<GpuPage, Boolean> listener) { videoFullscreenListener = listener; }
+    public boolean hasVideoFullscreen() { return videoFullscreen; }
     private java.util.function.BiConsumer<GpuPage, Long> chromeSnapshotListener;
     /** Whoever shows this page hears which bar snapshots a frame on screen draws. */
     public void setChromeSnapshotListener(java.util.function.BiConsumer<GpuPage, Long> listener) { chromeSnapshotListener = listener; }

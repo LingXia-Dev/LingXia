@@ -314,11 +314,32 @@ impl Orientation {
         }
     }
 
-    pub(crate) fn parse(text: &str) -> Option<Option<Self>> {
+}
+
+/// What the full-screen layer asks of the window.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Presentation {
+    Inline,
+    /// Full screen, the window locked to the picture's shape, or left free for a square one.
+    Fullscreen(Option<Orientation>),
+}
+
+impl Presentation {
+    // 0 inline, 1 and 2 an orientation, 3 full screen with none.
+    fn code(self) -> u8 {
+        match self {
+            Self::Inline => 0,
+            Self::Fullscreen(None) => 3,
+            Self::Fullscreen(orientation) => Orientation::code(orientation),
+        }
+    }
+
+    pub(crate) fn parse(text: &str) -> Option<Self> {
         match text {
-            "" => Some(None),
-            "landscape" => Some(Some(Self::Landscape)),
-            "portrait" => Some(Some(Self::Portrait)),
+            "" => Some(Self::Inline),
+            "free" => Some(Self::Fullscreen(None)),
+            "landscape" => Some(Self::Fullscreen(Some(Orientation::Landscape))),
+            "portrait" => Some(Self::Fullscreen(Some(Orientation::Portrait))),
             _ => None,
         }
     }
@@ -331,7 +352,8 @@ pub(crate) struct Sources {
     scope: u64,
     resolver: Option<VideoResolver>,
     resolved: HashMap<String, Result<String, VideoError>>,
-    /// Written by the runtime's full-screen layer, read into each frame's metrics.
+    /// Written by the runtime's full-screen layer as a [`Presentation`] code, read into each
+    /// frame's metrics.
     orientation: Arc<AtomicU8>,
 }
 
@@ -364,10 +386,15 @@ impl Sources {
         Orientation::from_code(self.orientation.load(Ordering::Relaxed))
     }
 
-    /// Sets what [`Self::orientation`] reads; the runtime's global holds one.
-    pub(crate) fn orientation_writer(&self) -> impl Fn(Option<Orientation>) + 'static {
+    /// Whether a player is shown full screen.
+    pub(crate) fn fullscreen(&self) -> bool {
+        self.orientation.load(Ordering::Relaxed) != 0
+    }
+
+    /// Sets what [`Self::orientation`] and [`Self::fullscreen`] read; the runtime's global holds one.
+    pub(crate) fn presentation_writer(&self) -> impl Fn(Presentation) + 'static {
         let cell = self.orientation.clone();
-        move |orientation| cell.store(Orientation::code(orientation), Ordering::Relaxed)
+        move |presentation| cell.store(presentation.code(), Ordering::Relaxed)
     }
 
     /// The renderer's key for the page's player named `player` (`name:…` or `el:…`).
