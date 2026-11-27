@@ -81,21 +81,56 @@ fn closing_bracket(body: &str) -> Option<usize> {
     None
 }
 
-/// Drops the backslash of each `\"`, `\'` and `\\` in one pass, so `\\"` stays a backslash
-/// then a quote.
+/// A quoted CSS value's escapes: `\` then 1-6 hex digits (and one optional whitespace) is that
+/// code point, `\` then a newline is nothing, `\` then anything else is that character. Test
+/// clients escape with `CSS.escape`, so a space arrives as `\ ` and a leading digit as `\31 `.
 fn unescape(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
-    let mut chars = value.chars();
+    let mut chars = value.chars().peekable();
     while let Some(c) = chars.next() {
-        match (c, chars.clone().next()) {
-            ('\\', Some(next @ ('"' | '\'' | '\\'))) => {
-                out.push(next);
-                chars.next();
-            }
-            _ => out.push(c),
+        if c != '\\' {
+            out.push(c);
+            continue;
         }
+        let mut hex = String::new();
+        while hex.len() < 6
+            && let Some(digit) = chars.peek().filter(|d| d.is_ascii_hexdigit())
+        {
+            hex.push(*digit);
+            chars.next();
+        }
+        if hex.is_empty() {
+            match chars.next() {
+                Some('\n') | None => {}
+                Some(next) => out.push(next),
+            }
+            continue;
+        }
+        if chars.peek().is_some_and(|w| matches!(w, ' ' | '\t' | '\n')) {
+            chars.next();
+        }
+        let code = u32::from_str_radix(&hex, 16).unwrap_or(0xFFFD);
+        out.push(
+            char::from_u32(code)
+                .filter(|c| *c != '\0')
+                .unwrap_or('\u{FFFD}'),
+        );
     }
     out
+}
+
+/// The test id a lone `[data-testid="…"]` selector names, unescaped as a query reads it.
+pub(crate) fn test_id_selector(css: &str) -> Option<String> {
+    let mut parts = parse(css).ok()?;
+    let mut chain = (parts.len() == 1).then(|| parts.pop())??;
+    let mut simple = (chain.len() == 1).then(|| chain.pop())??;
+    if simple.tag.is_some() || simple.attributes.len() != 1 {
+        return None;
+    }
+    match simple.attributes.pop()? {
+        (name, Some(value)) if name == "data-testid" => Some(value),
+        _ => None,
+    }
 }
 
 /// `data-testid` and the authored `data-*` props.
@@ -788,6 +823,22 @@ mod tests {
                 .as_deref(),
             Some("save \"now\"")
         );
+        // `CSS.escape` forms: an escaped space, a leading digit as hex, an escaped backslash.
+        for (selector, id) in [
+            (r#"[data-testid="row\ 1"]"#, "row 1"),
+            (r#"[data-testid="\31 st"]"#, "1st"),
+            (r#"[data-testid="a\\b"]"#, "a\\b"),
+            (r#"[data-testid="caf\e9"]"#, "café"),
+        ] {
+            assert_eq!(
+                parse(selector).unwrap()[0][0].attributes[0].1.as_deref(),
+                Some(id),
+                "{selector}"
+            );
+            assert_eq!(test_id_selector(selector).as_deref(), Some(id));
+        }
+        assert_eq!(test_id_selector(r#"[data-testid="x"] a"#), None);
+        assert_eq!(test_id_selector(r#"[role="tab"]"#), None);
         assert_eq!(
             parse("input[type=\"text\"]").unwrap()[0][0].tag.as_deref(),
             Some("input")

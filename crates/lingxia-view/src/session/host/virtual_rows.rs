@@ -24,19 +24,11 @@ impl Probe {
     }
 }
 
-fn test_id(css: &str) -> Option<String> {
-    let inner = css
-        .trim()
-        .strip_prefix("[data-testid=\"")?
-        .strip_suffix("\"]")?;
-    (!inner.contains(['"', '\\'])).then(|| inner.to_owned())
-}
-
 impl<A: PlatformAdapter> Inner<A> {
     /// The off-screen row a testId selector names on the presented frame, as its list's
     /// scroll id and offset; a first miss starts a probe and answers `None`.
     pub(super) fn virtual_row(self: &Arc<Self>, css: &str) -> Option<(String, f32)> {
-        let test_id = test_id(css)?;
+        let test_id = crate::semantics::query::test_id_selector(css)?;
         let commit = {
             let mut main = self.main();
             let commit = main.interaction.frame()?.commit;
