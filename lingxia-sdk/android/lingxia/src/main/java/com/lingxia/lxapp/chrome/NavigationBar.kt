@@ -273,21 +273,29 @@ internal class NavigationBar @JvmOverloads constructor(
      * @param backgroundColor The background color (e.g., Color.parseColor("#ffffff")).
      * @param frontColor The color for text and icons (e.g., Color.parseColor("#000000")).
      */
-    /** Background and content colours a GPU page's theme gives the bar, over the page config's. */
-    private var theme: Pair<Int, Int>? = null
+    /** Colours a GPU page's theme gives the bar, over the page config's. */
+    internal data class Theme(val background: Int, val content: Int, val line: Int)
+    private var theme: Theme? = null
     private var rawColors: Pair<Int, Int>? = null
+    private var rawDividerColor = currentConfig.navigationBarDividerColor
 
-    fun setTheme(colors: Pair<Int, Int>?) {
-        if (theme == colors) return
-        theme = colors
+    fun setTheme(newTheme: Theme?) {
+        if (theme == newTheme) return
+        theme = newTheme
         val raw = rawColors ?: (currentBackgroundColor to currentFrontColor)
         setColor(raw.first, raw.second)
+        setDividerColor(rawDividerColor)
+    }
+
+    private fun setDividerColor(color: Int) {
+        rawDividerColor = color
+        divider.setBackgroundColor(theme?.line ?: color)
     }
 
     fun setColor(backgroundColor: Int, frontColor: Int) {
         rawColors = backgroundColor to frontColor
-        currentBackgroundColor = theme?.first ?: backgroundColor
-        currentFrontColor = theme?.second ?: frontColor
+        currentBackgroundColor = theme?.background ?: backgroundColor
+        currentFrontColor = theme?.content ?: frontColor
 
         setBackgroundColor(currentBackgroundColor)
         titleTextView.setTextColor(currentFrontColor)
@@ -429,7 +437,7 @@ internal class NavigationBar @JvmOverloads constructor(
         disableAnimation: Boolean = false
     ) {
         val textColor = ColorUtils.resolveNavTextColor(navbarState)
-        divider.setBackgroundColor(navbarState.navigationBarDividerColor)
+        setDividerColor(navbarState.navigationBarDividerColor)
         divider.visibility = if (navbarState.showNavbar) View.VISIBLE else View.GONE
 
         if (navbarState.showNavbar) {

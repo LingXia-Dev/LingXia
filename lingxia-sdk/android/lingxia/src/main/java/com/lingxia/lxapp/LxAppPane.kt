@@ -271,7 +271,7 @@ internal class LxAppPane(
         if (chrome === gpuChrome) return
         gpuChrome = chrome
         tabBar?.setTheme(chrome?.let { TabBar.Theme(it.bar, it.contentMuted, it.accent, it.barLine) })
-        navigationBar?.setTheme(chrome?.let { it.bar to it.content })
+        navigationBar?.setTheme(chrome?.let { NavigationBar.Theme(it.bar, it.content, it.barLine) })
         // The bars take the page's colours: the snapshots under a dialog follow.
         recaptureGpuBars()
         applyCanvasBackground()
@@ -2083,7 +2083,7 @@ internal class LxAppPane(
         try {
             val statusBarHeight = statusInset()
             navigationBar = NavigationBar(activity).apply {
-                gpuChrome?.let { setTheme(it.bar to it.content) }
+                gpuChrome?.let { setTheme(NavigationBar.Theme(it.bar, it.content, it.barLine)) }
                 val navBarContentHeight = getCalculatedContentHeightPx()
                 layoutParams = FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
