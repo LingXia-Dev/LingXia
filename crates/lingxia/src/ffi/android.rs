@@ -272,28 +272,20 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_splashMarkLaunchFace<'a>(
     crate::splash::mark_launch_face(dark)
 }
 
-/// The host theme's `canvas` as `#rrggbb`; empty without a host theme.
+/// A theme role as `#rrggbb`: `appid`'s theme, or the host's for an empty `appid`. Empty when
+/// there is no host theme or the role is unknown.
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_app_NativeApi_pageBackgroundColor<'a>(
+pub extern "system" fn Java_com_lingxia_app_NativeApi_themeRole<'a>(
     mut env: EnvUnowned<'a>,
     _class: JClass<'a>,
+    appid: JString<'a>,
+    role: JString<'a>,
     dark: jboolean,
 ) -> JString<'a> {
-    env.with_env(|env| {
-        env.new_string(lxapp::theme::theme_role_hex("", "canvas", dark).unwrap_or_default())
-    })
-    .resolve::<LogErrorAndDefault>()
-}
-
-/// The host theme's `accent` as `#rrggbb`; empty without a host theme.
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_app_NativeApi_refreshIndicatorColor<'a>(
-    mut env: EnvUnowned<'a>,
-    _class: JClass<'a>,
-    dark: jboolean,
-) -> JString<'a> {
-    env.with_env(|env| {
-        env.new_string(lxapp::theme::theme_role_hex("", "accent", dark).unwrap_or_default())
+    env.with_env(|env| -> Result<JString, jni::errors::Error> {
+        let appid = appid.try_to_string(env)?;
+        let role = role.try_to_string(env)?;
+        env.new_string(lxapp::theme::theme_role_hex(&appid, &role, dark).unwrap_or_default())
     })
     .resolve::<LogErrorAndDefault>()
 }

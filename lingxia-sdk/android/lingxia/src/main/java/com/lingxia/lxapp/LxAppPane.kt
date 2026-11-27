@@ -510,6 +510,7 @@ internal class LxAppPane(
                     val bar = this@apply
                     TabBarOverflowSheet.show(
                         activity,
+                        appId,
                         bar,
                         bar.config,
                         indices,
@@ -1058,18 +1059,13 @@ internal class LxAppPane(
     }
 
     /**
-     * The host theme's refresh spinner colour for the current scheme:
-     * `accentColor`, else `mutedForegroundColor`. Undeclared, it falls back
-     * to LingXia's own chrome palette, not the activity theme: a host that
-     * never chose an accent would otherwise get the AppCompat default.
+     * The refresh spinner colour for the current scheme: the theme's `accent`. Without a theme
+     * it is LingXia's chrome palette, not the activity theme's AppCompat default.
      */
     internal fun resolveRefreshSpinnerColor(): Int {
         val dark = (activity.resources.configuration.uiMode and
             Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
-        return runCatching { NativeApi.refreshIndicatorColor(dark) }
-            .getOrNull()
-            ?.takeIf { it.isNotEmpty() }
-            ?.let { hex -> runCatching { Color.parseColor(hex) }.getOrNull() }
+        return NativeApi.themeColor(appId, "accent", dark)
             ?: com.lingxia.lxapp.chrome.OverlayPalette.of(activity).body
     }
 
@@ -2040,7 +2036,7 @@ internal class LxAppPane(
     /**
      * The colour the canvas behind the page should be.
      *
-     * The host's declared page floor first: it is the colour the lxapp paints
+     * The theme's `canvas` first: it is the colour the lxapp paints
      * its own page with, so every strip of canvas the page does not cover —
      * the one a pull-to-refresh opens above it, the one a navigation
      * transition slides views across — reads as part of the page rather than
@@ -2055,11 +2051,7 @@ internal class LxAppPane(
         gpuChrome?.let { return it.canvas }
         val dark = (activity.resources.configuration.uiMode and
             Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
-        runCatching { NativeApi.pageBackgroundColor(dark) }
-            .getOrNull()
-            ?.takeIf { it.isNotEmpty() }
-            ?.let { hex -> runCatching { Color.parseColor(hex) }.getOrNull() }
-            ?.let { return it }
+        NativeApi.themeColor(appId, "canvas", dark)?.let { return it }
 
         val value = android.util.TypedValue()
         if (!activity.theme.resolveAttribute(android.R.attr.colorBackground, value, true)) return null

@@ -140,20 +140,17 @@ internal object NativeApi {
     external fun devMark(compact: Boolean): String
 
     /**
-     * The host-declared page floor for one appearance, as `#RRGGBB`, or an
-     * empty string when the host declared none. This is the colour the lxapp's
-     * own CSS paints its page with; native chrome that borders the page has to
-     * match it.
+     * A theme role as `#RRGGBB`: [appId]'s theme, or the host's for an empty id; empty
+     * without a host theme or for an unknown role.
      */
     @JvmStatic
-    external fun pageBackgroundColor(dark: Boolean): String
+    external fun themeRole(appId: String, role: String, dark: Boolean): String
 
-    /**
-     * The pull-to-refresh spinner colour for one appearance, as `#RRGGBB`
-     * (`accentColor`, else `mutedForegroundColor`), or empty when neither is declared.
-     */
-    @JvmStatic
-    external fun refreshIndicatorColor(dark: Boolean): String
+    /** [themeRole] as a colour; null when it has none. */
+    fun themeColor(appId: String, role: String, dark: Boolean): Int? =
+        runCatching { themeRole(appId, role, dark) }.getOrNull()
+            ?.takeIf { it.isNotEmpty() }
+            ?.let { runCatching { android.graphics.Color.parseColor(it) }.getOrNull() }
 
     /**
      * Notify native layer that an LxApp has been opened

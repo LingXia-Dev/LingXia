@@ -54,6 +54,7 @@ internal object TabBarOverflowSheet {
      */
     fun show(
         activity: Activity,
+        appId: String,
         anchor: View,
         state: TabBarState,
         indices: List<Int>,
@@ -106,7 +107,7 @@ internal object TabBarOverflowSheet {
             setOnClickListener { dismiss() }
         })
 
-        var panel = buildPanel(activity, palette, state, indices) { index ->
+        var panel = buildPanel(activity, appId, palette, state, indices) { index ->
             onPick(index)
             dismiss()
         }
@@ -127,7 +128,7 @@ internal object TabBarOverflowSheet {
             } else {
                 // The open panel is part of the bar: runtime style, label and
                 // badge patches must not leave it showing the previous state.
-                val replacement = buildPanel(activity, OverlayPalette.of(activity), nextState, nextIndices) { index ->
+                val replacement = buildPanel(activity, appId, OverlayPalette.of(activity), nextState, nextIndices) { index ->
                     onPick(index)
                     dismiss()
                 }
@@ -182,22 +183,20 @@ internal object TabBarOverflowSheet {
      */
     private fun panelSurface(
         activity: Activity,
+        appId: String,
         palette: OverlayPalette,
         state: TabBarState
     ): Int {
         if (!state.isBackgroundTransparent()) return state.backgroundColor
         val dark = (activity.resources.configuration.uiMode and
             Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
-        runCatching { NativeApi.pageBackgroundColor(dark) }
-            .getOrNull()
-            ?.takeIf { it.isNotEmpty() }
-            ?.let { hex -> runCatching { Color.parseColor(hex) }.getOrNull() }
-            ?.let { return it }
+        NativeApi.themeColor(appId, "canvas", dark)?.let { return it }
         return palette.surface
     }
 
     private fun buildPanel(
         activity: Activity,
+        appId: String,
         palette: OverlayPalette,
         state: TabBarState,
         indices: List<Int>,
@@ -207,7 +206,7 @@ internal object TabBarOverflowSheet {
         return LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
             background = GradientDrawable().apply {
-                setColor(panelSurface(activity, palette, state))
+                setColor(panelSurface(activity, appId, palette, state))
                 val radius = PANEL_CORNER_RADIUS_DP * density
                 cornerRadius = radius
             }
