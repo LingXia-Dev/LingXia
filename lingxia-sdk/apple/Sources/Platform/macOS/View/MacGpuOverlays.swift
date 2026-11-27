@@ -4,8 +4,8 @@ import AppKit
 import CLingXiaRustAPI
 
 /// Window overlays: a see-through GPU page in a borderless transparent child window over the
-/// window holding the caller's presentation, above every LingXia surface in it. Rust calls these
-/// on the main thread.
+/// page region of the window holding the caller's presentation (a shell's content card, else the
+/// whole window), above every LingXia surface there. Rust calls these on the main thread.
 public enum GpuOverlays {
     @MainActor private static var hosts: [Int64: GpuOverlayHost] = [:]
     @MainActor private static let tracker = GpuPresentationTracker()
@@ -60,11 +60,9 @@ public enum GpuOverlays {
     /// Draw the overlays over `contentView`'s window into a capture of that content view.
     @MainActor static func capture(over contentView: NSView, into context: CGContext) {
         for host in hosts.values where host.parent === contentView.window && host.window.isVisible {
-            guard let image = host.view.lastFrame() else { continue }
-            // The overlay covers the whole window; the capture starts at the content view.
-            let origin = contentView.frame.origin
-            let size = host.window.frame.size
-            context.draw(image, in: CGRect(x: -origin.x, y: -origin.y, width: size.width, height: size.height))
+            guard let image = host.view.lastFrame(), let parent = host.parent else { continue }
+            let rect = contentView.convert(parent.convertFromScreen(host.window.frame), from: nil)
+            context.draw(image, in: rect)
         }
     }
 }
@@ -124,6 +122,8 @@ final class GpuOverlayWindow: NSWindow {
 final class GpuOverlayHost: NSObject {
     let token: Int64
     weak var parent: NSWindow?
+    /// The shell's page card the overlay covers; nil covers the whole window.
+    private weak var region: NSView?
     let window: GpuOverlayWindow
     let view: GpuPageView
     private var appearance: NSKeyValueObservation?
@@ -136,8 +136,11 @@ final class GpuOverlayHost: NSObject {
         self.parent = parent
         view = GpuPages.view(for: token)
         view.seeThrough = true
+        if let shell = macOSLxApp.activeShell(), shell.window === parent {
+            region = shell.presentationRegionView(for: nil)
+        }
         window = GpuOverlayWindow(
-            contentRect: Self.cover(parent), styleMask: [.borderless], backing: .buffered, defer: false)
+            contentRect: Self.cover(parent, region: region), styleMask: [.borderless], backing: .buffered, defer: false)
         super.init()
         window.isOpaque = false
         window.backgroundColor = .clear
@@ -147,9 +150,9 @@ final class GpuOverlayHost: NSObject {
         window.animationBehavior = .none
         window.collectionBehavior = [.fullScreenAuxiliary, .ignoresCycle]
         window.contentView = view
-        // The scrim follows the window's rounded corners (AppKit's standard 10 pt when the frame
-        // view does not say).
-        let radius = parent.contentView?.superview?.layer?.cornerRadius ?? 0
+        // The scrim follows the card's or the window's rounded corners (AppKit's standard 10 pt
+        // when the frame view does not say).
+        let radius = region?.layer?.cornerRadius ?? parent.contentView?.superview?.layer?.cornerRadius ?? 0
         view.layer?.cornerRadius = radius > 0 ? radius : 10
         view.layer?.masksToBounds = true
         // The lxapp's scheme reaches its window's appearance; the overlay follows it.
@@ -166,17 +169,26 @@ final class GpuOverlayHost: NSObject {
                      NSWindow.didEnterFullScreenNotification, NSWindow.didExitFullScreenNotification] {
             center.addObserver(self, selector: #selector(fit), name: name, object: parent)
         }
+        // The card moves and resizes with the sidebar (compact, rail, hidden) as well.
+        for card in [region, region?.superview].compactMap({ $0 }) {
+            card.postsFrameChangedNotifications = true
+            center.addObserver(self, selector: #selector(fit), name: NSView.frameDidChangeNotification, object: card)
+        }
+        fit()
     }
 
-    /// The whole parent window: the two share window coordinates, so its controls can be
-    /// handed clicks unchanged.
-    private static func cover(_ parent: NSWindow) -> NSRect {
-        parent.frame
+    /// The page card in screen coordinates while it is shown, else the whole window.
+    private static func cover(_ parent: NSWindow, region: NSView?) -> NSRect {
+        guard let region, region.window === parent, !region.isHiddenOrHasHiddenAncestor,
+              region.bounds.width > 0, region.bounds.height > 0
+        else { return parent.frame }
+        return parent.convertToScreen(region.convert(region.bounds, to: nil))
     }
 
     @objc private func fit() {
         guard let parent else { return }
-        window.setFrame(Self.cover(parent), display: false)
+        let frame = Self.cover(parent, region: region)
+        if window.frame != frame { window.setFrame(frame, display: true) }
     }
 
     func block(_ block: Bool) {
@@ -199,13 +211,14 @@ final class GpuOverlayHost: NSObject {
     /// A press that starts on the parent's traffic lights goes to the parent until it lifts.
     private func handOver(_ event: NSEvent) -> NSEvent? {
         guard event.window === window, let parent else { return event }
+        let location = parent.convertPoint(fromScreen: window.convertPoint(toScreen: event.locationInWindow))
         if event.type == .leftMouseDown {
-            forwarding = Self.windowControls(of: parent).contains(event.locationInWindow)
+            forwarding = Self.windowControls(of: parent).contains(location)
         }
         guard forwarding else { return event }
         if event.type == .leftMouseUp { forwarding = false }
         guard let moved = NSEvent.mouseEvent(
-            with: event.type, location: event.locationInWindow, modifierFlags: event.modifierFlags,
+            with: event.type, location: location, modifierFlags: event.modifierFlags,
             timestamp: event.timestamp, windowNumber: parent.windowNumber, context: nil,
             eventNumber: event.eventNumber, clickCount: event.clickCount, pressure: event.pressure)
         else { return event }
