@@ -308,7 +308,7 @@ function Navigation({ data, actions }: Pane) {
   const popup = useLocal('popup', false);
   const events = (data.events || []) as string[];
   return (
-    <page data-testid="ui-page" data-instance-tag={String(data.instanceTag ?? '')} className="bg-canvas text-text">
+    <page data-testid="ui-page" title={data.navTitle ?? undefined} data-instance-tag={String(data.instanceTag ?? '')} className="bg-canvas text-text">
       <scroll data-testid="page-scroll" className="grow basis-0">
         <view className="w-full max-w-3xl self-center px-4 pt-5 pb-10 gap-4">
           <ChromeError data={data} />

@@ -1,7 +1,7 @@
 {
   "appId": "lingxia-showcase",
   "appName": "LingXia Showcase",
-  "version": "1.7.8",
+  "version": "1.7.9",
   "minRuntime": "0.31.0",
   "languages": [
     "en-US",
