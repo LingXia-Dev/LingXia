@@ -1,0 +1,721 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "LingXia theme",
+  "type": "object",
+  "required": [
+    "name",
+    "version"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "version": {
+      "const": 1
+    },
+    "extends": {
+      "type": "string",
+      "minLength": 1,
+      "description": "`default`, or the id of another theme beside this one; filled in at build."
+    },
+    "appearance": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "light": {
+          "$ref": "#/definitions/look"
+        },
+        "dark": {
+          "$ref": "#/definitions/look"
+        },
+        "high-contrast-light": {
+          "$ref": "#/definitions/look"
+        },
+        "high-contrast-dark": {
+          "$ref": "#/definitions/look"
+        }
+      }
+    },
+    "colors": {
+      "type": "object",
+      "maxProperties": 32,
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "light",
+          "dark",
+          "use"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "light": {
+            "type": "string",
+            "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$"
+          },
+          "dark": {
+            "type": "string",
+            "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$"
+          },
+          "high-contrast-light": {
+            "type": "string",
+            "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$"
+          },
+          "high-contrast-dark": {
+            "type": "string",
+            "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$"
+          },
+          "use": {
+            "enum": [
+              "graphic",
+              "text",
+              "fill"
+            ]
+          },
+          "on": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "canvas",
+                "surface",
+                "surface-raised",
+                "surface-sunken",
+                "line",
+                "text",
+                "text-muted",
+                "text-faint",
+                "accent",
+                "on-accent",
+                "accent-soft",
+                "on-accent-soft",
+                "danger",
+                "on-danger",
+                "danger-soft",
+                "success",
+                "on-success",
+                "success-soft",
+                "warning",
+                "on-warning",
+                "warning-soft",
+                "focus",
+                "scrim",
+                "chart-1",
+                "chart-2",
+                "chart-3",
+                "chart-4",
+                "chart-5",
+                "line-strong",
+                "selection",
+                "shadow",
+                "media",
+                "on-media",
+                "surface-overlay",
+                "knob",
+                "success-mark",
+                "warning-mark",
+                "danger-mark",
+                "media-canvas",
+                "info",
+                "on-info",
+                "info-soft",
+                "info-mark",
+                "hue-1",
+                "hue-2",
+                "hue-3",
+                "hue-4",
+                "hue-5",
+                "hue-6",
+                "hue-7",
+                "hue-8",
+                "hue-1-soft",
+                "hue-2-soft",
+                "hue-3-soft",
+                "hue-4-soft",
+                "hue-5-soft",
+                "hue-6-soft",
+                "hue-7-soft",
+                "hue-8-soft",
+                "chart-6",
+                "chart-7",
+                "chart-8",
+                "accent-solid",
+                "on-accent-solid",
+                "danger-solid",
+                "on-danger-solid",
+                "neutral-soft",
+                "line-on-raised",
+                "line-strong-on-raised",
+                "line-on-overlay",
+                "line-strong-on-overlay",
+                "danger-on-raised",
+                "danger-on-overlay"
+              ]
+            }
+          },
+          "on-color": {
+            "type": "string",
+            "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$"
+          }
+        }
+      }
+    },
+    "accent": {
+      "type": "object",
+      "required": [
+        "seed"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "seed": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$"
+        },
+        "derive": {
+          "type": "boolean"
+        }
+      }
+    },
+    "type": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "family": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "scale": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "xs": {
+              "type": "number",
+              "minimum": 0
+            },
+            "sm": {
+              "type": "number",
+              "minimum": 0
+            },
+            "base": {
+              "type": "number",
+              "minimum": 0
+            },
+            "lg": {
+              "type": "number",
+              "minimum": 0
+            },
+            "xl": {
+              "type": "number",
+              "minimum": 0
+            },
+            "2xl": {
+              "type": "number",
+              "minimum": 0
+            },
+            "3xl": {
+              "type": "number",
+              "minimum": 0
+            },
+            "4xl": {
+              "type": "number",
+              "minimum": 0
+            }
+          }
+        },
+        "leading": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "xs": {
+              "type": "number",
+              "minimum": 0
+            },
+            "sm": {
+              "type": "number",
+              "minimum": 0
+            },
+            "base": {
+              "type": "number",
+              "minimum": 0
+            },
+            "lg": {
+              "type": "number",
+              "minimum": 0
+            },
+            "xl": {
+              "type": "number",
+              "minimum": 0
+            },
+            "2xl": {
+              "type": "number",
+              "minimum": 0
+            },
+            "3xl": {
+              "type": "number",
+              "minimum": 0
+            },
+            "4xl": {
+              "type": "number",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    },
+    "shape": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "radius": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "sm": {
+              "type": "number",
+              "minimum": 0
+            },
+            "DEFAULT": {
+              "type": "number",
+              "minimum": 0
+            },
+            "md": {
+              "type": "number",
+              "minimum": 0
+            },
+            "lg": {
+              "type": "number",
+              "minimum": 0
+            },
+            "xl": {
+              "type": "number",
+              "minimum": 0
+            },
+            "2xl": {
+              "type": "number",
+              "minimum": 0
+            },
+            "3xl": {
+              "type": "number",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    },
+    "space": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "unit": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      }
+    },
+    "motion": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "fast": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "base": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "slow": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "easing": {
+          "type": "string"
+        },
+        "enter": {
+          "type": "string"
+        },
+        "exit": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "definitions": {
+    "look": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "canvas": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Window and page floor."
+        },
+        "surface": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Cards, cells and sheets."
+        },
+        "surface-raised": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Raised cards and panels that stay in the page."
+        },
+        "surface-sunken": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Inset fields and grouped backgrounds."
+        },
+        "line": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Decorative separators and card borders; interactive boundaries use line-strong."
+        },
+        "text": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Body text."
+        },
+        "text-muted": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Secondary text."
+        },
+        "text-faint": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Hints and disabled text."
+        },
+        "accent": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Primary actions, selection, links and text buttons: reads as text on canvas and surface."
+        },
+        "on-accent": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Text and icons on accent."
+        },
+        "accent-soft": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Tinted containers and selected rows."
+        },
+        "on-accent-soft": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Text on accent-soft."
+        },
+        "danger": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Destructive actions and errors."
+        },
+        "on-danger": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Text and icons on danger."
+        },
+        "danger-soft": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Error containers; text on it uses text."
+        },
+        "success": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Success state."
+        },
+        "on-success": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Text and icons on success."
+        },
+        "success-soft": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Success containers; text on it uses text."
+        },
+        "warning": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Warning state."
+        },
+        "on-warning": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Text and icons on warning."
+        },
+        "warning-soft": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Warning containers; text on it uses text."
+        },
+        "focus": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Focus ring."
+        },
+        "scrim": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Modal backdrop, translucent; a pack without it takes a near-black of its own neutral."
+        },
+        "chart-1": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "First categorical series."
+        },
+        "chart-2": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Second categorical series."
+        },
+        "chart-3": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Third categorical series."
+        },
+        "chart-4": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Fourth categorical series."
+        },
+        "chart-5": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Fifth categorical series."
+        },
+        "line-strong": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Interactive boundaries: editor borders and control outlines."
+        },
+        "selection": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Selected-text background, from the accent's soft tone."
+        },
+        "shadow": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Elevation shadow ink; `shadow-*` layers take it at their alpha."
+        },
+        "media": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Translucent dock over video and images; the same in both appearances; a pack without it takes a near-black of its own neutral."
+        },
+        "on-media": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Text and icons over media; tracks and buffered ranges take it at an alpha (`on-media/25`)."
+        },
+        "surface-overlay": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Anything floating over the page: menus, popovers, toasts, dialogs and sheets; surface-raised, a step lighter in dark."
+        },
+        "knob": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "The thumb of a switch or slider, drawn on an accent-solid track; white by default, or the dark ink of a light seed's accent-solid."
+        },
+        "success-mark": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Success as a dot or shape, never text."
+        },
+        "warning-mark": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Warning as a dot or shape, never text."
+        },
+        "danger-mark": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Danger as a dot or shape, never text."
+        },
+        "media-canvas": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "The whole screen behind a full-screen picture or video: opaque, near-black in both appearances; a pack without it takes a near-black of its own neutral."
+        },
+        "info": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Information that is neither good nor bad: notices and hints; a fixed blue at the accent's strength, or the accent family when the accent is that blue."
+        },
+        "on-info": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Text and icons on info."
+        },
+        "info-soft": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Information containers; text on it uses text."
+        },
+        "info-mark": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Information as a dot or shape, never text."
+        },
+        "hue-1": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "First categorical hue, for tags, avatars and series past the chart colours: a dot or shape, never text."
+        },
+        "hue-2": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Second categorical hue, for tags, avatars and series past the chart colours: a dot or shape, never text."
+        },
+        "hue-3": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Third categorical hue, for tags, avatars and series past the chart colours: a dot or shape, never text."
+        },
+        "hue-4": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Fourth categorical hue, for tags, avatars and series past the chart colours: a dot or shape, never text."
+        },
+        "hue-5": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Fifth categorical hue, for tags, avatars and series past the chart colours: a dot or shape, never text."
+        },
+        "hue-6": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Sixth categorical hue, for tags, avatars and series past the chart colours: a dot or shape, never text."
+        },
+        "hue-7": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Seventh categorical hue, for tags, avatars and series past the chart colours: a dot or shape, never text."
+        },
+        "hue-8": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Eighth categorical hue, for tags, avatars and series past the chart colours: a dot or shape, never text."
+        },
+        "hue-1-soft": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Fill behind the first hue; text on it uses text."
+        },
+        "hue-2-soft": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Fill behind the second hue; text on it uses text."
+        },
+        "hue-3-soft": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Fill behind the third hue; text on it uses text."
+        },
+        "hue-4-soft": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Fill behind the fourth hue; text on it uses text."
+        },
+        "hue-5-soft": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Fill behind the fifth hue; text on it uses text."
+        },
+        "hue-6-soft": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Fill behind the sixth hue; text on it uses text."
+        },
+        "hue-7-soft": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Fill behind the seventh hue; text on it uses text."
+        },
+        "hue-8-soft": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Fill behind the eighth hue; text on it uses text."
+        },
+        "chart-6": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Sixth categorical series."
+        },
+        "chart-7": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Seventh categorical series."
+        },
+        "chart-8": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Eighth categorical series."
+        },
+        "accent-solid": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Fill of a control that is pressed or switched: primary buttons, checked boxes and radios, switch tracks, a selected day, steppers, floating buttons; the accent in light, a deeper accent in dark, under white marks. A light seed, such as a yellow, stays the fill in both, under dark marks. Accent text, icons, the focus ring and filled labels such as badges keep accent."
+        },
+        "on-accent-solid": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Text and icons on accent-solid."
+        },
+        "danger-solid": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Fill of a destructive control that is pressed and carries white marks; danger in light, a deeper danger in dark. A danger badge or label keeps danger."
+        },
+        "on-danger-solid": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Text and icons on danger-solid."
+        },
+        "neutral-soft": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "Translucent fill of the theme's own neutral behind initials and placeholders, dark in light and light in dark, raised in alpha only as far as it shows as an edge on every floor; high contrast keeps the same tint, and a component draws its edge with a line role; text on it uses text."
+        },
+        "line-on-raised": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "`line` as drawn inside a raised surface: the contrast `line` has on surface, at least 1.3:1, 3:1 under high contrast."
+        },
+        "line-strong-on-raised": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "`line-strong` as drawn inside a raised surface: the contrast `line-strong` has on surface, at least 3:1."
+        },
+        "line-on-overlay": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "`line` as drawn inside an overlay: the contrast `line` has on surface, at least 1.3:1, 3:1 under high contrast."
+        },
+        "line-strong-on-overlay": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "`line-strong` as drawn inside an overlay: the contrast `line-strong` has on surface, at least 3:1."
+        },
+        "danger-on-raised": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "`danger` as drawn inside a raised surface: the contrast `danger` has on surface, at least 4.5:1, so destructive text reads there. `under` maps by role, so a `danger` fill there takes it too; destructive fills use `danger-solid`."
+        },
+        "danger-on-overlay": {
+          "type": "string",
+          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+          "description": "`danger` as drawn inside an overlay: the contrast `danger` has on surface, at least 4.5:1, so destructive text reads there. `under` maps by role, so a `danger` fill there takes it too; destructive fills use `danger-solid`."
+        }
+      }
+    }
+  }
+}

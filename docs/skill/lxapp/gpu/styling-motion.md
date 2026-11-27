@@ -21,6 +21,8 @@
   derives every accent role from one colour; `appearance` may also set surfaces, lines, text and status colours
   for light and dark, and `type`, `shape.radius`, `space.unit` and `motion` retune the steps. Every other role
   is derived to pass its contrast pairs.
+- Without a `theme.json`, pages use the host's theme ([`theme`](../../app/project.md#theme)), else the
+  LingXia default. `"extends": "<id>"` starts from a theme file beside it.
 - `lingxia build` checks every role pair in light, dark and high contrast and fails listing each pair that misses.
 - App-owned colours go in `colors` (≤32): `{"trend-up":{"light":"#…","dark":"#…","use":"text|graphic|fill","on":["surface"]}}`;
   classes are role-shaped (`text-trend-up`, a fill's label `text-on-<name>`), style values and plot series `app.<name>`.

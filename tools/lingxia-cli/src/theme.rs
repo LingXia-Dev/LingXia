@@ -77,21 +77,139 @@ pub fn run(command: ThemeCommand) -> Result<()> {
     }
 }
 
-/// The theme at `path` completed from the built-in one, or the built-in one; fails listing every
-/// contrast or schema problem.
+/// The theme at `path` completed from the built-in one, under what it extends; or the built-in
+/// one. Fails listing every contrast or schema problem.
 pub fn load(path: Option<&Path>) -> Result<Pack> {
     match path {
-        Some(path) => load_from(path, &lingxia_theme::default_pack()),
+        Some(path) => {
+            let written = written(path, &mut Vec::new())?;
+            let pack = serde_json::from_value(written)
+                .with_context(|| format!("{} is not a theme", path.display()))?;
+            checked(lingxia_theme::complete(pack))
+        }
         None => checked(lingxia_theme::default_pack()),
     }
 }
 
-/// The theme at `path` completed from `base`.
+/// The theme at `path` completed from `base`, which replaces any `extends` it names.
 pub fn load_from(path: &Path, base: &Pack) -> Result<Pack> {
-    let text = fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?;
-    let pack = serde_json::from_str(&text)
+    let (value, _) = read_value(path)?;
+    let pack = serde_json::from_value(value)
         .with_context(|| format!("{} is not a theme", path.display()))?;
     checked(lingxia_theme::complete_from(pack, base))
+}
+
+/// A theme file as written, without its `$schema`, and the id it `extends`.
+fn read_value(path: &Path) -> Result<(Value, Option<String>)> {
+    let text = fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?;
+    let mut value: Value =
+        serde_json::from_str(&text).with_context(|| format!("{} is not JSON", path.display()))?;
+    let object = value
+        .as_object_mut()
+        .with_context(|| format!("{} is not a JSON object", path.display()))?;
+    object.remove("$schema");
+    let extends = match object.remove("extends") {
+        None => None,
+        Some(Value::String(id)) => Some(id),
+        Some(_) => bail!("{}: `extends` is a theme id", path.display()),
+    };
+    Ok((value, extends))
+}
+
+/// What a theme and everything it extends wrote, the theme's own values winning.
+fn written(path: &Path, chain: &mut Vec<PathBuf>) -> Result<Value> {
+    let key = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    if chain.contains(&key) {
+        bail!(
+            "{} extends itself through {}",
+            path.display(),
+            chain[0].display()
+        );
+    }
+    chain.push(key);
+    let (value, extends) = read_value(path)?;
+    let Some(id) = extends.filter(|id| id != "default") else {
+        return Ok(value);
+    };
+    let dir = path.parent().unwrap_or(Path::new("."));
+    let file = [
+        dir.join(format!("{id}.json")),
+        dir.join("themes").join(format!("{id}.json")),
+    ]
+    .into_iter()
+    .find(|file| file.is_file())
+    .with_context(|| {
+        format!(
+            "{} extends {id}, but there is no {id}.json beside it",
+            path.display()
+        )
+    })?;
+    let mut base = written(&file, chain)?;
+    overlay(&mut base, value);
+    Ok(base)
+}
+
+/// `top` written over `base`: objects merge key by key, anything else replaces.
+fn overlay(base: &mut Value, top: Value) {
+    match (base, top) {
+        (Value::Object(base), Value::Object(top)) => {
+            for (key, value) in top {
+                match base.get_mut(&key) {
+                    Some(slot) => overlay(slot, value),
+                    None => {
+                        base.insert(key, value);
+                    }
+                }
+            }
+        }
+        (slot, top) => *slot = top,
+    }
+}
+
+/// Where a host keeps its themes: `themes/<id>.json`, the file name being the id.
+pub const HOST_THEMES_DIR: &str = "themes";
+
+/// The host's theme, completed: `id` names one of `themes/<id>.json`; without one, the only file
+/// there. Every file there is checked, so a broken theme fails the build even when unused.
+pub fn host_theme(root: &Path, id: Option<&str>) -> Result<Option<Pack>> {
+    let dir = root.join(HOST_THEMES_DIR);
+    let mut files: Vec<PathBuf> = match fs::read_dir(&dir) {
+        Ok(entries) => entries
+            .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+            .filter(|path| path.extension().is_some_and(|ext| ext == "json"))
+            .collect(),
+        Err(_) => Vec::new(),
+    };
+    files.sort();
+    let id_of = |path: &Path| path.file_stem().and_then(|s| s.to_str()).map(str::to_owned);
+    let mut packs = Vec::new();
+    for file in &files {
+        let pack = load(Some(file))?;
+        packs.push((id_of(file).unwrap_or_default(), pack));
+    }
+    let ids = packs
+        .iter()
+        .map(|(id, _)| id.as_str())
+        .collect::<Vec<_>>()
+        .join(", ");
+    match id {
+        Some(id) => packs
+            .into_iter()
+            .find(|(file_id, _)| file_id == id)
+            .map(|(_, pack)| Some(pack))
+            .with_context(|| match ids.is_empty() {
+                true => format!(
+                    "lingxia.yaml names theme {id}, but there is no {HOST_THEMES_DIR}/{id}.json"
+                ),
+                false => {
+                    format!("lingxia.yaml names theme {id}, but {HOST_THEMES_DIR}/ holds {ids}")
+                }
+            }),
+        None if packs.len() > 1 => bail!(
+            "{HOST_THEMES_DIR}/ holds {ids}; name the product's theme with `theme: <id>` in lingxia.yaml"
+        ),
+        None => Ok(packs.pop().map(|(_, pack)| pack)),
+    }
 }
 
 /// Each app colour's pairs with their ratio in every look, one line per pair.
@@ -148,11 +266,7 @@ fn app_color_pairs(pack: &Pack) -> Vec<String> {
 /// The lxapp theme at `root` in its four looks, as wire colour names to hex, for the page
 /// compiler to measure text on gradients; null without a theme or one that does not parse.
 pub fn project_looks(root: &Path) -> Value {
-    let Ok(text) = fs::read_to_string(root.join(THEME_PATH)) else {
-        return Value::Null;
-    };
-    serde_json::from_str::<Pack>(&text)
-        .map_or(Value::Null, |pack| looks(&lingxia_theme::complete(pack)))
+    load(Some(&root.join(THEME_PATH))).map_or(Value::Null, |pack| looks(&pack))
 }
 
 /// `pack` resolved for light, dark and both high-contrast looks: each role and `app.<name>`.
@@ -241,6 +355,13 @@ fn new(id: &str, seed: Option<&str>, extends: Option<&str>, out: &Path) -> Resul
         .as_object_mut()
         .context("a theme file is a JSON object")?;
     object.insert("name".into(), json!(id));
+    let dir = out
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    if let Some(schema) = schema_reference(dir) {
+        object.insert("$schema".into(), json!(schema));
+    }
     if seed.is_some() || !object.contains_key("accent") {
         let seed = match seed {
             Some(seed) => seed.to_owned(),
@@ -254,8 +375,13 @@ fn new(id: &str, seed: Option<&str>, extends: Option<&str>, out: &Path) -> Resul
     }
     let text = serde_json::to_string_pretty(&theme)? + "\n";
     let base = base(extends)?;
+    let mut written = theme.clone();
+    if let Some(object) = written.as_object_mut() {
+        object.remove("$schema");
+        object.remove("extends");
+    }
     checked(lingxia_theme::complete_from(
-        serde_json::from_str(&text).context("the new theme parses")?,
+        serde_json::from_value(written).context("the new theme parses")?,
         &base,
     ))?;
     if let Some(parent) = out.parent().filter(|p| !p.as_os_str().is_empty()) {
@@ -267,6 +393,15 @@ fn new(id: &str, seed: Option<&str>, extends: Option<&str>, out: &Path) -> Resul
         out.display()
     );
     Ok(())
+}
+
+/// The theme JSON Schema `@lingxia/view` ships, relative to `dir`, for editor completion.
+fn schema_reference(dir: &Path) -> Option<String> {
+    const SCHEMA: &str = "node_modules/@lingxia/view/schemas/theme.schema.json";
+    ["./", "../", "lxapp/", "../lxapp/"]
+        .into_iter()
+        .map(|prefix| format!("{prefix}{SCHEMA}"))
+        .find(|reference| dir.join(reference).is_file())
 }
 
 #[cfg(test)]
@@ -332,6 +467,67 @@ mod tests {
         let error = load(Some(&path)).unwrap_err().to_string();
         assert!(error.contains("light: text-muted on surface is"), "{error}");
         assert!(error.contains("is the nearest that passes"), "{error}");
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_theme_file_may_carry_a_schema_and_extend_a_theme_beside_it() {
+        let dir = scratch("chain");
+        fs::write(
+            dir.join("warm.json"),
+            include_str!("../../../packages/liuli/themes/warm.json"),
+        )
+        .unwrap();
+        let file = dir.join("ocean.json");
+        fs::write(
+            &file,
+            r#"{ "$schema": "x.json", "name": "ocean", "version": 1, "extends": "warm" }"#,
+        )
+        .unwrap();
+        let pack = load(Some(&file)).unwrap();
+        let warm = load(Some(&dir.join("warm.json"))).unwrap();
+        let prefs = lingxia_theme::Prefs::default();
+        assert_eq!(
+            lingxia_theme::resolve(&pack, &prefs).unwrap().palette,
+            lingxia_theme::resolve(&warm, &prefs).unwrap().palette
+        );
+        assert_eq!(pack.name, "ocean");
+
+        fs::write(
+            dir.join("warm.json"),
+            r#"{ "name": "warm", "version": 1, "extends": "ocean" }"#,
+        )
+        .unwrap();
+        let error = load(Some(&file)).unwrap_err().to_string();
+        assert!(error.contains("extends itself"), "{error}");
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn the_host_theme_is_the_named_file_or_the_only_one() {
+        let dir = scratch("host");
+        assert!(host_theme(&dir, None).unwrap().is_none());
+        let themes = dir.join(HOST_THEMES_DIR);
+        fs::create_dir_all(&themes).unwrap();
+        fs::write(
+            themes.join("ocean.json"),
+            r#"{ "name": "ocean", "version": 1 }"#,
+        )
+        .unwrap();
+        assert_eq!(host_theme(&dir, None).unwrap().unwrap().name, "ocean");
+        fs::write(
+            themes.join("forest.json"),
+            r#"{ "name": "forest", "version": 1 }"#,
+        )
+        .unwrap();
+        let error = host_theme(&dir, None).unwrap_err().to_string();
+        assert!(error.contains("forest, ocean"), "{error}");
+        assert_eq!(
+            host_theme(&dir, Some("forest")).unwrap().unwrap().name,
+            "forest"
+        );
+        let error = host_theme(&dir, Some("sky")).unwrap_err().to_string();
+        assert!(error.contains("themes/ holds forest, ocean"), "{error}");
         fs::remove_dir_all(dir).unwrap();
     }
 

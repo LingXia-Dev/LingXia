@@ -34,9 +34,9 @@ pub struct LingXiaConfig {
     pub features: Option<FeaturesConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub capabilities: Option<CapabilitiesConfig>,
-    /// Application-wide native UI colors emitted into `app.json`.
+    /// The product's theme (`themes/<id>.json`) and default appearance.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub theme: Option<ThemeConfig>,
+    pub theme: Option<ProductTheme>,
     /// Static destination used by host-owned Settings affordances.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub settings_destination: Option<SettingsDestination>,
@@ -205,6 +205,68 @@ impl Default for FeaturesConfig {
 // One shared definition with the runtime (which reads it back from app.json),
 // so a capability can never exist on one side only.
 pub use lingxia_app_context::{CapabilitiesConfig, SettingsDestination, ThemeConfig};
+
+/// `theme` in lingxia.yaml: a theme id (`theme: ocean`), or a map with `id` and
+/// `defaultAppearance`. The id may be left out when `themes/` holds one file.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProductThemeFields {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_appearance: Option<lingxia_app_context::AppearancePreference>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub light: Option<lingxia_app_context::ThemeStyle>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dark: Option<lingxia_app_context::ThemeStyle>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Default)]
+#[serde(transparent)]
+pub struct ProductTheme(pub ProductThemeFields);
+
+impl<'de> Deserialize<'de> for ProductTheme {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct Visitor;
+        impl<'de> serde::de::Visitor<'de> for Visitor {
+            type Value = ProductTheme;
+            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                f.write_str("a theme id, or a map with id and defaultAppearance")
+            }
+            fn visit_str<E: serde::de::Error>(self, id: &str) -> Result<ProductTheme, E> {
+                Ok(ProductTheme(ProductThemeFields {
+                    id: Some(id.to_owned()),
+                    ..Default::default()
+                }))
+            }
+            fn visit_map<M: serde::de::MapAccess<'de>>(
+                self,
+                map: M,
+            ) -> Result<ProductTheme, M::Error> {
+                ProductThemeFields::deserialize(serde::de::value::MapAccessDeserializer::new(map))
+                    .map(ProductTheme)
+            }
+        }
+        deserializer.deserialize_any(Visitor)
+    }
+}
+
+impl ProductTheme {
+    pub fn id(&self) -> Option<&str> {
+        self.0.id.as_deref()
+    }
+
+    /// The runtime's half: colours and the default appearance; the pack is added at build.
+    pub fn runtime(&self) -> Option<ThemeConfig> {
+        ThemeConfig {
+            light: self.0.light,
+            dark: self.0.dark,
+            default_appearance: self.0.default_appearance,
+            pack: None,
+        }
+        .normalized()
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -2069,7 +2131,6 @@ impl LingXiaConfig {
 
         let mut config: LingXiaConfig = yaml::from_str(&content)
             .with_context(|| format!("Failed to parse {}", config_path.display()))?;
-        config.theme = config.theme.take().and_then(ThemeConfig::normalized);
         config.apply_surfaces()?;
         config.validate()?;
 
@@ -3055,7 +3116,6 @@ mod tests {
 
     fn load_config_yaml(source: &str) -> Result<LingXiaConfig> {
         let mut config: LingXiaConfig = yaml::from_str(source)?;
-        config.theme = config.theme.take().and_then(ThemeConfig::normalized);
         config.apply_surfaces()?;
         config.validate()?;
         Ok(config)
@@ -3990,14 +4050,13 @@ appLinks:
     fn save_and_load_yaml() {
         let temp = TempDir::new().unwrap();
         let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
-        config.theme = Some(ThemeConfig {
+        config.theme = Some(ProductTheme(ProductThemeFields {
             light: Some(ThemeStyle {
                 accent_color: Some(ThemeColor::parse("#a1b2c3").unwrap()),
                 ..ThemeStyle::default()
             }),
-            dark: None,
-            default_appearance: None,
-        });
+            ..Default::default()
+        }));
 
         config.save(temp.path()).unwrap();
 
@@ -4007,7 +4066,7 @@ appLinks:
             loaded
                 .theme
                 .as_ref()
-                .and_then(|theme| theme.light.as_ref())
+                .and_then(|theme| theme.0.light.as_ref())
                 .and_then(|style| style.accent_color)
                 .map(ThemeColor::rgb),
             Some(0xA1B2C3)

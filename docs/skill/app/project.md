@@ -129,10 +129,20 @@ settingsDestination:
 
 ## `theme`
 
-Host-owned native UI colors and initial appearance; all keys are optional.
+The product's theme is `themes/<id>.json` beside `lingxia.yaml`: the same format as an lxapp's
+`theme.json` ([theme pack](../lxapp/gpu/styling-motion.md#theme)), light and dark in one file. Every
+lxapp without a `theme.json` of its own renders with it; an lxapp's own theme is completed from the
+LingXia default, never from the host's.
+
+- `theme: <id>` names it; it may be left out when `themes/` holds one file. The map form is
+  `theme: { id: ocean, defaultAppearance: dark }`.
+- `"extends": "<id>"` starts from another theme in `themes/`. `"$schema"` (written by `lingxia theme
+  new`) points at `@lingxia/view/schemas/theme.schema.json` for completion.
+- `lingxia build` checks every file in `themes/` and fails on any contrast miss.
 
 ```yaml
 theme:
+  id: ocean
   defaultAppearance: dark   # auto (default) | light | dark
   light:
     pageBackgroundColor: "#E9EAEE"

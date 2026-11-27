@@ -173,7 +173,7 @@ source text for each key until it is translated.
 
 ## `lingxia theme`
 
-`new <id> [--seed <colour>] [--extends <id>]` writes `theme.json`; `check [file]` runs the build's
+`new <id> [--seed <colour>] [--extends <id>] [-o <file>]` writes `theme.json` (a host theme: `-o themes/<id>.json`); `check [file]` runs the build's
 contrast checks in every look and names the nearest passing value for each miss; `preview` runs the lxapp
 in the Runner and steps through light, dark and both high-contrast looks by key; `tokens [--names <map>]`
 writes `theme/tokens.css` for Web pages and editor completion.

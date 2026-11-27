@@ -2251,9 +2251,9 @@ impl PageInstance {
         self.owning_lxapp().read_gpu_module(&self.inner.path)
     }
 
-    /// The owning lxapp's bundled theme pack JSON, if it ships one.
+    /// The theme pack JSON the page renders with: its lxapp's, else the host's.
     pub fn gpu_theme_pack(&self) -> Option<String> {
-        self.owning_lxapp().read_theme_pack()
+        self.owning_lxapp().theme_pack()
     }
 
     /// Returns a reader for this lxapp's shared View chunks (`_view/<id>.js`, `_view/<id>/<lang>.js`).

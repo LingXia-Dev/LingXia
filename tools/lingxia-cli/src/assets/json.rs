@@ -119,7 +119,7 @@ pub(super) fn build_app_json_from_config(
             serde_json::to_value(capabilities)?,
         );
     }
-    if let Some(theme) = config.theme.as_ref() {
+    if let Some(theme) = config.theme.as_ref().and_then(|theme| theme.runtime()) {
         obj.insert("theme".to_string(), serde_json::to_value(theme)?);
     }
     if let Some(destination) = config.settings_destination.as_ref() {

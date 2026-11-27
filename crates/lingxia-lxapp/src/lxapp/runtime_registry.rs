@@ -90,6 +90,14 @@ pub fn try_get(appid: &str) -> Option<Arc<LxApp>> {
         .and_then(|manager| manager.lxapps.get(appid).map(|lxapp| lxapp.clone()))
 }
 
+/// The theme pack JSON an lxapp renders with: its own theme, else the host's.
+pub fn theme_for(appid: &str) -> Option<String> {
+    match try_get(appid) {
+        Some(app) => app.theme_pack(),
+        None => lingxia_app_context::host_theme_pack(),
+    }
+}
+
 pub fn find_page_by_instance_id(id: &str) -> Option<PageInstance> {
     LXAPPS_MANAGER.get().and_then(|manager| {
         manager

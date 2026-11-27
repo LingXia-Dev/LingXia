@@ -220,6 +220,15 @@ pub(crate) fn prepare_configured_host_assets(
         value["sdkText"] = text.app_json()?;
         app_json = serde_json::to_string_pretty(&value)?;
     }
+    let theme_id = config.theme.as_ref().and_then(|theme| theme.id());
+    if let Some(pack) = crate::theme::host_theme(project_root, theme_id)? {
+        let mut value: serde_json::Value = serde_json::from_str(&app_json)?;
+        if !value["theme"].is_object() {
+            value["theme"] = serde_json::json!({});
+        }
+        value["theme"]["pack"] = serde_json::to_value(&pack)?;
+        app_json = serde_json::to_string_pretty(&value)?;
+    }
     let app_json_hash = sha256_hex(app_json.as_bytes());
     let mut common_bundles = home_bundle.into_iter().collect::<Vec<_>>();
     common_bundles.extend(prepare_resource_lxapp_bundles(

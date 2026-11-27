@@ -233,6 +233,10 @@ pub struct ThemeConfig {
         skip_serializing_if = "Option::is_none"
     )]
     pub default_appearance: Option<AppearancePreference>,
+    /// The host's theme, completed and checked by the build. Lxapps without a theme of their
+    /// own render with it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pack: Option<serde_json::Value>,
 }
 
 impl ThemeConfig {
@@ -243,8 +247,11 @@ impl ThemeConfig {
         self.default_appearance = self
             .default_appearance
             .filter(|appearance| *appearance != AppearancePreference::Auto);
-        (self.light.is_some() || self.dark.is_some() || self.default_appearance.is_some())
-            .then_some(self)
+        (self.light.is_some()
+            || self.dark.is_some()
+            || self.default_appearance.is_some()
+            || self.pack.is_some())
+        .then_some(self)
     }
 
     pub fn style(&self, dark: bool) -> Option<&ThemeStyle> {
@@ -985,6 +992,11 @@ pub fn take_pending_campaign() -> Option<(String, u32)> {
 ///
 /// `None` means the host did not declare one and the platform should keep
 /// using its own system background.
+/// The host theme pack as JSON, if the product ships one.
+pub fn host_theme_pack() -> Option<String> {
+    serde_json::to_string(theme()?.pack.as_ref()?).ok()
+}
+
 pub fn page_background_color(dark: bool) -> Option<String> {
     theme()?
         .style(dark)?

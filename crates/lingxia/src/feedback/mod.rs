@@ -112,7 +112,7 @@ enum Call {
 
 impl Feedback {
     pub(crate) fn new(overlays: Arc<dyn WindowOverlays>) -> Arc<Self> {
-        Self::with_themes(overlays, |appid| lxapp::try_get(appid)?.read_theme_pack())
+        Self::with_themes(overlays, lxapp::theme_for)
     }
 
     fn with_themes(

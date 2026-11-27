@@ -141,7 +141,7 @@ pub use lxapp::{
     set_display_language_preference, set_display_language_preference_in,
     set_host_appearance_preference, shell_presence, show_lxapp_in_region, shutdown_lxapps_except,
     subscribe_display_language_effective, subscribe_display_language_state, tabbar,
-    terminate_lxapp, try_get, uninstall_lxapp,
+    terminate_lxapp, theme_for, try_get, uninstall_lxapp,
 };
 #[doc(hidden)]
 pub use native_authority::NativeControlPlaneAuthority;

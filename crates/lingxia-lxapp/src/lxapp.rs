@@ -122,7 +122,7 @@ pub use runtime_ops::{
 pub(crate) use runtime_registry::get_lxapps_manager;
 pub use runtime_registry::{
     PageWebView, await_page_webview, await_page_webview_then, find_page_by_instance_id,
-    find_page_by_webtag, get_platform, try_get,
+    find_page_by_webtag, get_platform, theme_for, try_get,
 };
 #[cfg(all(test, feature = "js-appservice"))]
 pub(crate) use surface::SurfaceRecord;
@@ -2988,8 +2988,14 @@ impl LxApp {
             .map_err(|_| lingxia_error::Error::internal(format!("GPU chunk is not UTF-8: {path}")))
     }
 
+    /// The theme this lxapp renders with: its own `theme.json`, else the host's theme. An
+    /// lxapp's own theme was completed from the LingXia default, never from the host's.
+    pub fn theme_pack(&self) -> Option<String> {
+        self.read_theme_pack().or_else(lingxia_app_context::host_theme_pack)
+    }
+
     /// The theme the lxapp bundles (`theme.json`, completed by `lingxia build`).
-    pub fn read_theme_pack(&self) -> Option<String> {
+    fn read_theme_pack(&self) -> Option<String> {
         const LIMIT: usize = 64 * 1024;
         let bytes = self.read_bytes("theme.json").ok()?;
         if bytes.len() > LIMIT {

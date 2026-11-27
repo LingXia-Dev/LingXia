@@ -259,6 +259,83 @@ function ground_(key) {
   return found && { role: found[1], percent: found[2] && Number(found[2]), under: found[3] };
 }
 
+/** JSON Schema for a theme file, so editors complete role names and flag bad colours. */
+function themeSchema(schema) {
+  // Hover and pressed shades come from their solid fill; a theme does not write them.
+  const roles = schema.roles.filter(role => !/-solid-(hover|pressed)$/.test(role.name));
+  const color = { type: 'string', pattern: '^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$' };
+  const look = {
+    type: 'object',
+    additionalProperties: false,
+    properties: Object.fromEntries(roles.map(role => [role.name, { ...color, description: role.doc }])),
+  };
+  const steps = family => {
+    const keys = schema.scales.filter(scale => scale.family === family).map(scale => scale.pack.split('.').pop());
+    return { type: 'object', additionalProperties: false, properties: Object.fromEntries(keys.map(key => [key, { type: 'number', minimum: 0 }])) };
+  };
+  const looks = ['light', 'dark', 'high-contrast-light', 'high-contrast-dark'];
+  const out = {
+    $schema: 'http://json-schema.org/draft-07/schema#',
+    title: 'LingXia theme',
+    type: 'object',
+    required: ['name', 'version'],
+    additionalProperties: false,
+    properties: {
+      $schema: { type: 'string' },
+      name: { type: 'string', minLength: 1 },
+      version: { const: 1 },
+      extends: { type: 'string', minLength: 1, description: '`default`, or the id of another theme beside this one; filled in at build.' },
+      appearance: {
+        type: 'object',
+        additionalProperties: false,
+        properties: Object.fromEntries(looks.map(name => [name, { $ref: '#/definitions/look' }])),
+      },
+      colors: {
+        type: 'object',
+        maxProperties: 32,
+        additionalProperties: {
+          type: 'object',
+          required: ['light', 'dark', 'use'],
+          additionalProperties: false,
+          properties: {
+            ...Object.fromEntries(looks.map(name => [name, color])),
+            use: { enum: ['graphic', 'text', 'fill'] },
+            on: { type: 'array', items: { enum: roles.map(role => role.name) } },
+            'on-color': color,
+          },
+        },
+      },
+      accent: {
+        type: 'object',
+        required: ['seed'],
+        additionalProperties: false,
+        properties: { seed: color, derive: { type: 'boolean' } },
+      },
+      type: {
+        type: 'object',
+        additionalProperties: false,
+        properties: { family: { type: 'array', items: { type: 'string' } }, scale: steps('type'), leading: steps('leading') },
+      },
+      shape: { type: 'object', additionalProperties: false, properties: { radius: steps('radius') } },
+      space: { type: 'object', additionalProperties: false, properties: { unit: { type: 'number', exclusiveMinimum: 0 } } },
+      motion: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          fast: { type: 'integer', minimum: 0 },
+          base: { type: 'integer', minimum: 0 },
+          slow: { type: 'integer', minimum: 0 },
+          easing: { type: 'string' },
+          enter: { type: 'string' },
+          exit: { type: 'string' },
+        },
+      },
+    },
+    definitions: { look },
+  };
+  return `${JSON.stringify(out, null, 2)}\n`;
+}
+
 function themeRust(schema) {
   const roles = schema.roles;
   const variants = roles.map((role, slot) => `    /// ${role.doc}\n    ${roleVariant(role.name)} = ${slot},`).join('\n');
@@ -1253,6 +1330,7 @@ export async function generate(schema) {
   const generated = {
     'crates/lingxia-view/src/protocol/generated.rs': rust(schema),
     'crates/lingxia-theme/src/generated.rs': themeRust(schema),
+    'packages/lingxia-view/schemas/theme.schema.json': themeSchema(schema),
     'crates/lingxia-lxapp/src/page/view_limits.rs': lxappLimits(schema),
     'packages/lingxia-view/src/generated/wire.js': wire(schema),
     'packages/lingxia-view/src/generated/contract.js': contract(schema, commonProps(api)),
