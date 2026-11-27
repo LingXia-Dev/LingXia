@@ -141,6 +141,8 @@ pub fn register_natives(env: &mut Env, class: &JClass) -> jni::errors::Result<()
         method!("nativeSetVisible", "(JZ)V", set_visible),
         method!("nativeSetSeeThrough", "(J)V", set_see_through),
         method!("nativeSurfaceChanged", "(J)V", surface_changed),
+        method!("nativeTimeChanged", "(J)V", time_changed),
+        method!("nativeEnvironmentChanged", "(J)V", environment_changed),
         method!("nativeSurfaceLost", "(J)V", surface_lost),
         method!("nativeRequestFrame", "(J)V", request_frame),
         method!("nativeRedraw", "(J)V", redraw),
@@ -415,6 +417,8 @@ host_call!(long_press, long_press);
 host_call!(cancel, cancel);
 host_call!(focus_left, focus_left);
 host_call!(surface_changed, surface_changed);
+host_call!(time_changed, time_changed);
+host_call!(environment_changed, environment_changed);
 
 /// A Choreographer frame: it shows `present_in_us` from now, refreshes come every `interval_us`.
 extern "system" fn vsync_at<'a>(

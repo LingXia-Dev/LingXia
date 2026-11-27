@@ -52,6 +52,8 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     static native void nativeTextHandleDrag(long host, boolean active);
     static native void nativeWindowVisible(long host, boolean visible);
     static native void nativeSurfaceChanged(long host);
+    static native void nativeTimeChanged(long host);
+    static native void nativeEnvironmentChanged(long host);
     static native void nativeSurfaceLost(long host);
     static native void nativeRequestFrame(long host);
     static native void nativeRedraw(long host);
@@ -675,6 +677,15 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     private final android.database.ContentObserver animatorScale = new android.database.ContentObserver(main) {
         @Override public void onChange(boolean selfChange) { requestFrame(); }
     };
+    /** The wall clock, date or zone moved: `useNow` hears it now, and the hour cycle is sampled again. */
+    private final android.content.BroadcastReceiver clock = new android.content.BroadcastReceiver() {
+        @Override public void onReceive(android.content.Context context, android.content.Intent intent) {
+            if (destroyed) return;
+            nativeTimeChanged(host);
+            requestFrame();
+        }
+    };
+    private boolean clockRegistered;
     // Settings.Secure.ACCESSIBILITY_HIGH_TEXT_CONTRAST_ENABLED, hidden but readable.
     private static final String HIGH_TEXT_CONTRAST = "high_text_contrast_enabled";
     @Override protected void onAttachedToWindow() {
@@ -683,11 +694,20 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
             android.provider.Settings.Global.getUriFor(android.provider.Settings.Global.ANIMATOR_DURATION_SCALE), false, animatorScale);
         getContext().getContentResolver().registerContentObserver(
             android.provider.Settings.Secure.getUriFor(HIGH_TEXT_CONTRAST), false, animatorScale);
+        android.content.IntentFilter clockEvents = new android.content.IntentFilter();
+        clockEvents.addAction(android.content.Intent.ACTION_TIME_CHANGED);
+        clockEvents.addAction(android.content.Intent.ACTION_TIMEZONE_CHANGED);
+        clockEvents.addAction(android.content.Intent.ACTION_DATE_CHANGED);
+        if (android.os.Build.VERSION.SDK_INT >= 33)
+            getContext().registerReceiver(clock, clockEvents, android.content.Context.RECEIVER_NOT_EXPORTED);
+        else getContext().registerReceiver(clock, clockEvents);
+        clockRegistered = true;
         startFoldTracking();
         requestFrame();
     }
     @Override protected void onDetachedFromWindow() {
         stopFoldTracking();
+        if (clockRegistered) { getContext().unregisterReceiver(clock); clockRegistered = false; }
         getContext().getContentResolver().unregisterContentObserver(animatorScale);
         super.onDetachedFromWindow();
     }
@@ -704,7 +724,9 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         hostConfiguration = new android.content.res.Configuration(configuration);
         textScale = null;
         surface.stopFling();
-        surface.clearFeedback(); surface.requestApplyInsets(); requestFrame();
+        surface.clearFeedback(); surface.requestApplyInsets();
+        // The View reruns only if what it read changed: a scheme flip is a repaint for most pages.
+        if (!destroyed) nativeEnvironmentChanged(host);
     }
     @Override public android.view.WindowInsets onApplyWindowInsets(android.view.WindowInsets insets) {
         main.post(this::requestFrame);
