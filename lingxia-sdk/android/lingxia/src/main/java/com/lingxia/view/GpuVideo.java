@@ -294,7 +294,13 @@ final class GpuVideo implements SurfaceTexture.OnFrameAvailableListener {
 
     private static synchronized java.util.concurrent.ExecutorService posters() {
         if (posters == null) {
-            posters = java.util.concurrent.Executors.newSingleThreadExecutor(task -> new Thread(task, "lingxia-video-poster"));
+            // A few at once, so a page of players does not wait on one queue; each holds a decoder.
+            int threads = Math.max(2, Math.min(4, Runtime.getRuntime().availableProcessors() / 2));
+            posters = java.util.concurrent.Executors.newFixedThreadPool(threads, task -> {
+                Thread worker = new Thread(task, "lingxia-video-poster");
+                worker.setDaemon(true);
+                return worker;
+            });
         }
         return posters;
     }
@@ -308,7 +314,8 @@ final class GpuVideo implements SurfaceTexture.OnFrameAvailableListener {
             return;
         }
         posterTask = posters().submit(() -> {
-            if (closed) {
+            // The player got its own frame first: an early one would only be dropped.
+            if (closed || available) {
                 return;
             }
             android.media.MediaMetadataRetriever retriever = new android.media.MediaMetadataRetriever();
@@ -327,7 +334,7 @@ final class GpuVideo implements SurfaceTexture.OnFrameAvailableListener {
                 rows.rewind();
                 int width = frame.getWidth(), height = frame.getHeight();
                 frame.recycle();
-                if (closed) {
+                if (closed || available) {
                     return;
                 }
                 posterWidth = width;
