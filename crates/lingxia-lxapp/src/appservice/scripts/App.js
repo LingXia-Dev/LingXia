@@ -124,10 +124,10 @@ function appLink(options) {
   return { url: options.url || "", path: options.path || "", query: options.query || {} };
 }
 
-// `onOpen(link)`, its throw reported; resolves to its target or nothing.
+// `onOpen(link)`, run now so it precedes the `onShow` that follows; a throw or rejection is
+// reported. Resolves to its target or nothing.
 function callOnOpen(appInstance, appConfig, link) {
-  return Promise.resolve()
-    .then(() => appConfig.onOpen.call(appInstance, link))
+  return new Promise((resolve) => resolve(appConfig.onOpen.call(appInstance, link)))
     .catch((error) => {
       failures({ error, source: { kind: "app", hook: "onOpen" } }, null);
       return undefined;

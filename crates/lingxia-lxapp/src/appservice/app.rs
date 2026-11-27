@@ -286,4 +286,48 @@ mod launch_destination_tests {
         assert!(log.contains(r#"["go",{"page":"reset"}]"#), "{log}");
         assert!(log.contains(r#"["onError","onLaunch"]"#), "{log}");
     }
+
+    /// A warm link after the first show: `again` runs before the link's `onShow`.
+    fn warm(config: &str, again: &str) -> String {
+        run(&format!(
+            "const app = __registerApp({config}); \
+             app.onLaunch('{{}}').then(() => {{ app.onShow('{{}}'); log.length = 0; {again} \
+             app.onShow(JSON.stringify({LINK})); }});"
+        ))
+    }
+
+    const ORDERED: &str = "{ onOpen: (link) => (log.push(['onOpen', link.url]), { page: 'reset' }), \
+                           onShow: () => log.push(['onShow']) }";
+
+    #[test]
+    fn a_warm_link_in_front_calls_on_open_then_on_show_once() {
+        let log = warm(ORDERED, "");
+        assert_eq!(
+            log,
+            r#"[["onOpen","https://x.app/reset?c=1"],["onShow"],["go",{"page":"reset"}]]"#
+        );
+    }
+
+    #[test]
+    fn a_warm_link_from_the_background_calls_on_open_then_on_show_once() {
+        let log = warm(
+            "{ onOpen: (link) => (log.push(['onOpen', link.url]), { page: 'reset' }), \
+               onShow: () => log.push(['onShow']), onHide: () => log.push(['onHide']) }",
+            "app.onHide('{}');",
+        );
+        assert_eq!(
+            log,
+            r#"[["onHide"],["onOpen","https://x.app/reset?c=1"],["onShow"],["go",{"page":"reset"}]]"#
+        );
+    }
+
+    #[test]
+    fn a_throwing_warm_on_open_is_reported_and_on_show_still_runs() {
+        let log = warm(
+            "{ onOpen() { log.push(['onOpen']); throw new Error('boom'); }, \
+               onShow: () => log.push(['onShow']), onError: (f) => log.push(['onError', f.source.hook]) }",
+            "",
+        );
+        assert_eq!(log, r#"[["onOpen"],["onShow"],["onError","onOpen"]]"#);
+    }
 }
