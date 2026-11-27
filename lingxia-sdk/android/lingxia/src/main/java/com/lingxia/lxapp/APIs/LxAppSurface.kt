@@ -247,6 +247,12 @@ internal object LxAppSurface {
 
     private var lastPlanSequence = 0L
 
+    private class QueuedPlan(val plan: JSONObject, val desiredIds: Set<String>, val sequence: Long)
+
+    /** UI thread only: plans the core commits while one is being applied wait for it to finish. */
+    private val queuedPlans = ArrayDeque<QueuedPlan>()
+    private var applyingPlan = false
+
     @JvmStatic
     fun presentLayout(windowId: String, layoutJson: String): Boolean {
         if (windowId.isBlank() || layoutJson.isBlank()) return false
@@ -270,31 +276,48 @@ internal object LxAppSurface {
                 if (sequence < lastPlanSequence) return@runOnUiThread
                 lastPlanSequence = sequence
             }
-            activity.applyLayoutPlan(plan)
-            val (entriesToClose, pendingToClose) = synchronized(stateLock) {
-                val mounted = entries.values
-                    .filter { entry ->
-                        (entry.inAside || entry.fullScreen && entry.overlay.visibility == View.VISIBLE) &&
-                            !desiredIds.contains(entry.id)
-                    }
-                    .map { it.id to it.appId }
-                val pending = pendingRequests.values
-                    .filter { request ->
-                        isFullScreenRequest(request) &&
-                            !desiredIds.contains(request.id)
-                    }
-                    .map { it.id to it.appId }
-                mounted to pending
-            }
-            entriesToClose.forEach { (id, ownerAppId) ->
-                closeEntry(id, ownerAppId, "programmatic")
-            }
-
-            pendingToClose.forEach { (id, ownerAppId) ->
-                closePendingRequest(id, ownerAppId, "programmatic")
+            queuedPlans.addLast(QueuedPlan(plan, desiredIds, sequence))
+            // runOnUiThread runs inline here, so a plan committed in answer to this pass lands
+            // inside it; it applies after, and the last plan applied is the newest.
+            if (applyingPlan) return@runOnUiThread
+            applyingPlan = true
+            try {
+                while (queuedPlans.isNotEmpty()) {
+                    val next = queuedPlans.removeFirst()
+                    if (next.sequence in 1 until lastPlanSequence) continue
+                    applyQueuedPlan(activity, next)
+                }
+            } finally {
+                applyingPlan = false
             }
         }
         return true
+    }
+
+    private fun applyQueuedPlan(activity: LxAppActivity, queued: QueuedPlan) {
+        val desiredIds = queued.desiredIds
+        activity.applyLayoutPlan(queued.plan)
+        val (entriesToClose, pendingToClose) = synchronized(stateLock) {
+            val mounted = entries.values
+                .filter { entry ->
+                    (entry.inAside || entry.fullScreen && entry.overlay.visibility == View.VISIBLE) &&
+                        !desiredIds.contains(entry.id)
+                }
+                .map { it.id to it.appId }
+            val pending = pendingRequests.values
+                .filter { request ->
+                    isFullScreenRequest(request) &&
+                        !desiredIds.contains(request.id)
+                }
+                .map { it.id to it.appId }
+            mounted to pending
+        }
+        entriesToClose.forEach { (id, ownerAppId) ->
+            closeEntry(id, ownerAppId, "programmatic")
+        }
+        pendingToClose.forEach { (id, ownerAppId) ->
+            closePendingRequest(id, ownerAppId, "programmatic")
+        }
     }
 
     @JvmStatic
