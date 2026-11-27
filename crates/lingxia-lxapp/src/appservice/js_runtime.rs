@@ -230,13 +230,14 @@ pub(crate) struct WorkerService {
 }
 
 // Handles a typed AppService event
+/// Runs an App hook; for `onLaunch`, returns the first page it chose as JSON.
 async fn handle_app_service_event(
     worker_id: usize,
     ctx: &JSContext,
     appid: String,
     event: AppServiceEvent,
     args: Option<String>,
-) {
+) -> Option<String> {
     // Resolve AppSvc from registry via JSContext and clone it for use in this async handler.
     let svc = match with_app_svc(ctx, |svc| Ok(svc.clone())) {
         Ok(svc) => svc,
@@ -246,16 +247,27 @@ async fn handle_app_service_event(
                 worker_id, event, e
             )
             .with_appid(appid);
-            return;
+            return None;
         }
     };
 
+    if event == AppServiceEvent::OnLaunch {
+        return match svc.call_launch(ctx, args).await {
+            Ok(target) => (target != "null").then_some(target),
+            Err(e) => {
+                let error = thrown_error(ctx, e);
+                error!(
+                    "[Worker {}] App service event '{}' failed, Error: {}",
+                    worker_id, event, error
+                )
+                .with_appid(appid);
+                None
+            }
+        };
+    }
     if matches!(
         event,
-        AppServiceEvent::OnLaunch
-            | AppServiceEvent::OnShow
-            | AppServiceEvent::OnHide
-            | AppServiceEvent::OnUserCaptureScreen
+        AppServiceEvent::OnShow | AppServiceEvent::OnHide | AppServiceEvent::OnUserCaptureScreen
     ) && let Err(e) = svc.call_event(ctx, event, args.clone()).await
     {
         let error = thrown_error(ctx, e);
@@ -273,9 +285,10 @@ async fn handle_app_service_event(
             .with_appid(appid);
         }
     }
+    None
 }
 
-fn js_value_to_json_string(value: JSValue) -> Result<String, lingxia_error::Error> {
+pub(crate) fn js_value_to_json_string(value: JSValue) -> Result<String, lingxia_error::Error> {
     if value.is_undefined() || value.is_null() {
         return Ok("null".to_string());
     }
@@ -1086,10 +1099,12 @@ async fn handle_service_message(
                     let appid = lxapp.appid.clone();
                     let launched = (event == AppServiceEvent::OnLaunch).then(|| lxapp.clone());
                     context_lifecycle::spawn(ctx, move |ctx| async move {
-                        handle_app_service_event(worker_id, &ctx, appid, event, args).await;
+                        let target =
+                            handle_app_service_event(worker_id, &ctx, appid, event, args).await;
                         // onLaunch's promise has settled: its start-up work
                         // (and any navigation it awaited) is done.
                         if let Some(lxapp) = launched {
+                            lxapp.launch_gate.record(target);
                             lxapp.launch_settled.send_replace(true);
                         }
                     });

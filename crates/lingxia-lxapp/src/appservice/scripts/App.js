@@ -106,9 +106,11 @@ function registerApp(appConfig, handlerNamesJson) {
   if ("onError" in appConfig && typeof appConfig.onError !== "function") {
     throw new TypeError("App: onError is a function: onError(failure) { … }");
   }
-  for (const name of ["onLaunch", "onShow", "onHide", "onScreenshot"]) reportingHook(appInstance, name);
+  for (const name of ["onShow", "onHide", "onScreenshot"]) reportingHook(appInstance, name);
   hideLinkFields(appInstance);
-  if (typeof appConfig.onOpen === "function") routeLinksThroughOnOpen(appInstance, appConfig);
+  const firstShown = onFirstShow(appInstance);
+  decideLaunchDestination(appInstance, appConfig, firstShown);
+  if (typeof appConfig.onOpen === "function") routeWarmLinksThroughOnOpen(appInstance, appConfig);
 
   new LxAppSvc(appInstance, handlerNamesJson || "[]");
   __APP_INSTANCE__ = appInstance;
@@ -116,46 +118,93 @@ function registerApp(appConfig, handlerNamesJson) {
 }
 
 
-// An App Link (host scene 8003) reaches `onOpen`, cold after `onLaunch`
-// settles and warm before `onShow`; a returned target is navigated to.
-function routeLinksThroughOnOpen(appInstance, appConfig) {
-  const open = (options) => {
-    if (typeof options === "string") options = JSON.parse(options);
-    if (!options || options.scene !== 8003) return;
-    const link = { url: options.url || "", path: options.path || "", query: options.query || {} };
-    Promise.resolve()
-      .then(() => appConfig.onOpen.call(appInstance, link))
-      .then((target) => {
-        if (target) {
-          const opened = lx.nav.go(target);
-          if (opened && opened.opened) opened.opened.catch((error) => console.error("App.onOpen target failed:", error));
-          return opened && typeof opened.then === "function" ? opened : undefined;
-        }
-      })
-      .catch((error) => failures({ error, source: { kind: "app", hook: "onOpen" } }, null));
+function appLink(options) {
+  if (typeof options === "string") options = JSON.parse(options);
+  if (!options || options.scene !== 8003) return null;
+  return { url: options.url || "", path: options.path || "", query: options.query || {} };
+}
+
+// `onOpen(link)`, its throw reported; resolves to its target or nothing.
+function callOnOpen(appInstance, appConfig, link) {
+  return Promise.resolve()
+    .then(() => appConfig.onOpen.call(appInstance, link))
+    .catch((error) => {
+      failures({ error, source: { kind: "app", hook: "onOpen" } }, null);
+      return undefined;
+    });
+}
+
+function navigateTo(target, hook) {
+  const opened = lx.nav.go(target);
+  if (opened && opened.opened) opened.opened.catch((error) => console.error(`App.${hook} target failed:`, error));
+}
+
+// Settles at the first `onShow`, when the first page is on screen.
+function onFirstShow(appInstance) {
+  let shown;
+  const firstShown = new Promise((resolve) => (shown = resolve));
+  const onShow = appInstance.onShow;
+  appInstance.onShow = function (...args) {
+    shown();
+    return onShow ? onShow.apply(appInstance, args) : undefined;
   };
+  return firstShown;
+}
+
+// `onLaunch` resolves to the launch decision the host waits for until `launchDeadline`: a page
+// or tab target is the first page; "start" is the start page, chosen when `onOpen` owns the
+// link; `null` keeps the page the host was asked for. The app's `onLaunch({ link })` decides
+// first, then a cold link's `onOpen`. Anything else (another app, a URL, an answer after the
+// deadline, the link after a throwing `onLaunch`) is navigated to once the first page is up.
+function decideLaunchDestination(appInstance, appConfig, firstShown) {
   const onLaunch = appInstance.onLaunch;
+  const ownsLinks = typeof appConfig.onOpen === "function";
   appInstance.onLaunch = function (options) {
-    const result = onLaunch ? onLaunch.call(appInstance, options) : undefined;
-    Promise.resolve(result).then(() => open(options), () => {});
-    return result;
+    if (typeof options === "string") options = JSON.parse(options);
+    const deadline = options && typeof options.launchDeadline === "number" ? options.launchDeadline : 0;
+    const link = appLink(options);
+    const fallback = link && ownsLinks ? "start" : null;
+    const settle = (target, hook) => {
+      if (!target) return fallback;
+      const firstPage = (target.page || target.tab) && !target.app && !target.url;
+      if (firstPage && Date.now() <= deadline) return target;
+      firstShown.then(() => navigateTo(target, hook));
+      return fallback;
+    };
+    const openLink = () => callOnOpen(appInstance, appConfig, link);
+    return Promise.resolve()
+      .then(() => (onLaunch ? onLaunch.call(appInstance, Object.freeze({ link })) : undefined))
+      .then(
+        (target) => {
+          if (target || !fallback) return settle(target, "onLaunch");
+          return openLink().then((opened) => settle(opened, "onOpen"));
+        },
+        (error) => {
+          failures({ error, source: { kind: "app", hook: "onLaunch" } }, null);
+          if (fallback) openLink().then((opened) => opened && firstShown.then(() => navigateTo(opened, "onOpen")));
+          return fallback;
+        },
+      );
   };
+}
+
+// A warm App Link reaches `onOpen` before `onShow`; a returned target is navigated to.
+function routeWarmLinksThroughOnOpen(appInstance, appConfig) {
   const onShow = appInstance.onShow;
   appInstance.onShow = function (options) {
-    open(options);
+    const link = appLink(options);
+    if (link) {
+      callOnOpen(appInstance, appConfig, link).then((target) => {
+        if (target) navigateTo(target, "onOpen");
+      });
+    }
     return onShow ? onShow.call(appInstance, options) : undefined;
   };
 }
 
-// The link fields feed `onOpen` only; `onLaunch` takes nothing and `onShow`
-// sees where it lands, not how the link was delivered.
+// The link fields feed `onOpen` and `onLaunch({ link })`; `onShow` sees where it lands, not how
+// the link was delivered.
 function hideLinkFields(appInstance) {
-  const onLaunch = appInstance.onLaunch;
-  if (typeof onLaunch === "function") {
-    appInstance.onLaunch = function () {
-      return onLaunch.call(appInstance);
-    };
-  }
   const onShow = appInstance.onShow;
   if (typeof onShow === "function") {
     appInstance.onShow = function (options) {

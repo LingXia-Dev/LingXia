@@ -41,6 +41,7 @@ mod content;
 mod display_language;
 pub mod host_appearance;
 pub mod host_contrast;
+mod launch;
 pub mod localized_text;
 mod messages;
 pub(crate) mod metadata;
@@ -1308,6 +1309,10 @@ pub struct LxApp {
     /// Whether `App.onLaunch` of the current Logic context has settled
     /// (returned, resolved or rejected). Reset whenever onLaunch is due again.
     pub(crate) launch_settled: tokio::sync::watch::Sender<bool>,
+    /// The first page `onLaunch` (or a cold link's `onOpen`) chose; a cold open waits on it.
+    pub(crate) launch_gate: launch::LaunchGate,
+    /// `Date.now()` by which Logic must decide, sent with `onLaunch`; `None` when nothing waits.
+    launch_deadline_ms: Mutex<Option<u64>>,
     /// What `lx.nav.current` last reported; see `publish_current_page`.
     pub(crate) nav_current: Mutex<page_instance_host::NavCurrent>,
     /// The page stack's `lx.nav` operations, run one at a time in order.
@@ -2401,6 +2406,7 @@ impl LxApp {
         let termination = self.executor.terminate_app_svc(self.clone_arc());
         self.app_launch_dispatched.store(false, Ordering::SeqCst);
         self.launch_settled.send_replace(false);
+        self.launch_gate.reset();
         self.clear_open_region();
         termination
     }
@@ -2460,6 +2466,8 @@ impl LxApp {
             session,
             logic_contexts: tokio::sync::watch::channel(0).0,
             launch_settled: tokio::sync::watch::channel(false).0,
+            launch_gate: Default::default(),
+            launch_deadline_ms: Mutex::new(None),
             nav_current: Mutex::new(Default::default()),
             nav_queue: Arc::default(),
             admission: OnceLock::new(),
@@ -3604,16 +3612,28 @@ impl LxApp {
         {
             return Ok(());
         }
-        let payload = self
+        let mut payload = self
             .state
             .lock()
             .unwrap_or_else(|err| err.into_inner())
             .startup_options
-            .launch_options_json();
-        if let Err(error) = self.appservice_notify(AppServiceEvent::OnLaunch, Some(payload)) {
+            .launch_options_value();
+        if let (Some(deadline), serde_json::Value::Object(map)) = (
+            self.launch_deadline_ms
+                .lock()
+                .unwrap_or_else(|err| err.into_inner())
+                .take(),
+            &mut payload,
+        ) {
+            map.insert("launchDeadline".to_string(), deadline.into());
+        }
+        if let Err(error) =
+            self.appservice_notify(AppServiceEvent::OnLaunch, Some(payload.to_string()))
+        {
             self.app_launch_dispatched.store(false, Ordering::SeqCst);
-            // No onLaunch will settle; pages must not wait on it.
+            // No onLaunch will settle; pages and a waiting open must not wait on it.
             self.launch_settled.send_replace(true);
+            self.launch_gate.record(None);
             return Err(error);
         }
         // Cold AppLink is delivered once via onLaunch. Clear so the following
@@ -3650,6 +3670,7 @@ impl LxApp {
     fn relaunch_logic(&self) -> Result<(), lingxia_error::Error> {
         self.app_launch_dispatched.store(false, Ordering::SeqCst);
         self.launch_settled.send_replace(false);
+        self.launch_gate.reset();
         self.ensure_app_launch_dispatched()?;
         if self.is_opened() && self.is_shown() {
             self.appservice_notify(
@@ -4031,7 +4052,7 @@ impl LxApp {
         if self.session.is_cancelled() {
             self.session.revive();
         }
-        let result = self.open_claimed(options);
+        let result = self.open_claimed(options, began_opening);
         if result.is_err() {
             if began_opening {
                 let _ = self.cas_status(LxAppSessionStatus::Opening, LxAppSessionStatus::Closed);
@@ -4205,7 +4226,11 @@ impl LxApp {
         }
     }
 
-    fn open_claimed(&self, options: LxAppStartupOptions) -> Result<(), lingxia_error::Error> {
+    fn open_claimed(
+        &self,
+        options: LxAppStartupOptions,
+        cold: bool,
+    ) -> Result<(), lingxia_error::Error> {
         if self.logic_enabled() && !crate::js_appservice_supported() {
             return Err(lingxia_error::Error::not_supported(
                 "this host app was built without JS AppService runtime",
@@ -4243,6 +4268,30 @@ impl LxApp {
         // Ensure the target app's JS worker is created and mapped before creating pages.
         // View-only lxapps (`logic: false`) skip this path.
         self.executor.create_app_svc(self.clone_arc())?;
+
+        // A cold open shows no page until Logic picks the first one: `onLaunch` may return it,
+        // else a cold link's `onOpen` may. The start page is made meanwhile.
+        if cold && self.logic_enabled() && crate::js_appservice_supported() {
+            let (deadline_ms, give_up) = launch::launch_deadline();
+            *self
+                .launch_deadline_ms
+                .lock()
+                .unwrap_or_else(|err| err.into_inner()) = Some(deadline_ms);
+            self.launch_gate.reset();
+            let _ = self.get_or_create_page(&startup_options.path);
+            if let Err(error) = self.ensure_app_launch_dispatched() {
+                error!("Failed to trigger onLaunch service: {}", error)
+                    .with_appid(self.appid.clone());
+            }
+            let cold_link = startup_options.scene == Scene::AppLink;
+            if let Some((path, query)) = self.await_launch_destination(give_up, cold_link) {
+                startup_options.path = path;
+                startup_options.query = query;
+                let mut state = self.state.lock().unwrap_or_else(|err| err.into_inner());
+                state.startup_options.path = startup_options.path.clone();
+                state.startup_options.query = startup_options.query.clone();
+            }
+        }
 
         // Create native PageInstance + WebView
         let page = self.get_or_create_page(&startup_options.path);

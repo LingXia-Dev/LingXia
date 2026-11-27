@@ -37,13 +37,17 @@ rong::js_api! {
 
         /// What `App({...})` takes: the lxapp's lifecycle hooks.
         type AppConfig = r###"{
-    /** Runs once when the lxapp starts, before its first page. */
-    onLaunch?: () => void | Promise<void>;
     /**
-     * An App Link from outside, cold (after `onLaunch` settles) or warm
-     * (before `onShow`). Turn its untrusted strings into a target here; the
-     * framework navigates to it, and returning nothing stays where the app
-     * is (the landing page on a cold start).
+     * Runs once when the lxapp starts, before its first page. A returned page or tab is the
+     * first page (signed out → onboarding), and the cold `link` then skips `onOpen`. Decide
+     * locally: with a cold link's `onOpen` it holds the launch screen at most 1.5 s, after which
+     * the start page opens and a late target is navigated to.
+     */
+    onLaunch?: (launch: LaunchInfo) => NavTarget | void | Promise<NavTarget | void>;
+    /**
+     * An App Link from outside: cold, when `onLaunch` returned nothing, before the first page
+     * (its target is the first page); warm, before `onShow`. Turn its untrusted strings into a
+     * target here; returning nothing opens the start page cold and stays where the app is warm.
      */
     onOpen?: (link: OpenLink) => NavTarget | void | Promise<NavTarget | void>;
     /** Runs each time the lxapp comes to the front. */
@@ -156,6 +160,12 @@ rong::js_api! {
         /// page union cannot check it, so it stays a plain string and the
         /// target runtime rejects a name it does not have.
         type ExternalPageName = r###"string"###;
+
+        /// What `App` `onLaunch` receives.
+        type LaunchInfo = r###"{
+    /** The App Link the lxapp was started from, or `null`. */
+    link: OpenLink | null;
+}"###;
 
         /// An inbound App Link, as `App.onOpen` receives it.
         type OpenLink = r###"{

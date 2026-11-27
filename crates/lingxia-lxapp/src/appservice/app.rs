@@ -22,6 +22,10 @@ impl LxAppSvc {
         };
 
         app_svc.assign_funcs(&obj, handler_names_json.0.as_deref())?;
+        if let Ok(app) = crate::lxapp::LxApp::from_ctx(&ctx) {
+            app.launch_gate
+                .set_links_through_on_open(obj.get::<_, JSFunc>("onOpen").is_ok());
+        }
 
         // Bind this AppSvc instance to the LxApp runtime context associated with ctx.
         set_app_svc_for_ctx(&ctx, app_svc.clone())?;
@@ -100,6 +104,27 @@ impl LxAppSvc {
         // App lifecycle handlers are optional, matching PageInstance handlers.
         Ok(())
     }
+
+    /// Runs `onLaunch` and returns the first page it settled on, as JSON (`null` for none).
+    pub async fn call_launch(&self, ctx: &JSContext, args: Option<String>) -> JSResult<String> {
+        let Some(func) = self.event_handlers.get(&AppServiceEvent::OnLaunch) else {
+            return Ok("null".to_string());
+        };
+        let args_obj = args
+            .as_ref()
+            .and_then(|json| JSObject::from_json_string(ctx, json).ok());
+        let value: JSValue = match args_obj {
+            Some(obj) => {
+                func.call_async::<_, JSValue>(Some(self.this.clone()), (obj,))
+                    .await?
+            }
+            None => {
+                func.call_async::<_, JSValue>(Some(self.this.clone()), ())
+                    .await?
+            }
+        };
+        Ok(super::js_value_to_json_string(value).unwrap_or_else(|_| "null".into()))
+    }
 }
 
 // Register the global App function
@@ -171,5 +196,94 @@ mod rejection_tests {
             .eval(Source::from_bytes("JSON.stringify(seen)"))
             .unwrap();
         assert_eq!(seen, r#"[["lost","app",null,null]]"#);
+    }
+}
+
+#[cfg(all(test, feature = "js-appservice"))]
+mod launch_destination_tests {
+    use rong::{JSEngine, Source};
+
+    /// Runs `script` after App.js with stubbed `LxAppSvc`/`lx.nav.go`; returns `log` as JSON.
+    fn run(script: &str) -> String {
+        let runtime = <rong::RongJS as JSEngine>::runtime();
+        let ctx = runtime.context();
+        ctx.eval::<()>(Source::from_bytes(
+            "globalThis.log = []; globalThis.LxAppSvc = class {}; \
+             globalThis.lx = { nav: { go: (t) => { log.push(['go', t]); return { opened: Promise.resolve() }; } } };",
+        ))
+        .unwrap();
+        ctx.eval::<()>(Source::from_bytes(include_str!("scripts/App.js")))
+            .unwrap();
+        ctx.eval::<()>(Source::from_bytes(script)).unwrap();
+        for _ in 0..20 {
+            runtime.run_pending_jobs();
+        }
+        ctx.eval(Source::from_bytes("JSON.stringify(log)")).unwrap()
+    }
+
+    const LINK: &str = "{ scene: 8003, url: 'https://x.app/reset?c=1', path: '', query: { c: '1' }, launchDeadline: Date.now() + 60000 }";
+
+    fn launch(config: &str, options: &str) -> String {
+        run(&format!(
+            "const app = __registerApp({config}); \
+             app.onLaunch(JSON.stringify({options})).then((d) => {{ log.push(['decided', d]); app.onShow('{{}}'); }});"
+        ))
+    }
+
+    #[test]
+    fn on_launch_target_is_the_first_page_and_skips_on_open() {
+        let log = launch(
+            "{ onLaunch: ({ link }) => (log.push(['link', link.url]), { page: 'onboarding' }), onOpen: () => log.push(['onOpen']) }",
+            LINK,
+        );
+        assert_eq!(
+            log,
+            r#"[["link","https://x.app/reset?c=1"],["decided",{"page":"onboarding"}]]"#
+        );
+    }
+
+    #[test]
+    fn a_cold_link_reaches_on_open_before_the_first_page() {
+        let log = launch(
+            "{ onOpen: (link) => ({ page: 'reset', params: link.query }) }",
+            LINK,
+        );
+        assert_eq!(log, r#"[["decided",{"page":"reset","params":{"c":"1"}}]]"#);
+        let log = launch("{ onOpen: () => {} }", LINK);
+        assert_eq!(log, r#"[["decided","start"]]"#);
+    }
+
+    #[test]
+    fn without_a_link_or_target_the_requested_page_stays() {
+        let log = launch(
+            "{ onLaunch() {}, onOpen: () => log.push(['onOpen']) }",
+            "{ scene: 1001, launchDeadline: Date.now() + 60000 }",
+        );
+        assert_eq!(log, r#"[["decided",null]]"#);
+    }
+
+    #[test]
+    fn late_or_foreign_targets_open_after_the_first_page() {
+        let log = launch(
+            "{ onLaunch: () => ({ page: 'late' }) }",
+            "{ scene: 1001, launchDeadline: Date.now() - 1 }",
+        );
+        assert_eq!(log, r#"[["decided",null],["go",{"page":"late"}]]"#);
+        let log = launch("{ onOpen: () => ({ url: 'https://x.app' }) }", LINK);
+        assert_eq!(
+            log,
+            r#"[["decided","start"],["go",{"url":"https://x.app"}]]"#
+        );
+    }
+
+    #[test]
+    fn a_throwing_on_launch_opens_the_start_page_and_still_routes_the_link() {
+        let log = launch(
+            "{ onLaunch() { throw new Error('boom'); }, onOpen: () => ({ page: 'reset' }), onError: (f) => log.push(['onError', f.source.hook]) }",
+            LINK,
+        );
+        assert!(log.starts_with(r#"[["decided","start"]"#), "{log}");
+        assert!(log.contains(r#"["go",{"page":"reset"}]"#), "{log}");
+        assert!(log.contains(r#"["onError","onLaunch"]"#), "{log}");
     }
 }

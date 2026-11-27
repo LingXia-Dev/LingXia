@@ -31,7 +31,7 @@ as an object. Nothing is consumed or rewritten, and the link always opens home.
 
 ```ts
 App({
-  // Cold (after onLaunch settles) and warm (before onShow), once per tap.
+  // Cold (before the first page, when onLaunch returned nothing) and warm (before onShow).
   onOpen(link) {
     const { pathname, searchParams } = new URL(link.url);
     // Route from an allowlist. `url` is attacker-reachable: it can come from a
@@ -39,14 +39,16 @@ App({
     if (pathname === '/app/auth/reset-password') {
       return { page: 'reset', params: { code: searchParams.get('code') ?? '' } };
     }
-    // Nothing returned: stay where the app is (the landing page when cold).
+    // Nothing returned: the start page when cold, stay where the app is when warm.
   },
 });
 ```
 
-The framework navigates to the target `onOpen` returns. On a cold start the
-landing page loads first and the target opens over it. `onLaunch` / `onShow`
-do not see the link.
+Cold, the returned page or tab is the first page; `onLaunch({ link })` can
+return its own instead (signed out → onboarding), and then `onOpen` is skipped.
+The two together hold the launch screen at most 1.5 s, then the start page
+opens and a late target is navigated to. Warm, the target is navigated to.
+`onShow` does not see the link.
 Never feed a query value straight into `lx.nav.go` as a page name.
 
 ## The `/lxapp/` namespace

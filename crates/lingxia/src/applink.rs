@@ -39,7 +39,12 @@ fn open_target(target: AppLinkTarget) -> i32 {
             lxapp::notify_lxapp_open_blocked(&err);
             return;
         }
-        if let Err(err) = lxapp::open_lxapp(&appid, options) {
+        // A cold open waits for the launch decision; keep the executor free while it does.
+        let opened = crate::task::spawn_blocking(move || {
+            lxapp::open_lxapp(&appid, options).map_err(|err| (appid, err))
+        })
+        .await;
+        if let Ok(Err((appid, err))) = opened {
             log::warn!("AppLink open failed for {}: {}", appid, err);
         }
     }));

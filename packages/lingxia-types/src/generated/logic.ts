@@ -810,13 +810,17 @@ export type AppCacheClearResult = {
 
 /** What `App({...})` takes: the lxapp's lifecycle hooks. */
 export type AppConfig = {
-    /** Runs once when the lxapp starts, before its first page. */
-    onLaunch?: () => void | Promise<void>;
     /**
-     * An App Link from outside, cold (after `onLaunch` settles) or warm
-     * (before `onShow`). Turn its untrusted strings into a target here; the
-     * framework navigates to it, and returning nothing stays where the app
-     * is (the landing page on a cold start).
+     * Runs once when the lxapp starts, before its first page. A returned page or tab is the
+     * first page (signed out → onboarding), and the cold `link` then skips `onOpen`. Decide
+     * locally: with a cold link's `onOpen` it holds the launch screen at most 1.5 s, after which
+     * the start page opens and a late target is navigated to.
+     */
+    onLaunch?: (launch: LaunchInfo) => NavTarget | void | Promise<NavTarget | void>;
+    /**
+     * An App Link from outside: cold, when `onLaunch` returned nothing, before the first page
+     * (its target is the first page); warm, before `onShow`. Turn its untrusted strings into a
+     * target here; returning nothing opens the start page cold and stays where the app is warm.
      */
     onOpen?: (link: OpenLink) => NavTarget | void | Promise<NavTarget | void>;
     /** Runs each time the lxapp comes to the front. */
@@ -1751,6 +1755,12 @@ export type KeyEventCallback = (event: KeyEvent) => void;
  * autocomplete while still accepting a tag.
  */
 export type LanguagePreference = 'auto' | (string & {});
+
+/** What `App` `onLaunch` receives. */
+export type LaunchInfo = {
+    /** The App Link the lxapp was started from, or `null`. */
+    link: OpenLink | null;
+};
 
 export type LxAppApi = globalThis.LxAppApi;
 

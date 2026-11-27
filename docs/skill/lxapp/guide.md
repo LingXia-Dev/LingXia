@@ -223,7 +223,7 @@ import { session } from './shared/session';
 
 App({
   async onLaunch() {
-    // Once per worker. An App Link goes to `onOpen`, not here.
+    // Once per worker. May return the first page; a cold App Link goes to `onOpen`.
     const loaded = await session.ready;  // { ok: true } or { ok: false, error }; never rejects
     if (!loaded.ok) console.warn('session not restored', loaded.error);
   },

@@ -71,9 +71,13 @@ Every `onShow` / `onHide` receives `{ source, reason }`:
   kept; the previous main gets `onHide` (`switch_away`). Desktop only: mobile
   hosts reject with `E_NOT_SUPPORTED`, the root main with `E_SURFACE_ROLE_LOCKED`,
   and an app already open in the other role with `E_SURFACE_CONFLICT`.
+- **`onLaunch` may pick the first page.** Return a page or tab target (local
+  decisions only); with a cold link's `onOpen` it holds the launch screen at
+  most 1.5 s, then the start page opens and a late target is navigated to.
 - **AppLink arrives once.** Route it in `App.onOpen(link)` and return a
-  target: cold, it runs after `onLaunch` settles; warm, before `onShow`
-  (`reason: 'switch_back'`). No other hook sees the link.
+  target: cold, before the first page when `onLaunch` returned none (its
+  target is the first page); warm, before `onShow` (`reason: 'switch_back'`).
+  `onLaunch` sees it as `{ link }`; `onShow` does not.
 - **`onLaunch` runs once per Logic start.** Restarts start Logic again:
   - `lx.app.update.apply()` closes the session (`onHide`, `close`) and opens
     a new one: `onLaunch`, `onShow` (`open`), then the initial page's `onLoad`.
