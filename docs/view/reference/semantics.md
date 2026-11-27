@@ -77,7 +77,7 @@ A literal combination that breaks one of these fails the build; a computed one f
 | `aria-valuetext` | `aria-valuenow, -valuemin, -valuemax and -valuetext belong on role="progressbar", "spinbutton" or "combobox", or an onPointer element` |
 | `headingLevel` | `headingLevel belongs on role="heading"` |
 | `aria-level` | `aria-level belongs on role="treeitem"` |
-| `aria-controls` | `aria-controls and aria-autocomplete belong on role="combobox"` |
+| `aria-controls` | `aria-controls belongs on role="combobox" or a <textarea> whose keys move through a list` |
 | `aria-autocomplete` | `aria-controls and aria-autocomplete belong on role="combobox"` |
 | `aria-checked` | `aria-checked="mixed" goes on role="menuitemcheckbox"; a <checkbox> takes indeterminate` · `aria-checked goes on role="radio", "menuitemcheckbox" or "menuitemradio"; a checkbox has its own checked` |
 | `aria-modal` | `aria-modal belongs on a popover with role="dialog"` · `a <dialog> is always modal; a non-modal dialog is a popover with role="dialog"` |

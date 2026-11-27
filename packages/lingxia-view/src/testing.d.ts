@@ -81,10 +81,10 @@ export interface Screen {
   selectText(node: WireNode, start: number, end?: number): void;
   /** A paste into an editor: `onPaste` hears it first, then, unless it called `preventDefault()`, the plain text goes in at `selection` (default: the end) as `onInput`. */
   paste(node: WireNode, clipboard: { text: string; html?: string; plain?: boolean; selection?: { start: number; end: number } }): { prevented: boolean };
-  /** An editor's `onFocus`. */
-  focus(node: WireNode): void;
-  /** An editor's `onBlur`. */
-  blur(node: WireNode): void;
+  /** `onFocus` on an editor, button or link. An editor's `focusVisible` is always true; a control's is `visible` (a key moved it), false by default. */
+  focus(node: WireNode, options?: { visible?: boolean }): void;
+  /** `onBlur`, with `focusVisible` as `focus` reports it. */
+  blur(node: WireNode, options?: { visible?: boolean }): void;
   /** An `onPointer` event at a point of the node's content box; `pointer` defaults to `touch`. */
   pointer(node: WireNode, event: { phase: "down" | "move" | "up" | "cancel" | "hover" | "leave" | "increment" | "decrement"; x: number; y: number; width: number; height: number; pointer?: "touch" | "mouse" | "pen" | "keyboard" }): void;
   /** Lays the node out at this content size, with its content's min- and max-content widths when given: its `onLayout` and `useBox` handle take it. */

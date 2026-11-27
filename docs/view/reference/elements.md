@@ -92,7 +92,7 @@ Children: text, or noninteractive content elements (a composed control). `dragSn
 | Prop | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `aria-level` | `number` |  | A `treeitem`'s depth, 1..32; Left and Right walk between levels. |
-| `aria-controls` | `string` |  | With `role="combobox"`: the ids (1..8, space-separated) of the list it opens. Assistive tech and automation read them; an id that names no element is left out. |
+| `aria-controls` | `string` |  | On a `role="combobox"` or an editor whose keys move through a list: the ids (1..8, space-separated) of the list it opens. Assistive tech and automation read them; an id that names no element is left out. |
 | `aria-valuetext` | `string` |  | With `role="combobox"`: what is chosen, spoken after the name. |
 | `aria-checked` | `boolean \| "mixed"` |  | Checked state of a `radio`, `menuitemcheckbox` or `menuitemradio` item; `"mixed"` on a `menuitemcheckbox` that is partly checked. |
 | `onContextMenu` | `(event: ContextMenuEvent) => void` |  | Called for a long press or a secondary click, with where it happened. |
@@ -101,6 +101,8 @@ Children: text, or noninteractive content elements (a composed control). `dragSn
 | `onPointer` | `(event: PointerEvent) => void` |  | Reports a single pointer over the element: down, move, up, enter, leave and cancel. |
 | `pointerAxis` | `"x" \| "y" \| "both"` |  | The axis `onPointer` keeps; the other is left to the page's scroll. |
 | `onClick` | `(event: PressEvent) => void` |  | Called when it is pressed: a tap, a click, Enter or Space, or a screen reader's activation. `event.timeStamp` is when the press arrived, in epoch ms. |
+| `onFocus` | `(event: FocusEvent) => void` |  | Called when it takes focus, from a key, a press or code. `focusVisible` says whether focus shows, as the `focus-visible:` variant: always for an editor, for a control only when a key, switch or assistive tool moved it. |
+| `onBlur` | `(event: FocusEvent) => void` |  | Called when focus leaves it; `focusVisible` is how it showed while it was there. |
 | `disabled` | `boolean` |  | Refuses input and shows the disabled style; it stays in accessibility, marked unavailable. |
 | `aria-label` | `string` |  | The accessible name, spoken in place of its text. |
 | `popoverTarget` | `string` |  | The id of a popover a press opens or closes. |
@@ -185,12 +187,12 @@ Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onInput
 | `aria-valuemax` | `number` |  | The highest value; 100 unless set. |
 | `aria-valuetext` | `string` |  | Spoken in place of the number, such as "1:20 of 3:05". |
 | `aria-activedescendant` | `string` |  | The id of the option the editor's keys point at while focus stays in the text; a screen reader hears that option as it changes. |
-| `aria-controls` | `string` |  | With `role="combobox"`: the ids (1..8, space-separated) of the list it opens. Assistive tech and automation read them; an id that names no element is left out. |
+| `aria-controls` | `string` |  | On a `role="combobox"` or an editor whose keys move through a list: the ids (1..8, space-separated) of the list it opens. Assistive tech and automation read them; an id that names no element is left out. |
 | `aria-autocomplete` | `"list" \| "none"` |  | With `role="combobox"`: `"list"` when typing filters the list it opens. |
 | `onKeyDown` | `EditorKeys` |  | Keys the editor handles before typing: a map from key name to a handler returning `true` when it took the key. |
 | `readOnly` | `boolean` |  | The text can be selected and copied but not changed. |
-| `onFocus` | `() => void` |  | Called when the editor gains focus. |
-| `onBlur` | `() => void` |  | Called when the editor loses focus. |
+| `onFocus` | `(event: FocusEvent) => void` |  | Called when it takes focus, from a key, a press or code. `focusVisible` says whether focus shows, as the `focus-visible:` variant: always for an editor, for a control only when a key, switch or assistive tool moved it. |
+| `onBlur` | `(event: FocusEvent) => void` |  | Called when focus leaves it; `focusVisible` is how it showed while it was there. |
 | `onSelectionChange` | `(selection: EditorSelection) => void` |  | Called at most once a frame when the caret moves, the selection changes or where it shows changes: `start` and `end` are UTF-16 offsets, as `value.slice(start, end)` reads them; `caret` and `rects` are in page points. To place a menu at the caret, anchor a popover to `<id>:caret` instead. Needs `bind` for `setSelection` and `replaceRange` on the cell. |
 | `onPaste` | `(event: PasteEvent) => void` |  | Called when the user pastes, before anything is inserted: `text` raw, `html` as the source app wrote it (unsanitised; absent for a plain paste or a secure editor). Call `event.preventDefault()` synchronously to insert your own result, usually with `replaceRange(selection.start, selection.end, …)`; otherwise the plain text is inserted, a single-line editor taking newlines as spaces. |
 | `aria-label` | `string` |  | The accessible name, spoken in place of its text. |
@@ -217,10 +219,12 @@ Binding: `bind={local}` with a `useLocal<string>` cell, or `value` plus `onInput
 
 | Prop | Type | Required | Notes |
 | --- | --- | --- | --- |
+| `aria-activedescendant` | `string` |  | The id of the option the editor's keys point at while focus stays in the text; a screen reader hears that option as it changes. |
+| `aria-controls` | `string` |  | On a `role="combobox"` or an editor whose keys move through a list: the ids (1..8, space-separated) of the list it opens. Assistive tech and automation read them; an id that names no element is left out. |
 | `onKeyDown` | `EditorKeys` |  | Keys the editor handles before typing: a map from key name to a handler returning `true` when it took the key. |
 | `readOnly` | `boolean` |  | The text can be selected and copied but not changed. |
-| `onFocus` | `() => void` |  | Called when the editor gains focus. |
-| `onBlur` | `() => void` |  | Called when the editor loses focus. |
+| `onFocus` | `(event: FocusEvent) => void` |  | Called when it takes focus, from a key, a press or code. `focusVisible` says whether focus shows, as the `focus-visible:` variant: always for an editor, for a control only when a key, switch or assistive tool moved it. |
+| `onBlur` | `(event: FocusEvent) => void` |  | Called when focus leaves it; `focusVisible` is how it showed while it was there. |
 | `onSelectionChange` | `(selection: EditorSelection) => void` |  | Called at most once a frame when the caret moves, the selection changes or where it shows changes: `start` and `end` are UTF-16 offsets, as `value.slice(start, end)` reads them; `caret` and `rects` are in page points. To place a menu at the caret, anchor a popover to `<id>:caret` instead. Needs `bind` for `setSelection` and `replaceRange` on the cell. |
 | `onPaste` | `(event: PasteEvent) => void` |  | Called when the user pastes, before anything is inserted: `text` raw, `html` as the source app wrote it (unsanitised; absent for a plain paste or a secure editor). Call `event.preventDefault()` synchronously to insert your own result, usually with `replaceRange(selection.start, selection.end, …)`; otherwise the plain text is inserted, a single-line editor taking newlines as spaces. |
 | `rows` | `number` |  | Lines it shows when empty; it grows with its text up to `maxRows`. |
@@ -371,6 +375,8 @@ Inside `<text>`, a run: children text and `<span>` runs; links do not nest. Else
 | --- | --- | --- | --- |
 | `onContextMenu` | `(event: ContextMenuEvent) => void` |  | Called for a long press or a secondary click, with where it happened. |
 | `onClick` | `(event: PressEvent) => void` |  | Called when it is pressed: a tap, a click, Enter or Space, or a screen reader's activation. `event.timeStamp` is when the press arrived, in epoch ms. |
+| `onFocus` | `(event: FocusEvent) => void` |  | Called when it takes focus, from a key, a press or code. `focusVisible` says whether focus shows, as the `focus-visible:` variant: always for an editor, for a control only when a key, switch or assistive tool moved it. |
+| `onBlur` | `(event: FocusEvent) => void` |  | Called when focus leaves it; `focusVisible` is how it showed while it was there. |
 | `to` | `LinkTarget` |  | The page a press navigates to, with its params. |
 | `aria-label` | `string` |  | The accessible name, spoken in place of its text. |
 | `disabled` | `boolean` |  | Refuses input and shows the disabled style; it stays in accessibility, marked unavailable. |

@@ -118,6 +118,22 @@ impl ViewSession {
         self.clock_now()
     }
 
+    /// An `onFocus` or `onBlur`: the handler hears whether focus shows.
+    pub(super) fn dispatch_focus(&mut self, handle: u64, visible: bool) -> Result<bool, String> {
+        let call = format!(
+            "__lingxiaDispatch({handle},{visible},{})",
+            self.event_time()
+        );
+        self.send_loudness()?;
+        let ran: bool = self.execute(|| {
+            self.context
+                .eval(Source::from_bytes(call.as_bytes()))
+                .map_err(|e| crate::engine::js_error(&self.context, e))
+        })?;
+        self.take_handler_failure()?;
+        Ok(ran)
+    }
+
     pub(super) fn dispatch_handle(&mut self, handle: u64) -> Result<bool, String> {
         // An unbound control's press changes its own value; its callback hears the new one.
         let pressed = self.uncontrolled.press(handle);

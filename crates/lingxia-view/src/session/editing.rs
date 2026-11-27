@@ -515,7 +515,8 @@ impl ViewSession {
             .is_some_and(|input| input.attributes.read_only)
     }
 
-    /// Calls the editor's `onFocus` or `onBlur`; the View renders again if one ran.
+    /// Calls the editor's `onFocus` or `onBlur`; the View renders again if one ran. An
+    /// editor's focus always shows, as `focus-visible:` paints it.
     fn focus_event(&mut self, identity: &str, focused: bool) -> Result<(), String> {
         let handle = self
             .retained
@@ -523,7 +524,7 @@ impl ViewSession {
             .and_then(|retained| retained.nodes.iter().find(|node| node.identity == identity))
             .and_then(|node| node.on_focus[usize::from(!focused)]);
         if let Some(handle) = handle
-            && self.dispatch_handle(handle)?
+            && self.dispatch_focus(handle, true)?
         {
             self.input_rebuild = true;
         }

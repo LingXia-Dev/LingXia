@@ -53,7 +53,7 @@ fn a_focused_control_inside_a_transparent_box_draws_no_ring() {
         .unwrap()
         .identity
         .clone();
-    assert!(page.set_control_focus(Some(&id)));
+    assert!(page.set_control_focus(Some(&id)).unwrap());
     let focused = page.prepare_native(100, 40, 1.0, false, None, Ok).unwrap();
     assert_eq!(focused.cost().paints, display.cost().paints);
     let pixels = focused.rasterize().unwrap();

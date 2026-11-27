@@ -263,6 +263,8 @@ export type VideoErrorCode = "VIDEO_SOURCE" | "VIDEO_NOT_GRANTED" | "VIDEO_NETWO
 export interface TimeStamped { readonly timeStamp: number }
 /** A press of a button or link. */
 export type PressEvent = TimeStamped;
+/** Focus reaching or leaving an element. `focusVisible`: focus shows, as `focus-visible:` paints it (an editor always; a control when a key, switch or assistive tool moved it). */
+export interface FocusEvent extends TimeStamped { readonly focusVisible: boolean }
 export interface VideoError { readonly code: VideoErrorCode; readonly message: string; readonly recoverable: boolean }
 export type WebViewErrorCode = "WEBVIEW_SOURCE" | "WEBVIEW_NOT_GRANTED" | "WEBVIEW_NETWORK" | "WEBVIEW_CRASHED" | "WEBVIEW_UNSUPPORTED" | "WEBVIEW_MESSAGE_DROPPED";
 export interface WebViewError { readonly code: WebViewErrorCode; readonly message: string }
@@ -1219,7 +1221,7 @@ export type ButtonStyle = StyleGroup.Box & StyleGroup.Padding & StyleGroup.Flex 
 export type ButtonRole = "gridcell" | "option" | "menuitem" | "tab" | "radio" | "treeitem" | "menuitemcheckbox" | "menuitemradio" | "combobox";
 export type ButtonProps = Omit<Props, "style" | "children" | "role"> & { role?: ButtonRole; style?: ButtonStyle; children?: Child;
   /** A `treeitem`'s depth, 1..32; Left and Right walk between levels. */ "aria-level"?: number;
-  /** With `role="combobox"`: the ids (1..8, space-separated) of the list it opens. Assistive tech and automation read them; an id that names no element is left out. */ "aria-controls"?: string;
+  /** On a `role="combobox"` or an editor whose keys move through a list: the ids (1..8, space-separated) of the list it opens. Assistive tech and automation read them; an id that names no element is left out. */ "aria-controls"?: string;
   /** With `role="combobox"`: what is chosen, spoken after the name. */ "aria-valuetext"?: string;
   /** Checked state of a `radio`, `menuitemcheckbox` or `menuitemradio` item; `"mixed"` on a `menuitemcheckbox` that is partly checked. */ "aria-checked"?: boolean | "mixed";
   /** Called for a long press or a secondary click, with where it happened. */ onContextMenu?: (event: ContextMenuEvent) => void;
@@ -1228,6 +1230,8 @@ export type ButtonProps = Omit<Props, "style" | "children" | "role"> & { role?: 
   /** Reports a single pointer over the element: down, move, up, enter, leave and cancel. */ onPointer?: (event: PointerEvent) => void;
   /** The axis `onPointer` keeps; the other is left to the page's scroll. */ pointerAxis?: "x" | "y" | "both";
   /** Called when it is pressed: a tap, a click, Enter or Space, or a screen reader's activation. `event.timeStamp` is when the press arrived, in epoch ms. */ onClick?: (event: PressEvent) => void;
+  /** Called when it takes focus, from a key, a press or code. `focusVisible` says whether focus shows, as the `focus-visible:` variant: always for an editor, for a control only when a key, switch or assistive tool moved it. */ onFocus?: (event: FocusEvent) => void;
+  /** Called when focus leaves it; `focusVisible` is how it showed while it was there. */ onBlur?: (event: FocusEvent) => void;
   /** Refuses input and shows the disabled style; it stays in accessibility, marked unavailable. */ disabled?: boolean;
   /** The accessible name, spoken in place of its text. */ "aria-label"?: string;
   /** The id of a popover a press opens or closes. */ popoverTarget?: string;
@@ -1327,12 +1331,12 @@ export type InputProps = Omit<Props, "style" | "children" | "role"> & { role?: I
   /** The highest value; 100 unless set. */ "aria-valuemax"?: number;
   /** Spoken in place of the number, such as "1:20 of 3:05". */ "aria-valuetext"?: string;
   /** The id of the option the editor's keys point at while focus stays in the text; a screen reader hears that option as it changes. */ "aria-activedescendant"?: string;
-  /** With `role="combobox"`: the ids (1..8, space-separated) of the list it opens. Assistive tech and automation read them; an id that names no element is left out. */ "aria-controls"?: string;
+  /** On a `role="combobox"` or an editor whose keys move through a list: the ids (1..8, space-separated) of the list it opens. Assistive tech and automation read them; an id that names no element is left out. */ "aria-controls"?: string;
   /** With `role="combobox"`: `"list"` when typing filters the list it opens. */ "aria-autocomplete"?: "list" | "none";
   /** Keys the editor handles before typing: a map from key name to a handler returning `true` when it took the key. */ onKeyDown?: EditorKeys;
   /** The text can be selected and copied but not changed. */ readOnly?: boolean;
-  /** Called when the editor gains focus. */ onFocus?: () => void;
-  /** Called when the editor loses focus. */ onBlur?: () => void;
+  /** Called when it takes focus, from a key, a press or code. `focusVisible` says whether focus shows, as the `focus-visible:` variant: always for an editor, for a control only when a key, switch or assistive tool moved it. */ onFocus?: (event: FocusEvent) => void;
+  /** Called when focus leaves it; `focusVisible` is how it showed while it was there. */ onBlur?: (event: FocusEvent) => void;
   /** Called at most once a frame when the caret moves, the selection changes or where it shows changes: `start` and `end` are UTF-16 offsets, as `value.slice(start, end)` reads them; `caret` and `rects` are in page points. To place a menu at the caret, anchor a popover to `<id>:caret` instead. Needs `bind` for `setSelection` and `replaceRange` on the cell. */ onSelectionChange?: (selection: EditorSelection) => void;
   /** Called when the user pastes, before anything is inserted: `text` raw, `html` as the source app wrote it (unsanitised; absent for a plain paste or a secure editor). Call `event.preventDefault()` synchronously to insert your own result, usually with `replaceRange(selection.start, selection.end, …)`; otherwise the plain text is inserted, a single-line editor taking newlines as spaces. */ onPaste?: (event: PasteEvent) => void;
   /** The accessible name, spoken in place of its text. */ "aria-label"?: string;
@@ -1355,10 +1359,12 @@ export type TextareaStyle = StyleGroup.Box & StyleGroup.Padding & StyleGroup.Tex
 /** The roles a `<textarea>` takes; reference/elements.md says where the others go. */
 export type TextareaRole = never;
 export type TextareaProps = Omit<Props, "style" | "children" | "role"> & { role?: TextareaRole; style?: TextareaStyle; children?: never;
+  /** The id of the option the editor's keys point at while focus stays in the text; a screen reader hears that option as it changes. */ "aria-activedescendant"?: string;
+  /** On a `role="combobox"` or an editor whose keys move through a list: the ids (1..8, space-separated) of the list it opens. Assistive tech and automation read them; an id that names no element is left out. */ "aria-controls"?: string;
   /** Keys the editor handles before typing: a map from key name to a handler returning `true` when it took the key. */ onKeyDown?: EditorKeys;
   /** The text can be selected and copied but not changed. */ readOnly?: boolean;
-  /** Called when the editor gains focus. */ onFocus?: () => void;
-  /** Called when the editor loses focus. */ onBlur?: () => void;
+  /** Called when it takes focus, from a key, a press or code. `focusVisible` says whether focus shows, as the `focus-visible:` variant: always for an editor, for a control only when a key, switch or assistive tool moved it. */ onFocus?: (event: FocusEvent) => void;
+  /** Called when focus leaves it; `focusVisible` is how it showed while it was there. */ onBlur?: (event: FocusEvent) => void;
   /** Called at most once a frame when the caret moves, the selection changes or where it shows changes: `start` and `end` are UTF-16 offsets, as `value.slice(start, end)` reads them; `caret` and `rects` are in page points. To place a menu at the caret, anchor a popover to `<id>:caret` instead. Needs `bind` for `setSelection` and `replaceRange` on the cell. */ onSelectionChange?: (selection: EditorSelection) => void;
   /** Called when the user pastes, before anything is inserted: `text` raw, `html` as the source app wrote it (unsanitised; absent for a plain paste or a secure editor). Call `event.preventDefault()` synchronously to insert your own result, usually with `replaceRange(selection.start, selection.end, …)`; otherwise the plain text is inserted, a single-line editor taking newlines as spaces. */ onPaste?: (event: PasteEvent) => void;
   /** Lines it shows when empty; it grows with its text up to `maxRows`. */ rows?: number;
@@ -1488,6 +1494,8 @@ export type LinkRole = "menuitem";
 export type LinkProps = Omit<Props, "style" | "children" | "role"> & { role?: LinkRole; style?: LinkStyle; children?: Child;
   /** Called for a long press or a secondary click, with where it happened. */ onContextMenu?: (event: ContextMenuEvent) => void;
   /** Called when it is pressed: a tap, a click, Enter or Space, or a screen reader's activation. `event.timeStamp` is when the press arrived, in epoch ms. */ onClick?: (event: PressEvent) => void;
+  /** Called when it takes focus, from a key, a press or code. `focusVisible` says whether focus shows, as the `focus-visible:` variant: always for an editor, for a control only when a key, switch or assistive tool moved it. */ onFocus?: (event: FocusEvent) => void;
+  /** Called when focus leaves it; `focusVisible` is how it showed while it was there. */ onBlur?: (event: FocusEvent) => void;
   /** The page a press navigates to, with its params. */ to?: LinkTarget;
   /** The accessible name, spoken in place of its text. */ "aria-label"?: string;
   /** Refuses input and shows the disabled style; it stays in accessibility, marked unavailable. */ disabled?: boolean;

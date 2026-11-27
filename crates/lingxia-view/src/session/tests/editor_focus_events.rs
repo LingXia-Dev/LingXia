@@ -101,3 +101,50 @@ fn a_read_only_editor_takes_focus_and_a_selection_but_no_edits_or_keyboard() {
     assert_eq!(edit.text, "kept");
     assert_ne!(edit.selection[0], edit.selection[1], "the selection moved");
 }
+
+const CONTROLS: &str = "function render(){const a=useLocal('a',''),log=useLocal('log','');const say=s=>e=>log.set(log.value+s+(e.focusVisible?'v':'p')+(typeof e.timeStamp==='number'?'':'?')+' ');return h('view',{},h('button',{'data-testid':'save',onClick(){},onFocus:say('save+'),onBlur:say('save-'),style:{width:80,height:40}},'Save'),h('text',{},h('link',{'data-testid':'help',onClick(){},onFocus:say('help+'),onBlur:say('help-')},'Help')),h('button',{'data-testid':'off',disabled:true,onFocus(){throw Error('never')},style:{width:80,height:40}},'Off'),h('input',{'data-testid':'a',bind:a,'aria-label':'A',onFocus:say('a+'),onBlur:say('a-')}),h('text',{'data-testid':'log'},log.value||'-'))}";
+
+#[test]
+fn a_control_hears_focus_and_blur_with_whether_focus_shows() {
+    let mut page = ViewSession::new(&super::source(CONTROLS)).unwrap();
+    let frame = page.layout(300, 400, 1.0).unwrap();
+    let (save, help, off) = (
+        node(&frame, "save").identity.clone(),
+        node(&frame, "help").identity.clone(),
+        node(&frame, "off").identity.clone(),
+    );
+    assert!(node(&frame, "save").on_focus.iter().all(Option::is_some));
+    assert_eq!(node(&frame, "off").on_focus, [None; 2], "a disabled control takes no focus");
+    let log = |page: &mut ViewSession| {
+        node(&page.layout(300, 400, 1.0).unwrap(), "log")
+            .text
+            .clone()
+    };
+    // From a key: focus shows; the blur reports how it showed.
+    assert!(page.set_control_focus_visible(Some(&save), true).unwrap());
+    assert!(page.focus_visible());
+    assert_eq!(log(&mut page), "save+v ");
+    // A pointer moves it on: the button blurs as it showed, the link focuses without a ring.
+    assert!(page.set_control_focus_visible(Some(&help), false).unwrap());
+    assert!(!page.focus_visible());
+    assert_eq!(log(&mut page), "save+v save-v help+p ");
+    // The same control turning visible is no new focus.
+    assert!(page.set_control_focus_visible(Some(&help), true).unwrap());
+    assert_eq!(log(&mut page), "save+v save-v help+p ");
+    page.set_control_focus_visible(Some(&off), true).unwrap();
+    assert!(page.set_control_focus_visible(None, false).unwrap());
+    assert_eq!(log(&mut page), "save+v save-v help+p help-v ");
+}
+
+#[test]
+fn an_editor_s_focus_always_shows() {
+    let mut page = ViewSession::new(&super::source(CONTROLS)).unwrap();
+    let frame = page.layout(300, 400, 1.0).unwrap();
+    let a = node(&frame, "a").identity.clone();
+    let focused = page.focus_input(page.generation(), &a).unwrap().unwrap();
+    assert!(page.blur_input(focused.token, &a).unwrap());
+    assert_eq!(
+        node(&page.layout(300, 400, 1.0).unwrap(), "log").text,
+        "a+v a-v "
+    );
+}

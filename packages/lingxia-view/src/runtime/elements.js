@@ -623,6 +623,14 @@ function resolveElement(tag, original, children, identity, depth, parent) {
     wire('role', props.role ?? 'dialog');
     wire('modal', 1);
   }
+  // Focus reaching or leaving it; a disabled element takes no focus.
+  const focusEvents = () => {
+    for (const name of ['onFocus', 'onBlur']) {
+      if (props[name] === undefined) continue;
+      if (typeof props[name] !== 'function') throw Error(`UI_PROP: ${name} takes a function`);
+      if (!disabled) on(name, props[name], 'focus');
+    }
+  };
   switch (tag) {
     case 'link': {
       check.label(props.accessibilityLabel, 'UI_TEXT');
@@ -635,6 +643,7 @@ function resolveElement(tag, original, children, identity, depth, parent) {
       interestTrigger(props, identity, parent.popovers ?? []);
       if (props.interestFor !== undefined) wire('interestFor', props.interestFor);
       if (click && !disabled) on('onClick', click, 'press');
+      focusEvents();
       break;
     }
     case 'button': {
@@ -647,6 +656,7 @@ function resolveElement(tag, original, children, identity, depth, parent) {
       if (props.keepsFocus !== undefined && typeof props.keepsFocus !== 'boolean') throw Error('UI_PROP: keepsFocus is a boolean');
       if (props.keepsFocus) wire('keepsFocus', 1);
       if (click && !disabled) on('onClick', click, 'press');
+      focusEvents();
       break;
     }
     case 'checkbox': case 'switch':
@@ -780,11 +790,7 @@ function resolveElement(tag, original, children, identity, depth, parent) {
         if (!disabled && props.readOnly !== true) on('onPaste', props.onPaste, 'paste');
       }
       // The caret entered or left the editor.
-      for (const name of ['onFocus', 'onBlur']) {
-        if (props[name] === undefined) continue;
-        if (typeof props[name] !== 'function') throw Error(`UI_INPUT: ${name} takes a function`);
-        if (!disabled) on(name, props[name]);
-      }
+      focusEvents();
       break;
     case 'select': {
       check.label(props.accessibilityLabel, 'UI_SELECT');

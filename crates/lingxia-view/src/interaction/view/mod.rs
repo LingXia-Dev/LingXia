@@ -171,10 +171,13 @@ impl ViewInteraction {
         self.origin
     }
 
+    /// The identity the session tracks focus on: a styled control, a link, or a control that
+    /// hears `onFocus`/`onBlur`.
     pub fn styled_focus(&self, node: usize) -> Option<String> {
         let frame = self.frame.as_ref()?;
         let snapshot = frame.nodes.get(node)?;
-        ((snapshot.focus_style || snapshot.focus_visible_style || snapshot.tag == "link")
+        let hears = snapshot.input.is_none() && snapshot.on_focus != [None, None];
+        ((snapshot.focus_style || snapshot.focus_visible_style || snapshot.tag == "link" || hears)
             .then(|| snapshot.identity.clone()))
         .map(String::from)
     }

@@ -113,7 +113,7 @@ A render that throws keeps the previous frame on screen ([Diagnostics](diagnosti
   controls. There are no `onClick` handlers on containers; wrap the content in a `<button>`.
 - Handlers receive values (`onInput(text)`, `onChange(checked)`), not event objects. There is no bubbling,
   `preventDefault` or `stopPropagation`.
-- No multi-touch, swipe, pinch or scroll-offset events; use `onPointer` (with `pointerAxis`) for single-pointer scrubbing, `onContextMenu` for long-press/secondary menus, editor `onKeyDown`/`onFocus`/`onBlur`, and `onReachStart`/`onReachEnd`/`onScrollEdge`/`onVisibleChange`, anchors and state.
+- No multi-touch, swipe, pinch or scroll-offset events; use `onPointer` (with `pointerAxis`) for single-pointer scrubbing, `onContextMenu` for long-press/secondary menus, editor `onKeyDown`, `onFocus`/`onBlur` (editors, buttons, links), and `onReachStart`/`onReachEnd`/`onScrollEdge`/`onVisibleChange`, anchors and state.
 
 ## Styling
 

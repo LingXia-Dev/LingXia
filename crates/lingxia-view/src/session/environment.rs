@@ -245,22 +245,63 @@ impl ViewSession {
         changed
     }
 
-    /// The styled control holding keyboard focus; its `focus:` delta repaints without the View.
-    pub fn set_control_focus(&mut self, identity: Option<&str>) -> bool {
+    /// The control holding keyboard focus; its `focus:` delta repaints without the View.
+    pub fn set_control_focus(&mut self, identity: Option<&str>) -> Result<bool, String> {
         self.set_control_focus_visible(identity, true)
     }
 
     /// As [`Self::set_control_focus`]; focus a pointer moved applies `focus:` but neither
-    /// `focus-visible:` nor an indicator's ring.
-    pub fn set_control_focus_visible(&mut self, identity: Option<&str>, visible: bool) -> bool {
-        let changed =
-            self.focused_control.as_deref() != identity || self.renderer.focus_visible != visible;
+    /// `focus-visible:` nor an indicator's ring. A control that left hears `onBlur`, then the
+    /// one it moved to `onFocus`, each with the modality it had.
+    pub fn set_control_focus_visible(
+        &mut self,
+        identity: Option<&str>,
+        visible: bool,
+    ) -> Result<bool, String> {
+        let left = self.focused_control.clone();
+        let was_visible = self.renderer.focus_visible;
+        let changed = left.as_deref() != identity || was_visible != visible;
         if changed {
             self.focused_control = identity.map(str::to_owned);
             self.renderer.focus_visible = visible;
             self.input_dirty = true;
         }
-        changed
+        if left.as_deref() != identity {
+            if let Some(left) = left {
+                self.control_focus_event(&left, false, was_visible)?;
+            }
+            if let Some(identity) = identity {
+                self.control_focus_event(identity, true, visible)?;
+            }
+        }
+        Ok(changed)
+    }
+
+    /// Whether focus shows: moved by a key, switch or assistive tool, not by a pointer. The
+    /// one modality `focus-visible:` paints by and focus events report.
+    pub fn focus_visible(&self) -> bool {
+        self.renderer.focus_visible
+    }
+
+    /// A control's `onFocus` or `onBlur`; editors hear theirs from the editing session.
+    fn control_focus_event(
+        &mut self,
+        identity: &str,
+        focused: bool,
+        visible: bool,
+    ) -> Result<(), String> {
+        let handle = self
+            .retained
+            .as_ref()
+            .and_then(|retained| retained.nodes.iter().find(|node| node.identity == identity))
+            .filter(|node| node.input.is_none())
+            .and_then(|node| node.on_focus[usize::from(!focused)]);
+        if let Some(handle) = handle
+            && self.dispatch_focus(handle, visible)?
+        {
+            self.input_rebuild = true;
+        }
+        Ok(())
     }
 
     pub(super) fn apply_pointer_styles(

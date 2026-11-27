@@ -243,10 +243,13 @@ export function reset() {
 const accepts = (kind, value) => kind === 'number' ? typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= 1e9
   : kind === 'text' ? validInputText(value)
   : kind === 'paste' ? typeof value === 'string'
-  : kind === 'check' ? value === undefined || typeof value === 'boolean' : value === undefined;
+  : kind === 'check' || kind === 'focus' ? value === undefined || typeof value === 'boolean' : value === undefined;
 
 // A press handler hears when the host took the press, in epoch ms.
 const pressEvent = timeStamp => Object.freeze({ timeStamp: typeof timeStamp === 'number' ? timeStamp : Date.now() });
+
+// Focus reaching or leaving an element: whether it shows, and when.
+const focusEvent = (focusVisible, timeStamp) => Object.freeze({ focusVisible: focusVisible === true, timeStamp: typeof timeStamp === 'number' ? timeStamp : Date.now() });
 
 // A paste: `preventDefault()` counts only while the handler runs, as in the DOM.
 function pasteEvent(payload, timeStamp) {
@@ -275,6 +278,7 @@ export function dispatch(handle, value, timeStamp) {
     const epoch = actionEpochNow();
     const paste = entry.kind === 'paste' ? pasteEvent(value, timeStamp) : null;
     const result = entry.kind === 'void' ? entry.callback() : entry.kind === 'press' ? entry.callback(pressEvent(timeStamp))
+      : entry.kind === 'focus' ? entry.callback(focusEvent(value, timeStamp))
       : paste ? entry.callback(paste.event) : entry.callback(value);
     if (paste) paste.state.open = false;
     if (result && typeof result.then === 'function') Promise.resolve(result).catch(thrown => {

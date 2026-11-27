@@ -544,6 +544,17 @@ fn a_node_with_a_focus_visible_style_paints_its_own_ring() {
 }
 
 #[test]
+fn a_control_that_hears_focus_events_is_tracked_like_a_styled_one_but_rings_on_the_platform() {
+    let mut hears = button("/a", 0.0);
+    hears.on_focus = [Some(7), None];
+    let mut interaction = ViewInteraction::default();
+    present(&mut interaction, vec![hears, button("/b", 50.0)], 1);
+    assert_eq!(interaction.styled_focus(0).as_deref(), Some("/a"));
+    assert!(!interaction.rings_itself(0));
+    assert_eq!(interaction.styled_focus(1), None);
+}
+
+#[test]
 fn a_dragged_slider_stays_pressed_until_release() {
     use crate::interaction::view::{Pointer, PointerPhase};
     let mut volume = super::policy_tests::slider_node();

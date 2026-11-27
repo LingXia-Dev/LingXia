@@ -161,7 +161,7 @@ fn a_focused_switch_and_checkbox_ring_their_indicator_not_their_box() {
         switch.focus_style && checkbox.focus_style,
         "both ring themselves"
     );
-    page.set_control_focus(Some(&switch.identity));
+    page.set_control_focus(Some(&switch.identity)).unwrap();
     let [x, y, w, h] = switch.bounds;
     // The track (52x32 at the inline end) grown by 4 on each side.
     assert_eq!(
@@ -171,13 +171,13 @@ fn a_focused_switch_and_checkbox_ring_their_indicator_not_their_box() {
             20.0
         )]
     );
-    page.set_control_focus(Some(&checkbox.identity));
+    page.set_control_focus(Some(&checkbox.identity)).unwrap();
     let [x, y, _, h] = checkbox.bounds;
     let ring = rings(&page.layout(400, 200, 1.0).unwrap());
     assert_eq!(ring.len(), 1);
     assert_eq!(ring[0].0[2..], [32.0, 32.0], "the 24 px box grown by 4");
     assert!(ring[0].0[0] > x - 4.0 && (ring[0].0[1] + 16.0 - (y + h / 2.0)).abs() < 1.0);
-    page.set_control_focus(None);
+    page.set_control_focus(None).unwrap();
     assert!(rings(&page.layout(400, 200, 1.0).unwrap()).is_empty());
 }
 
@@ -201,7 +201,7 @@ fn an_authored_focus_visible_style_replaces_a_switchs_built_in_ring() {
         .unwrap()
         .clone();
     assert!(switch.focus_visible_style, "the author styled its focus");
-    page.set_control_focus(Some(&switch.identity));
+    page.set_control_focus(Some(&switch.identity)).unwrap();
     let display = page.layout(400, 200, 1.0).unwrap();
     assert!(
         !display

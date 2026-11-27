@@ -264,6 +264,8 @@ export type VideoErrorCode = "VIDEO_SOURCE" | "VIDEO_NOT_GRANTED" | "VIDEO_NETWO
 export interface TimeStamped { readonly timeStamp: number }
 /** A press of a button or link. */
 export type PressEvent = TimeStamped;
+/** Focus reaching or leaving an element. `focusVisible`: focus shows, as `focus-visible:` paints it (an editor always; a control when a key, switch or assistive tool moved it). */
+export interface FocusEvent extends TimeStamped { readonly focusVisible: boolean }
 export interface VideoError { readonly code: VideoErrorCode; readonly message: string; readonly recoverable: boolean }
 export type WebViewErrorCode = "WEBVIEW_SOURCE" | "WEBVIEW_NOT_GRANTED" | "WEBVIEW_NETWORK" | "WEBVIEW_CRASHED" | "WEBVIEW_UNSUPPORTED" | "WEBVIEW_MESSAGE_DROPPED";
 export interface WebViewError { readonly code: WebViewErrorCode; readonly message: string }

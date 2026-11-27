@@ -190,7 +190,7 @@ impl<A: PlatformAdapter> Inner<A> {
         }
         self.work(
             Guard::Page(self.lifecycle.page()),
-            move |_, session| Ok(session.set_control_focus_visible(identity.as_deref(), visible)),
+            move |_, session| session.set_control_focus_visible(identity.as_deref(), visible),
             |inner, result| match result {
                 Some(Ok(true)) => inner.schedule(),
                 Some(Err(error)) => inner.fail(error),

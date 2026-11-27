@@ -170,6 +170,7 @@ function screen(host, view, resolved) {
     for (let at = node; at.parent; at = at.parent) steps.unshift(at.parent.children.indexOf(at));
     return steps.reduce((at, index) => at?.children[index], nodes[0]);
   };
+  const editorTags = new Set(['input', 'textarea', 'search']);
   const fire = (node, prop, value) => {
     const handle = node.props[prop];
     if (handle === undefined || handle === 0) throw Error(`${label(node)} has no ${prop}`);
@@ -231,8 +232,9 @@ function screen(host, view, resolved) {
     snap: (node, index) => fire(node, 'onSnapChange', String(index)),
     key: (node, key) => fire(node, 'onKeyDown', key),
     selectText: (node, start, end = start) => json(node, 'onSelectionChange', { start, end, caret: null, rects: [] }),
-    focus: node => fire(node, 'onFocus'),
-    blur: node => fire(node, 'onBlur'),
+    // An editor's focus always shows; a control's shows when a key moved it.
+    focus: (node, { visible } = {}) => fire(node, 'onFocus', editorTags.has(node.tag) || visible === true),
+    blur: (node, { visible } = {}) => fire(node, 'onBlur', editorTags.has(node.tag) || visible === true),
     layout: (node, { width, height, minContentWidth, maxContentWidth }) => json(node, 'onLayout', { width, height, minContentWidth, maxContentWidth }),
     pointer: (node, { phase, x, y, width, height, pointer = 'touch' }) => json(node, 'onPointer', { phase, x, y, width, height, pointer }),
     drag: (node, event) => json(node, 'onDragEvent', event),

@@ -186,10 +186,12 @@ test('a prop its role or element cannot carry fails the build with what it needs
   clean('const a = <view onPointer={f} aria-valuenow={4} aria-valuemin={0} aria-valuemax={9}/>;');
   clean('const a = <slider aria-label="Volume" value={v} onChange={f} aria-valuetext="loud"/>;');
   clean('const a = <input aria-label="City" role="combobox" aria-valuetext="Paris" aria-activedescendant="o1"/>;');
+  // A textarea whose keys move through a list points at it as an input does.
+  clean('const a = <textarea aria-label="Note" aria-controls="list" aria-activedescendant="o1"/>;');
   for (const [source, prop, message] of [
     ['<text headingLevel={2}>x</text>', 'headingLevel', 'headingLevel belongs on role="heading"'],
     ['<button role="tab" aria-level={2} onClick={f}>x</button>', 'aria-level', 'aria-level belongs on role="treeitem"'],
-    ['<input aria-label="A" aria-controls="list"/>', 'aria-controls', 'aria-controls and aria-autocomplete belong on role="combobox"'],
+    ['<input aria-label="A" aria-controls="list"/>', 'aria-controls', 'aria-controls belongs on role="combobox" or a <textarea> whose keys move through a list'],
     ['<button role="radio" aria-checked="mixed" onClick={f}>x</button>', 'aria-checked', 'aria-checked="mixed" goes on role="menuitemcheckbox"'],
     ['<button role="tab" aria-checked={false} onClick={f}>x</button>', 'aria-checked', 'aria-checked goes on role="radio"'],
     ['<view aria-modal/>', 'aria-modal', 'aria-modal belongs on a popover with role="dialog"'],
@@ -203,7 +205,6 @@ test('a prop its role or element cannot carry fails the build with what it needs
     ['<view popover="manual" onCloseRequest={g}/>', 'onCloseRequest', 'onCloseRequest belongs on a popover that is not manual'],
     ['<view aria-valuenow={3}/>', 'aria-valuenow', 'aria-valuenow, -valuemin, -valuemax and -valuetext belong on role="progressbar"'],
     ['<view aria-checked/>', 'aria-checked', 'aria-checked is not a property of <view>'],
-    ['<textarea aria-label="Note" aria-activedescendant="o1"/>', 'aria-activedescendant', 'aria-activedescendant is not a property of <textarea>'],
     ['<input aria-label="City" role="combobox" aria-valuenow={3}/>', 'aria-valuenow', 'role="combobox" takes aria-valuetext only'],
     ['<scroll onSnapChange={g}/>', 'onSnapChange', 'onSnapChange reports the snap index you pass in snapIndex'],
   ]) {

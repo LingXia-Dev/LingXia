@@ -2108,12 +2108,12 @@ fn a_button_paints_its_focus_visible_classes_only_while_it_has_visible_focus() {
         display.rasterize().unwrap().pixels.data_as_u8_slice()[4..8].to_vec()
     };
     assert_eq!(tint(display), vec![255; 4]);
-    assert!(page.set_control_focus(Some(&id)));
+    assert!(page.set_control_focus(Some(&id)).unwrap());
     assert_eq!(
         tint(page.prepare_native(100, 40, 1.0, false, None, Ok).unwrap()),
         vec![0, 0, 255, 255]
     );
-    assert!(page.set_control_focus(None));
+    assert!(page.set_control_focus(None).unwrap());
     assert_eq!(
         tint(page.prepare_native(100, 40, 1.0, false, None, Ok).unwrap()),
         vec![255; 4]
@@ -2138,7 +2138,7 @@ fn a_focused_link_rings_each_line_piece_in_the_scene_only_while_focus_is_visible
             .count()
     };
     assert_eq!(rings(&display), 0);
-    assert!(page.set_control_focus(Some(&id)));
+    assert!(page.set_control_focus(Some(&id)).unwrap());
     let display = page.prepare_native(120, 200, 1.0, false, None, Ok).unwrap();
     assert!(
         rings(&display) >= 2,
@@ -2207,7 +2207,7 @@ fn a_focused_link_rings_each_line_piece_in_the_scene_only_while_focus_is_visible
         pieces[1][0] + pieces[1][2] + 1.0,
         "1 pt clear at the end of a line with no hanging space"
     );
-    assert!(page.set_control_focus_visible(Some(&id), false));
+    assert!(page.set_control_focus_visible(Some(&id), false).unwrap());
     let display = page.prepare_native(120, 200, 1.0, false, None, Ok).unwrap();
     assert_eq!(rings(&display), 0, "a pointer-moved focus shows no ring");
 }
@@ -2223,13 +2223,13 @@ fn focus_a_pointer_moved_paints_focus_classes_but_not_focus_visible_ones() {
     let tint = |display: DisplayList| {
         display.rasterize().unwrap().pixels.data_as_u8_slice()[4..8].to_vec()
     };
-    assert!(page.set_control_focus_visible(Some(&id), false));
+    assert!(page.set_control_focus_visible(Some(&id), false).unwrap());
     assert_eq!(
         tint(page.prepare_native(100, 40, 1.0, false, None, Ok).unwrap()),
         vec![0, 255, 0, 255],
         "focus: applies, focus-visible: does not"
     );
-    assert!(page.set_control_focus_visible(Some(&id), true));
+    assert!(page.set_control_focus_visible(Some(&id), true).unwrap());
     assert_eq!(
         tint(page.prepare_native(100, 40, 1.0, false, None, Ok).unwrap()),
         vec![0, 0, 255, 255]
@@ -2249,12 +2249,12 @@ fn a_focused_select_paints_its_focus_classes_without_the_view() {
         display.rasterize().unwrap().pixels.data_as_u8_slice()[4..8].to_vec()
     };
     assert_eq!(tint(display), vec![255; 4]);
-    assert!(page.set_control_focus(Some(&id)));
+    assert!(page.set_control_focus(Some(&id)).unwrap());
     assert_eq!(
         tint(page.prepare_native(100, 40, 1.0, false, None, Ok).unwrap()),
         vec![0, 0, 255, 255]
     );
-    assert!(page.set_control_focus(None));
+    assert!(page.set_control_focus(None).unwrap());
     assert_eq!(
         tint(page.prepare_native(100, 40, 1.0, false, None, Ok).unwrap()),
         vec![255; 4]
