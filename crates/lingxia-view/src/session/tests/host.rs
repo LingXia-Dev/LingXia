@@ -8151,3 +8151,64 @@ fn use_now_follows_a_pinned_clock_and_ticks_only_when_read() {
             .starts_with("E_INVALID_ARG")
     );
 }
+
+#[test]
+fn a_burst_of_channel_messages_costs_at_most_two_renders() {
+    if !bounded_jobs() {
+        return;
+    }
+    log::set_max_level(log::LevelFilter::Trace);
+    let worker = ViewWorker::spawn("test-channel-burst").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &(source(
+            "function render(view){console.log('render');const last=useLocal('last',0);const ticks=useLocal('ticks',[]);\
+             useChannel('feed',view.actions.ticker,{params:{},onData:v=>{last.set(v);ticks.set([...ticks.value.slice(-29),v]);}});\
+             return h('text',{},`tick ${last.value} of ${ticks.value.length}`)}",
+        ) + "\nglobalThis.__lingxiaActionCatalog={__names:['ticker'],__modes:{ticker:'call'}};"),
+        true,
+    );
+    let renders = || host.adapter().log.lock().unwrap().console.len();
+    host.set_visible(true);
+    let connection = ConnectionTicket::new(1);
+    host.connect(connection);
+    deliver(
+        &host,
+        connection,
+        serde_json::json!({"v":2,"kind":"state.snapshot","rev":0,"state":{}}),
+    );
+    platform.settle(&[&host]);
+    let open = host
+        .adapter()
+        .log
+        .lock()
+        .unwrap()
+        .messages
+        .iter()
+        .map(|(_, frame)| serde_json::from_str::<serde_json::Value>(frame).unwrap())
+        .find(|frame| frame["kind"] == "ch.open")
+        .expect("the channel opens");
+    deliver(
+        &host,
+        connection,
+        serde_json::json!({"v":2,"kind":"ch.ack","id":open["id"],"ok":true}),
+    );
+    platform.settle(&[&host]);
+    let before = renders();
+    for seq in 0..200 {
+        deliver(
+            &host,
+            connection,
+            serde_json::json!({"v":2,"kind":"ch.data","id":open["id"],"seq":seq,"payload":seq}),
+        );
+    }
+    platform.settle(&[&host]);
+    assert_eq!(last(&host), ["tick 199 of 30"]);
+    // The first message may start a frame at once; the rest wait for it and share the next one.
+    let rendered = renders() - before;
+    assert!(
+        (1..=2).contains(&rendered),
+        "200 messages rendered {rendered} times"
+    );
+}
