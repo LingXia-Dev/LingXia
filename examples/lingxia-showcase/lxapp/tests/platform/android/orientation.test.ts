@@ -38,7 +38,9 @@ test('rotate the Android viewport for the locking page only, and deliver events 
     }, namespace);
     await app.nav.reset({ page: 'home' });
     await app.logic.eval(({ currentPage }) => { currentPage()?.orientation.unlock(); });
-    await t.waitFor(dimensions, { until: size => (size.width > size.height) === (original === 'landscape'), timeout: 15000 });
+    // The reset opened a new home: the one bound above is gone.
+    const home = await app.page({ name: 'home' });
+    await t.waitFor(() => home.view.viewport(), { until: size => (size.width > size.height) === (original === 'landscape'), timeout: 15000 });
   });
   const rotate = async (orientation: Orientation) => {
     await app.logic.eval(({ currentPage }, value) => { currentPage()?.orientation.lock(value); }, orientation);

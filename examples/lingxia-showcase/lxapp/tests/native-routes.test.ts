@@ -1,5 +1,6 @@
 import { expect, test } from '@lingxia/test';
 import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
+import { inLanguage } from './language';
 
 // The native page calls notes.* routes in native/src/notes.rs: a call, an app error, a stream.
 test('native routes: call, app error, and stream result', {
@@ -7,6 +8,8 @@ test('native routes: call, app error, and stream result', {
   app: SHOWCASE_APP_ID,
   start: { page: 'native' },
 }, async (t) => {
+  // The status lines are the app's own English words.
+  await inLanguage(t, 'en-US');
   const view = t.app.view;
   await t.step('an empty title fails with the app code', async () => {
     await view.testId('native-add').click();
