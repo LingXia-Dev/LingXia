@@ -1219,6 +1219,7 @@ export class LiveFixture implements Fixture {
           gesture: {
             swipe: (options) => gestures.swipe(options),
             edgeBack: (options) => gestures.edgeBack(options),
+            tap: (at, options) => gestures.tap(at, options),
           },
           chrome: {
             elements: (options) => gestures.chromeElements(options?.scope),
@@ -1698,6 +1699,15 @@ export class LiveFixture implements Fixture {
       act: (verb, detail, op) => this.act(verb, detail, op),
       record: (entry) => { this.gestures.push(entry); },
       target: bound === undefined ? {} : { page: bound },
+      // A WebView page, or a host without frame counters, answers with nothing to read.
+      frames: async () => {
+        try {
+          const frame = await (bound === undefined ? page().uiFrame() : page().uiFrame({ page: bound }));
+          return typeof frame?.frames === "number" ? frame.frames : null;
+        } catch {
+          return null;
+        }
+      },
     };
   }
 

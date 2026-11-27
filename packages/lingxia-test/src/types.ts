@@ -732,6 +732,8 @@ export interface TestGesture {
   swipe(options: Omit<SwipeOptions, "from" | "to"> & { from: readonly [number, number]; to: readonly [number, number] }): Promise<GestureTrace>;
   /** The system back swipe; `E_UNSUPPORTED` where the system does not take injected input. */
   edgeBack(options?: { edge?: "left" | "right" }): Promise<GestureTrace>;
+  /** A press and release at window points, routed by the system's input dispatch as a finger is; `E_UNSUPPORTED` where the host cannot inject. */
+  tap(at: readonly [number, number], options?: { input?: GestureInput }): Promise<GestureTrace>;
 }
 
 /** Native app-window input, independent of a page selector or DOM focus. */

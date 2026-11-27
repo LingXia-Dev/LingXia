@@ -77,10 +77,12 @@ export function createAndroidDeviceFixture(runAdb, token = randomBytes(24).toStr
         }
         return reply(200, { ok: injects });
       }
-      // Only gesture navigation (mode 2) makes a swipe from the screen edge back.
+      // Only gesture navigation makes a swipe from the screen edge back: AOSP's mode 2, or the
+      // flag Huawei keeps instead (its navigation_mode reads 100).
       if (request.method === 'GET' && operation === 'navigation') {
-        const mode = (await runAdb(['shell', 'settings', 'get', 'secure', 'navigation_mode'])).trim();
-        return reply(200, { gestures: mode === '2' });
+        const setting = async (name) => (await runAdb(['shell', 'settings', 'get', 'secure', name])).trim();
+        const gestures = (await setting('navigation_mode')) === '2' || (await setting('secure_gesture_navigation')) === '1';
+        return reply(200, { gestures });
       }
       if (request.method === 'GET' && operation === 'size') {
         const sizes = [...(await runAdb(['shell', 'wm', 'size'])).matchAll(/(?:Physical|Override) size: (\d+)x(\d+)/g)];

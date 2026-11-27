@@ -257,8 +257,6 @@ internal object LxAppGesture {
             "cancel" -> { inject(MotionEvent.ACTION_CANCEL, held.downTime, held.x, held.y, stamp); events++; 0L }
             else -> { inject(MotionEvent.ACTION_UP, held.downTime, held.x, held.y, stamp); events++; 0L }
         }
-        // Every posted event has been delivered once the main thread answers.
-        onMain { }
         val result = JSONObject()
             .put("delivered", "window")
             .put("events", events)
@@ -268,26 +266,26 @@ internal object LxAppGesture {
     }
 
     /**
-     * Delivers the event to the presenting activity's window at its planned uptime [at], so its
-     * stamp is when it arrives and velocity stays exact. Latency measured from it is the app's
-     * pipeline from the window down: the system input dispatcher, about one frame for a real
-     * finger, is not in it. The window routes it, so host chrome receives it too.
+     * Injects the event through the system input dispatcher, stamped with its planned uptime [at]
+     * so velocity stays exact, and returns once the window has handled it. The dispatcher routes it as it routes a
+     * finger: to the topmost touchable window of this app at that point (a feedback layer
+     * included), and an untouchable or covering window is found out as a user would find it.
+     * An app may inject into its own windows only; a system window on top refuses the event.
      */
     private fun inject(action: Int, downTime: Long, x: Float, y: Float, at: Long) {
         LxApp.getCurrentActivity() ?: throw IllegalStateException("no activity presents an lxapp")
         val event = MotionEvent.obtain(downTime, at, action, x, y, 0)
         event.source = InputDevice.SOURCE_TOUCHSCREEN
-        main.postAtTime({
-            try {
-                val decor = LxApp.getCurrentActivity()?.window?.decorView ?: return@postAtTime
-                val origin = IntArray(2).also { decor.getLocationOnScreen(it) }
-                event.offsetLocation(-origin[0].toFloat(), -origin[1].toFloat())
-                decor.dispatchTouchEvent(event)
-            } finally {
-                event.recycle()
-            }
-        }, at)
+        try {
+            instrumentation.sendPointerSync(event)
+        } catch (error: SecurityException) {
+            throw IllegalStateException("another app's window is over the point; the touch is not this app's", error)
+        } finally {
+            event.recycle()
+        }
     }
+
+    private val instrumentation by lazy { android.app.Instrumentation() }
 
     private fun presenting(appId: String): LxAppActivity {
         val activity = LxApp.getCurrentActivity()

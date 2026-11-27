@@ -55,7 +55,8 @@ export async function reveal(t: Fixture, locator: ReturnType<Fixture['app']['vie
     if (box.y >= viewport.top + 8 && box.y + box.height <= viewport.top + viewport.height * within - 8) return;
     const wanted = box.y + box.height / 2 - (viewport.top + viewport.height * within / 2);
     const dy = Math.sign(wanted) * Math.min(Math.abs(wanted), viewport.height / 3);
-    const x = viewport.left + 12, y = viewport.top + viewport.height / 2;
+    // Past the system's edge-swipe zone (16 dp on gesture-navigation phones), on a card's padding.
+    const x = viewport.left + 28, y = viewport.top + viewport.height / 2;
     await view.swipe({ from: [x, y + dy / 2], to: [x, y - dy / 2], durationMs: 600 });
     await new Promise<void>(resolve => setTimeout(resolve, 600));
   }

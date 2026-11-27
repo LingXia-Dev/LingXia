@@ -55,14 +55,16 @@ test('a dragged panel held in Logic takes an accepted point and springs back fro
   const state = view.testId('lab-held-state');
   await panel.scrollIntoView();
   await expect(state).toHaveAttribute('data-state', 'page=0 panel=1 refused=none');
-  const rest = (await panel.boundingBox()).y;
+  // Against the readout beside it: a drag may first scroll a partly hidden panel into view.
+  const offset = async () => (await panel.boundingBox()).y - (await state.boundingBox()).y;
+  const rest = await offset();
 
   await view.drag(panel, { dx: 0, dy: 48, durationMs: 400 });
   await expect(state).toHaveAttribute('data-state', 'page=0 panel=2 refused=none');
-  await expect.poll(async () => Math.round((await panel.boundingBox()).y - rest)).toBe(48);
+  await expect.poll(async () => Math.round((await offset()) - rest)).toBe(48);
 
   await view.drag(panel, { dx: 0, dy: -96, durationMs: 400 });
   // Refused: back to the lowered point, and the page's index never moved.
-  await expect.poll(async () => Math.round((await panel.boundingBox()).y - rest)).toBe(48);
+  await expect.poll(async () => Math.round((await offset()) - rest)).toBe(48);
   await expect(state).toHaveAttribute('data-state', 'page=0 panel=2 refused=panel');
 });

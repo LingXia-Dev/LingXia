@@ -53,7 +53,7 @@ test('a tab page scroll runs under the tab bar and its end scrolls clear of it',
   const { page, inset, top } = await bars(t, rootOf('controls'));
   const scroll = await view.testId('page-scroll').boundingBox();
   expect(Math.abs(bottom(scroll) - bottom(page))).toBeLessThanOrEqual(1);
-  const last = view.testId('lab-fragments');
+  const last = view.testId('lab-progress');
   let previous = Number.NaN;
   for (let attempt = 0; attempt < 8; attempt++) {
     await view.fling('up', 4000);
@@ -147,7 +147,8 @@ test('a tap at an element partly under the tab bar lands on its visible part wit
   expect(parked.y).toBeLessThan(top - 8);
   expect(center(parked)).toBeGreaterThan(top);
   await expect(dot).toBeInViewport();
-  await (await view.touch(dot)).up();
+  // Aim at the visible part by point: a locator would have the driver scroll the dot clear first.
+  await (await view.touch([parked.x + parked.width / 2, (parked.y + top) / 2])).up();
   await expect(state).toHaveAttribute('data-state', 'page=2');
   expect((await dot.boundingBox()).y).toBe(parked.y);
 });
@@ -191,8 +192,10 @@ test('every tab page ends its content above the tab bar', { covers: ['view:scrol
     const pageBox = await page.boundingBox();
     const top = bottom(pageBox) - inset;
     const last = view.css(controls).last();
-    // Start in the page gutter so a nested scroll (perf-lab's list) does not take the fling.
-    const start: [number, number] = [pageBox.x + 6, pageBox.y + pageBox.height * 0.6];
+    // Start in the page gutter so a nested scroll (perf-lab's list) does not take the fling, but at
+    // least 20 pt in: a screen edge belongs to the system back gesture (16 dp on Android).
+    const gutter = (await last.boundingBox()).x - 6;
+    const start: [number, number] = [Math.max(pageBox.x + 20, gutter), pageBox.y + pageBox.height * 0.6];
     let previous = Number.NaN;
     for (let attempt = 0; attempt < 10; attempt++) {
       await view.fling('up', 4000, { at: start });

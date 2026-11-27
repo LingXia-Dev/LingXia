@@ -35,6 +35,8 @@ export interface GestureScope {
   record: (entry: GestureRecord) => void;
   /** `{ page }` of a bound page; empty for the current page. */
   target: { page?: string };
+  /** The target page's presented-frame count; null where it has none to read. */
+  frames: () => Promise<number | null>;
 }
 
 const POINT_TIMEOUT_MS = 5_000;
@@ -54,21 +56,57 @@ function checkPoint(value: unknown, name: string): Point {
   return [value[0], value[1]];
 }
 
-/** The center of a locator's unique, on-screen match. */
+/** A box is settled once its page presents nothing for this long, or it holds through a new frame. */
+const QUIET_MS = 100;
+
+/** A read of a GPU box between two reads of its page's frame count. */
+interface Sample { point: Point; before: number | null; after: number | null }
+
+function settled(previous: Sample, next: Sample): boolean {
+  const same = Math.abs(previous.point[0] - next.point[0]) <= 0.5 && Math.abs(previous.point[1] - next.point[1]) <= 0.5;
+  if (previous.after === null || next.before === null || next.after === null) return same;
+  // Nothing presented from after the last read to after this one: the page is quiet.
+  if (next.after === previous.after) return true;
+  // A frame presented between the two reads left the box where it was: a slow frame cannot pass for stillness.
+  return same && next.before > previous.after;
+}
+
 /** The centre of the part of `locator` a finger reaches, or with `corner` the top-left of its box. */
-async function centerOf(locator: Locator, name: string, corner = false): Promise<Point> {
+async function centerOf(scope: GestureScope, locator: Locator, name: string, corner = false): Promise<Point> {
   if (!(locator instanceof PageLocator)) throw new TypeError(`${name} must be [x, y] or a locator from this view`);
   const until = Date.now() + POINT_TIMEOUT_MS;
   let reason = "not attached";
+  let previous: Sample | null = null;
+  let revealed = false;
   for (;;) {
+    const before = await scope.frames();
     const match = await locator.resolve(undefined, "gesture");
     if (match.kind === "unique" && match.rect && match.inViewport) {
       // A GPU page names the part a finger reaches; aim at its centre once it is big enough to hit.
       const area = match.visibleRect === undefined ? match.rect : match.visibleRect;
+      // A sliver at the screen's edge can sit in a system gesture zone no inset reports: scroll
+      // the element in first, as a user would before touching it.
+      if (!revealed && match.renderer === "gpu" && area
+          && (area.width < match.rect.width - 0.5 || area.height < match.rect.height - 0.5)) {
+        revealed = true;
+        await locator.reveal(match.index, "gesture", new ActionDeadline(Math.max(1, until - Date.now()))).catch(() => {});
+        continue;
+      }
       if (area && area.width >= Math.min(MIN_TARGET, match.rect.width) && area.height >= Math.min(MIN_TARGET, match.rect.height)) {
-        return corner ? [match.rect.left, match.rect.top] : [area.left + area.width / 2, area.top + area.height / 2];
+        const point: Point = corner ? [match.rect.left, match.rect.top] : [area.left + area.width / 2, area.top + area.height / 2];
+        const gpu = match.renderer === "gpu";
+        const sample: Sample = { point, before: gpu ? before : null, after: gpu ? await scope.frames() : null };
+        // Aim only at a box that has stopped moving: a finger put where a sliding sheet was
+        // lands on whatever is there once the press arrives.
+        if (previous && settled(previous, sample)) return point;
+        previous = sample;
+        reason = "element is still moving";
+        if (Date.now() >= until) throw new Error(`${name}: ${locator.describe()} ${reason}`);
+        await sleep(QUIET_MS);
+        continue;
       }
     }
+    previous = null;
     reason = match.kind === "unique" ? "element is outside the viewport" : locator.missText(match);
     if (Date.now() >= until) throw new Error(`${name}: ${locator.describe()} ${reason}`);
     // A GPU page reaches only what it shows: scroll the match out from under bars first.
@@ -80,8 +118,8 @@ async function centerOf(locator: Locator, name: string, corner = false): Promise
   }
 }
 
-async function pointOf(target: GestureTarget, name: string): Promise<Point> {
-  return Array.isArray(target) ? checkPoint(target, name) : centerOf(target as Locator, name);
+async function pointOf(scope: GestureScope, target: GestureTarget, name: string): Promise<Point> {
+  return Array.isArray(target) ? checkPoint(target, name) : centerOf(scope, target as Locator, name);
 }
 
 function positive(value: number | undefined, fallback: number, name: string): number {
@@ -110,8 +148,8 @@ export class Gestures {
 
   swipe(options: SwipeOptions): Promise<GestureTrace> {
     return this.scope.act("gesture.swipe", "", async () => {
-      const from = await pointOf(options.from, "swipe from");
-      const to = await pointOf(options.to, "swipe to");
+      const from = await pointOf(this.scope, options.from, "swipe from");
+      const to = await pointOf(this.scope, options.to, "swipe to");
       return trace(await this.perform("swipe", {
         shape: {
           kind: "line", from, to,
@@ -126,7 +164,7 @@ export class Gestures {
 
   drag(locator: Locator, options: DragOptions): Promise<GestureTrace> {
     return this.scope.act("gesture.drag", locator instanceof PageLocator ? locator.describe() : "", async () => {
-      const from = await centerOf(locator, "drag");
+      const from = await centerOf(this.scope, locator, "drag");
       const to: Point = [from[0] + options.dx, from[1] + options.dy];
       return trace(await this.perform("drag", {
         shape: { kind: "line", from, to, durationMs: positive(options.durationMs, 500, "durationMs"), holdMs: positive(options.hold, 100, "hold") },
@@ -140,7 +178,7 @@ export class Gestures {
     return this.scope.act("gesture.scrub", locator instanceof PageLocator ? locator.describe() : "", async () => {
       const from = checkPoint(options.from, "scrub from");
       const to = checkPoint(options.to, "scrub to");
-      const [left, top] = await centerOf(locator, "scrub", true);
+      const [left, top] = await centerOf(this.scope, locator, "scrub", true);
       return trace(await this.perform("scrub", {
         shape: {
           kind: "line", from: [left + from[0], top + from[1]], to: [left + to[0], top + to[1]],
@@ -155,7 +193,7 @@ export class Gestures {
     return this.scope.act("gesture.fling", `${direction} ${velocity}px/s`, async () => {
       if (!["up", "down", "left", "right"].includes(direction)) throw new TypeError("fling direction must be up, down, left or right");
       let from: Point;
-      if (options.at !== undefined) from = await pointOf(options.at, "fling at");
+      if (options.at !== undefined) from = await pointOf(this.scope, options.at, "fling at");
       else {
         const v = await this.viewport();
         const fraction = { up: [0.5, 0.75], down: [0.5, 0.25], left: [0.75, 0.5], right: [0.25, 0.5] }[direction];
@@ -170,7 +208,7 @@ export class Gestures {
 
   touch(at: GestureTarget, options: TouchOptions = {}): Promise<TestFinger> {
     return this.scope.act("gesture.touch", "", async () => {
-      const start = await pointOf(at, "touch at");
+      const start = await pointOf(this.scope, at, "touch at");
       const input = options.input
         ?? (options.press ? (this.scope.driver().inputs().includes("touch") ? "touch" : "mouse") : undefined);
       const down = await this.perform("touch", {
@@ -195,7 +233,7 @@ export class Gestures {
     return {
       get at() { return [at[0], at[1]] as [number, number]; },
       moveTo: (target, options = {}) => self.scope.act("finger.moveTo", "", async () => {
-        const to = await pointOf(target, "moveTo");
+        const to = await pointOf(this.scope, target, "moveTo");
         const result = await next("finger.moveTo", {
           kind: "line", from: at, to,
           durationMs: positive(options.durationMs, 200, "durationMs"),
@@ -240,7 +278,7 @@ export class Gestures {
       };
       await sample();
       let start: Point;
-      if (options.at !== undefined) start = await pointOf(options.at, "pullToRefresh at");
+      if (options.at !== undefined) start = await pointOf(this.scope, options.at, "pullToRefresh at");
       else {
         const v = await this.viewport();
         start = [v.left + v.width / 2, v.top + Math.min(v.height * 0.25, 120)];
@@ -306,6 +344,16 @@ export class Gestures {
       });
       this.scope.record({ api: "chrome.tap", ...trace(result) });
       return trace(result);
+    });
+  }
+
+  tap(at: GestureTarget, options: { input?: GestureInput } = {}): Promise<GestureTrace> {
+    return this.scope.act("gesture.tap", Array.isArray(at) ? `${at[0]},${at[1]}` : "", async () => {
+      const point = await pointOf(this.scope, at, "tap at");
+      return trace(await this.perform("tap", {
+        shape: { kind: "hold", at: point, durationMs: 0 },
+        ...(options.input ? { input: options.input } : {}),
+      }));
     });
   }
 

@@ -92,3 +92,16 @@ test('pixels reads the composited screen at the given points, whichever header t
   assert.deepEqual(await response.json(), { pixels: [[10, 20, 30]] });
   assert.deepEqual(calls, [[['exec-out', 'screencap'], { binary: true }]]);
 });
+
+test('gesture navigation reads AOSP mode 2 or the gesture flag Huawei keeps', async (t) => {
+  const settings = { navigation_mode: '0', secure_gesture_navigation: 'null' };
+  const { server, token } = createAndroidDeviceFixture(async (args) => `${settings[args.at(-1)]}\n`);
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise((resolve) => { server.close(resolve); server.closeAllConnections(); }));
+  const gestures = async () => (await (await fetch(`http://127.0.0.1:${server.address().port}/${token}/navigation`)).json()).gestures;
+  assert.equal(await gestures(), false);
+  settings.navigation_mode = '2';
+  assert.equal(await gestures(), true);
+  Object.assign(settings, { navigation_mode: '100', secure_gesture_navigation: '1' });
+  assert.equal(await gestures(), true);
+});

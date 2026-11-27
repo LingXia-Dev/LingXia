@@ -64,6 +64,39 @@ test("a gesture aims at the visible part of a GPU match and scrolls a sliver int
   assert.equal(sliver.scrolledTo, 1);
 });
 
+test("a gesture waits for a GPU box to stop moving, however far apart its frames are", async () => {
+  // Each presented frame moves the sheet 20 points; frames come 60 ms apart, slower than a quiet read.
+  let frames = 0;
+  const world = createWorld({ frames: () => frames });
+  const sheet = world.add({ testId: "sheet", renderer: "gpu", rect: { left: 0, top: 100, width: 40, height: 40 }, inViewport: true });
+  const ticker = setInterval(() => {
+    if (frames === 10) return clearInterval(ticker);
+    frames += 1;
+    sheet.rect = { ...sheet.rect, top: 100 + frames * 20 };
+  }, 60);
+  lxTest("moving", async (t) => { await t.app.view.drag(t.app.view.testId("sheet"), { dx: 0, dy: 50 }); });
+  installFakeHost(world);
+  const report = await run();
+  clearInterval(ticker);
+  assert.equal(report.cases[0].status, "passed", JSON.stringify(report.cases[0].error));
+  assert.deepEqual(world.gestureCalls[0].shape.from, [20, 320]);
+});
+
+test("a box that holds through new frames is settled while the page keeps animating", async () => {
+  let frames = 0;
+  const ticker = setInterval(() => { frames += 1; }, 16);
+  const world = createWorld({ frames: () => frames });
+  world.add({ testId: "row", renderer: "gpu", rect: { left: 0, top: 100, width: 40, height: 40 }, inViewport: true });
+  const started = Date.now();
+  lxTest("spinner", async (t) => { await (await t.app.view.touch(t.app.view.testId("row"))).up(); });
+  installFakeHost(world);
+  const report = await run();
+  clearInterval(ticker);
+  assert.equal(report.cases[0].status, "passed", JSON.stringify(report.cases[0].error));
+  assert.deepEqual(world.gestureCalls[0].shape.at, [20, 120]);
+  assert.ok(Date.now() - started < 2_000);
+});
+
 test("a fallback past the input dispatcher is visible in the result", async () => {
   const world = createWorld();
   world.gestureHost.delivered = "view";
