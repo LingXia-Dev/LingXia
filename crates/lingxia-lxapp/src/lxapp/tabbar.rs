@@ -4,52 +4,10 @@ use super::page_chrome::{
     PageChromeColor, PatchField, TabBarPresentation, TabBarVisibilityPreference, ValuePatchField,
 };
 use crate::LxApp;
-use lingxia_app_context::ThemeStyle;
+use lingxia_theme::{Role, ThemeLooks};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::path::Path;
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct TabBarStyle {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub foreground_color: Option<PageChromeColor>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub selected_foreground_color: Option<PageChromeColor>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub background_color: Option<PageChromeColor>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub divider_color: Option<PageChromeColor>,
-}
-
-impl TabBarStyle {
-    fn validate(self, presentation: TabBarPresentation) -> Result<Self, String> {
-        for (field, color) in [
-            ("foregroundColor", self.foreground_color),
-            ("selectedForegroundColor", self.selected_foreground_color),
-            ("backgroundColor", self.background_color),
-        ] {
-            if color.is_some_and(|color| !color.is_opaque()) {
-                return Err(format!("tabBar.style.{field}: expected opaque #RRGGBB"));
-            }
-        }
-        if presentation == TabBarPresentation::Immersive {
-            if self.background_color.is_some() {
-                return Err(
-                    "tabBar.style.backgroundColor: must be omitted when tabBar.presentation is immersive"
-                        .to_string(),
-                );
-            }
-            if self.divider_color.is_some() {
-                return Err(
-                    "tabBar.style.dividerColor: must be omitted when tabBar.presentation is immersive"
-                        .to_string(),
-                );
-            }
-        }
-        Ok(self)
-    }
-}
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -174,8 +132,6 @@ impl TabBarItem {
 pub struct TabBar {
     #[serde(default)]
     pub presentation: TabBarPresentation,
-    #[serde(default)]
-    pub style: TabBarStyle,
     pub items: Vec<TabBarItem>,
 
     #[serde(skip)]
@@ -228,7 +184,6 @@ impl TabBar {
                 ));
             }
         }
-        self.style = self.style.validate(self.presentation)?;
         for (index, item) in self.items.iter_mut().enumerate() {
             let name = item.page.trim().to_string();
             if name.is_empty() {
@@ -493,65 +448,22 @@ impl TabBar {
             .collect()
     }
 
+    /// The bar takes the roles of the theme the page renders with; an immersive bar has no fill
+    /// or divider of its own.
     pub fn resolved_style(
         &self,
-        theme: Option<&ThemeStyle>,
-        defaults: ResolvedTabBarStyle,
+        looks: &ThemeLooks,
+        dark: bool,
+        high_contrast: bool,
     ) -> ResolvedTabBarStyle {
-        let theme_foreground = theme.and_then(|style| style.muted_foreground_color);
-        let theme_selected = theme.and_then(|style| style.accent_color);
-        let theme_background = theme.and_then(|style| style.surface_background_color);
-        let theme_divider = theme.and_then(|style| style.separator_color);
+        let role = |role| super::navbar::chrome_color(looks.role(role, dark, high_contrast));
         let standard = self.presentation == TabBarPresentation::Standard;
-        // Mobile paints this bar next to the lxapp page, so static
-        // `tabBar.style` always wins. Desktop ignores these values when the
-        // host is dark (`declared_color_mask(true) == 0`).
         ResolvedTabBarStyle {
-            foreground_color: self
-                .style
-                .foreground_color
-                .or_else(|| theme_foreground.map(theme_color))
-                .unwrap_or(defaults.foreground_color),
-            selected_foreground_color: self
-                .style
-                .selected_foreground_color
-                .or_else(|| theme_selected.map(theme_color))
-                .unwrap_or(defaults.selected_foreground_color),
-            background_color: standard.then(|| {
-                self.style
-                    .background_color
-                    .or_else(|| theme_background.map(theme_color))
-                    .or(defaults.background_color)
-                    .expect("standard tabbar defaults include a background")
-            }),
-            divider_color: standard.then(|| {
-                self.style
-                    .divider_color
-                    .or_else(|| theme_divider.map(theme_color))
-                    .or(defaults.divider_color)
-                    .expect("standard tabbar defaults include a divider")
-            }),
+            foreground_color: role(Role::TextMuted),
+            selected_foreground_color: role(Role::Accent),
+            background_color: standard.then(|| role(Role::Surface)),
+            divider_color: standard.then(|| role(Role::Line)),
         }
-    }
-
-    /// Bits for colors taken from static `tabBar.style`. Desktop hosts pass
-    /// `host_dark`; when the host is dark every bit is zero so a light JSON
-    /// palette cannot paint a white card on the sidebar.
-    pub fn declared_color_mask(&self, host_dark: bool) -> u32 {
-        if host_dark {
-            return 0;
-        }
-        (self.style.foreground_color.is_some() as u32)
-            | ((self.style.selected_foreground_color.is_some() as u32) << 1)
-            | ((self.style.background_color.is_some() as u32) << 2)
-            | ((self.style.divider_color.is_some() as u32) << 3)
-    }
-
-    /// Desktop sidebar mask: same as [`Self::declared_color_mask`], except
-    /// `backgroundColor` is never taken. That key paints the mobile bar on the
-    /// page; the sidebar is host chrome and inherits `lingxia.yaml` theme.
-    pub fn desktop_declared_color_mask(&self, host_dark: bool) -> u32 {
-        self.declared_color_mask(host_dark) & !0b0100
     }
 
     pub fn apply_patch<F>(&mut self, patch: &TabBarPatch, mut resolve_icon: F) -> Result<(), String>
@@ -704,10 +616,6 @@ fn validate_asset_path(value: Option<&str>, index: usize, field: &str) -> Result
     Ok(())
 }
 
-fn theme_color(color: lingxia_app_context::ThemeColor) -> PageChromeColor {
-    PageChromeColor::from_rgba((color.rgb() << 8) | 0xff)
-}
-
 impl LxApp {
     /// Whether the tab bar shows over the current page: the app's show/hide first, then the page's route.
     pub fn tabbar_visible_now(&self) -> bool {
@@ -746,33 +654,7 @@ impl LxApp {
     pub fn resolved_tabbar_style(&self) -> Option<ResolvedTabBarStyle> {
         let tabbar = self.get_tabbar()?;
         let dark = self.appearance_state().resolved.is_dark();
-        let theme = lingxia_app_context::theme().and_then(|theme| theme.style(dark));
-        let defaults = if dark {
-            ResolvedTabBarStyle {
-                foreground_color: PageChromeColor::from_rgba(0xAEAEB2FF),
-                selected_foreground_color: PageChromeColor::from_rgba(0x0A84FFFF),
-                background_color: Some(PageChromeColor::from_rgba(0x1C1C1EFF)),
-                divider_color: Some(PageChromeColor::from_rgba(0x38383AFF)),
-            }
-        } else {
-            ResolvedTabBarStyle {
-                foreground_color: PageChromeColor::from_rgba(0x666666FF),
-                selected_foreground_color: PageChromeColor::from_rgba(0x1677FFFF),
-                background_color: Some(PageChromeColor::from_rgba(0xFFFFFFFF)),
-                divider_color: Some(PageChromeColor::from_rgba(0xF0F0F0FF)),
-            }
-        };
-        Some(tabbar.resolved_style(theme, defaults))
-    }
-
-    /// Desktop sidebar mask: host appearance, not the lxapp's pin.
-    /// `backgroundColor` is stripped — mobile-only.
-    pub fn tabbar_declared_color_mask(&self) -> u32 {
-        self.get_tabbar()
-            .map(|tabbar| {
-                tabbar.desktop_declared_color_mask(super::host_appearance::host_appearance_dark())
-            })
-            .unwrap_or(0)
+        Some(tabbar.resolved_style(&self.theme_looks(), dark, super::theme::high_contrast()))
     }
 }
 
@@ -963,50 +845,28 @@ mod tests {
         tabbar.validate(&pages)
     }
 
-    fn dark_defaults() -> ResolvedTabBarStyle {
-        ResolvedTabBarStyle {
-            foreground_color: PageChromeColor::from_rgba(0xAEAE_B2FF),
-            selected_foreground_color: PageChromeColor::from_rgba(0x0A84_FFFF),
-            background_color: Some(PageChromeColor::from_rgba(0x1C1C_1EFF)),
-            divider_color: Some(PageChromeColor::from_rgba(0x3838_3AFF)),
-        }
-    }
-
     #[test]
-    fn mobile_keeps_declared_style_desktop_mask_drops_it_when_host_is_dark() {
-        let tabbar = manifest(serde_json::json!({
-            "style": {
-                "foregroundColor": "#667085",
-                "selectedForegroundColor": "#2563EB",
-                "backgroundColor": "#FFFFFF"
-            },
+    fn the_bar_takes_the_theme_roles_and_an_immersive_bar_has_no_fill() {
+        let looks = lingxia_theme::looks(None);
+        let standard = manifest(serde_json::json!({
             "items": [{ "page": "home" }, { "page": "settings" }]
         }));
-        let mobile = tabbar.resolved_style(None, dark_defaults());
+        let style = standard.resolved_style(&looks, false, false);
         assert_eq!(
-            mobile.background_color,
-            Some(PageChromeColor::from_rgba(0xFFFF_FFFF))
+            style.selected_foreground_color,
+            super::super::navbar::chrome_color(looks.role(Role::Accent, false, false))
         );
-        assert_eq!(tabbar.declared_color_mask(false) & 0b0100, 0b0100);
-        assert_eq!(tabbar.declared_color_mask(true), 0);
-        // Desktop keeps item tints in light, but never the mobile bar fill.
-        assert_eq!(tabbar.desktop_declared_color_mask(false) & 0b0001, 0b0001);
-        assert_eq!(tabbar.desktop_declared_color_mask(false) & 0b0100, 0);
-        assert_eq!(tabbar.desktop_declared_color_mask(true), 0);
-    }
-
-    #[test]
-    fn immersive_rejects_surface_colors_with_exact_path() {
-        let mut tabbar = manifest(serde_json::json!({
+        assert!(style.background_color.is_some());
+        let immersive = manifest(serde_json::json!({
             "presentation": "immersive",
-            "style": { "backgroundColor": "#FFFFFF" },
-            "items": [
-                { "page": "home" },
-                { "page": "settings" }
-            ]
+            "items": [{ "page": "home" }, { "page": "settings" }]
         }));
-        let error = validate_self(&mut tabbar).unwrap_err();
-        assert!(error.starts_with("tabBar.style.backgroundColor:"));
+        assert!(
+            immersive
+                .resolved_style(&looks, false, false)
+                .background_color
+                .is_none()
+        );
     }
 
     #[test]

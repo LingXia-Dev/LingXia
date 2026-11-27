@@ -209,31 +209,36 @@ impl PageConfig {
         let Some(object) = value.as_object() else {
             return Ok(());
         };
-        for (field, replacement) in [
-            ("navigationBarTitleText", "navigationBar.title"),
+        if object.contains_key("navigationBarTitleText") {
+            return Err(serde_json::Error::custom(format!(
+                "{path}.navigationBarTitleText: removed; use navigationBar.title"
+            )));
+        }
+        let bar_style = object
+            .get("navigationBar")
+            .and_then(Value::as_object)
+            .is_some_and(|bar| bar.contains_key("style"));
+        for (field, present) in [
             (
                 "navigationBarBackgroundColor",
-                "navigationBar.style.backgroundColor",
+                object.contains_key("navigationBarBackgroundColor"),
             ),
             (
                 "navigationBarTextStyle",
-                "navigationBar.style.foregroundColor",
+                object.contains_key("navigationBarTextStyle"),
             ),
+            ("backgroundColor", object.contains_key("backgroundColor")),
+            ("navigationBar.style", bar_style),
         ] {
-            if object.contains_key(field) {
+            if present {
                 return Err(serde_json::Error::custom(format!(
-                    "{path}.{field}: removed; use {replacement}"
+                    "{path}.{field}: colours come from the theme (the lxapp's theme.json, else the host's)"
                 )));
             }
         }
         if object.contains_key("renderer") {
             return Err(serde_json::Error::custom(format!(
                 "{path}.renderer: removed; the renderer follows from the pages' View exports"
-            )));
-        }
-        if object.contains_key("backgroundColor") {
-            return Err(serde_json::Error::custom(format!(
-                "{path}.backgroundColor: removed; page background is host-owned"
             )));
         }
         Ok(())
@@ -279,11 +284,6 @@ impl PageConfig {
                 "{path}.maxTextScale: must be between 1.0 and 3.0"
             )));
         }
-        config
-            .navigation_bar
-            .style
-            .validate(&format!("{path}.navigationBar"))
-            .map_err(serde_json::Error::custom)?;
         Ok(config)
     }
 
@@ -461,23 +461,22 @@ mod tests {
             serde_json::json!({"backgroundColor": "#FFFFFF"}),
         )
         .unwrap_err();
-        assert!(error.to_string().contains(
-            "pages/home/index.json.backgroundColor: removed; page background is host-owned"
-        ));
-    }
+        assert!(
+            error
+                .to_string()
+                .contains("pages/home/index.json.backgroundColor: colours come from the theme")
+        );
 
-    #[test]
-    fn rejects_translucent_manifest_navigation_colors() {
         let error = PageConfig::from_value(
             "pages/home/index.json",
-            serde_json::json!({
-                "navigationBar": {"style": {"backgroundColor": "#FFFFFF80"}}
-            }),
+            serde_json::json!({"navigationBar": {"style": {"backgroundColor": "#FFFFFF"}}}),
         )
         .unwrap_err();
-        assert!(error.to_string().contains(
-            "pages/home/index.json.navigationBar.style.backgroundColor: expected opaque #RRGGBB"
-        ));
+        assert!(
+            error
+                .to_string()
+                .contains("pages/home/index.json.navigationBar.style: colours come from the theme")
+        );
     }
 
     #[test]

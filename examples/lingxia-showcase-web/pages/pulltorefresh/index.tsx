@@ -11,7 +11,7 @@ export default function PullDownRefreshPage() {
   const { refreshCount, lastRefreshTime, isRefreshing } = data;
 
   return (
-    <div className="min-h-screen bg-surface-100" data-testid="pull-refresh-page">
+    <div className="min-h-screen bg-background" data-testid="pull-refresh-page">
       <div className="px-4 py-6 pb-12 space-y-4">
 
         {/* Header Info Card */}

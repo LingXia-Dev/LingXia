@@ -216,24 +216,11 @@ pub fn splash_mark_launch_face(dark: bool) {
     crate::splash::mark_launch_face(dark)
 }
 
-/// The host-declared page floor for one appearance, as `#RRGGBB`.
-///
-/// Empty means the host declared none and the platform should keep its own
-/// system background. Native chrome paints with this wherever it borders the
-/// page — the strip a pull-to-refresh opens above it, the container a
-/// navigation transition slides views across — because a WebView cannot be
-/// asked for its document colour in time to paint the frame already on
-/// screen.
+/// A theme role as `#rrggbb`: `appid`'s theme, or the host's for an empty `appid`. Empty when
+/// there is no host theme or the role is unknown.
 #[napi]
-pub fn page_background_color(dark: bool) -> String {
-    lingxia_app_context::page_background_color(dark).unwrap_or_default()
-}
-
-/// The pull-to-refresh spinner colour for one appearance, as `#RRGGBB`:
-/// `accentColor`, else `mutedForegroundColor`. Empty keeps the platform's own.
-#[napi]
-pub fn refresh_indicator_color(dark: bool) -> String {
-    lingxia_app_context::refresh_indicator_color(dark).unwrap_or_default()
+pub fn theme_role(appid: String, role: String, dark: bool) -> String {
+    lxapp::theme::theme_role_hex(&appid, &role, dark).unwrap_or_default()
 }
 
 #[napi]

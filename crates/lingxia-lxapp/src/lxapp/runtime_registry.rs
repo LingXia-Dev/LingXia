@@ -94,7 +94,7 @@ pub fn try_get(appid: &str) -> Option<Arc<LxApp>> {
 pub fn theme_for(appid: &str) -> Option<String> {
     match try_get(appid) {
         Some(app) => app.theme_pack(),
-        None => lingxia_app_context::host_theme_pack(),
+        None => lingxia_app_context::host_theme_pack().map(str::to_owned),
     }
 }
 

@@ -1,6 +1,6 @@
 use super::localized_text::LocalizedText;
 use super::page_chrome::{PageChromeColor, PatchField, ValuePatchField, VisibilityPreference};
-use lingxia_app_context::ThemeStyle;
+use lingxia_theme::{Rgba, Role, ThemeLooks};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -11,79 +11,12 @@ pub enum NavigationStyle {
     Custom,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct NavigationBarStyle {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub background_color: Option<PageChromeColor>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub foreground_color: Option<PageChromeColor>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub divider_color: Option<PageChromeColor>,
-}
-
-impl NavigationBarStyle {
-    pub fn validate(self, path: &str) -> Result<Self, String> {
-        for (field, color) in [
-            ("backgroundColor", self.background_color),
-            ("foregroundColor", self.foreground_color),
-        ] {
-            if color.is_some_and(|color| !color.is_opaque()) {
-                return Err(format!("{path}.style.{field}: expected opaque #RRGGBB"));
-            }
-        }
-        Ok(self)
-    }
-
-    pub fn is_empty(self) -> bool {
-        self == Self::default()
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NavigationBarConfig {
     /// A string, or one per language; see [`LocalizedText`].
     #[serde(default)]
     pub title: LocalizedText,
-    #[serde(default)]
-    pub style: NavigationBarStyle,
-}
-
-#[derive(Debug, Clone, Deserialize, Default, PartialEq, Eq)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct NavigationBarStylePatch {
-    #[serde(default)]
-    pub background_color: PatchField<PageChromeColor>,
-    #[serde(default)]
-    pub foreground_color: PatchField<PageChromeColor>,
-    #[serde(default)]
-    pub divider_color: PatchField<PageChromeColor>,
-}
-
-impl NavigationBarStylePatch {
-    fn apply(&self, style: &mut NavigationBarStyle) -> Result<(), String> {
-        for (path, field) in [
-            (
-                "navigationBar.style.backgroundColor",
-                &self.background_color,
-            ),
-            (
-                "navigationBar.style.foregroundColor",
-                &self.foreground_color,
-            ),
-        ] {
-            if let PatchField::Value(color) = field
-                && !color.is_opaque()
-            {
-                return Err(format!("{path}: expected opaque #RRGGBB"));
-            }
-        }
-        apply_color_patch(&self.background_color, &mut style.background_color);
-        apply_color_patch(&self.foreground_color, &mut style.foreground_color);
-        apply_color_patch(&self.divider_color, &mut style.divider_color);
-        Ok(())
-    }
 }
 
 #[derive(Debug, Clone, Deserialize, Default, PartialEq, Eq)]
@@ -93,8 +26,6 @@ pub struct NavigationBarPatch {
     pub title: PatchField<String>,
     #[serde(default)]
     pub home_button: ValuePatchField<VisibilityPreference>,
-    #[serde(default)]
-    pub style: PatchField<NavigationBarStylePatch>,
 }
 
 impl NavigationBarPatch {
@@ -119,11 +50,6 @@ impl NavigationBarPatch {
         if let ValuePatchField::Value(home_button) = self.home_button {
             state.set_home_button_preference(home_button);
         }
-        match &self.style {
-            PatchField::Missing => {}
-            PatchField::Null => state.clear_runtime_style(),
-            PatchField::Value(style) => style.apply(&mut state.runtime_style)?,
-        }
         Ok(())
     }
 
@@ -135,14 +61,6 @@ impl NavigationBarPatch {
             state.restore_patchable_from(&candidate);
         }
         Ok(changed)
-    }
-}
-
-fn apply_color_patch(field: &PatchField<PageChromeColor>, target: &mut Option<PageChromeColor>) {
-    match field {
-        PatchField::Missing => {}
-        PatchField::Null => *target = None,
-        PatchField::Value(color) => *target = Some(*color),
     }
 }
 
@@ -173,24 +91,14 @@ pub struct ResolvedCapsuleStyle {
 }
 
 impl ResolvedCapsuleStyle {
-    fn resolve(theme: Option<&ThemeStyle>, defaults: Self) -> Self {
+    /// The capsule is product chrome: it takes the host theme's roles.
+    pub fn from_palette(looks: &ThemeLooks, dark: bool, high_contrast: bool) -> Self {
+        let role = |role| chrome_color(looks.role(role, dark, high_contrast));
         Self {
-            background_color: theme
-                .and_then(|style| style.surface_background_color)
-                .map(theme_color)
-                .unwrap_or(defaults.background_color),
-            foreground_color: theme
-                .and_then(|style| style.foreground_color)
-                .map(theme_color)
-                .unwrap_or(defaults.foreground_color),
-            divider_color: theme
-                .and_then(|style| style.separator_color)
-                .map(theme_color)
-                .unwrap_or(defaults.divider_color),
-            interaction_color: theme
-                .and_then(|style| style.selection_background_color)
-                .map(theme_color)
-                .unwrap_or(defaults.interaction_color),
+            background_color: role(Role::Surface),
+            foreground_color: role(Role::Text),
+            divider_color: role(Role::Line),
+            interaction_color: role(Role::NeutralSoft),
         }
     }
 }
@@ -201,7 +109,6 @@ pub struct NavigationBarState {
     pub navigation_style: NavigationStyle,
     pub manifest: NavigationBarConfig,
     pub runtime_title: Option<String>,
-    pub runtime_style: NavigationBarStyle,
     pub home_button: VisibilityPreference,
 
     #[serde(skip)]
@@ -226,7 +133,6 @@ impl NavigationBarState {
             navigation_style: style,
             manifest: config.clone(),
             runtime_title: None,
-            runtime_style: NavigationBarStyle::default(),
             home_button: VisibilityPreference::Auto,
             show_navbar: matches!(style, NavigationStyle::Default),
             show_back_button: false,
@@ -257,36 +163,6 @@ impl NavigationBarState {
             && self.navigation_home_button
     }
 
-    pub fn resolved_style(
-        &self,
-        theme: Option<&ThemeStyle>,
-        defaults: ResolvedNavigationBarStyle,
-    ) -> ResolvedNavigationBarStyle {
-        let theme_background = theme.and_then(|style| style.surface_background_color);
-        let theme_foreground = theme.and_then(|style| style.foreground_color);
-        let theme_divider = theme.and_then(|style| style.separator_color);
-        ResolvedNavigationBarStyle {
-            background_color: self
-                .runtime_style
-                .background_color
-                .or(self.manifest.style.background_color)
-                .or_else(|| theme_background.map(theme_color))
-                .unwrap_or(defaults.background_color),
-            foreground_color: self
-                .runtime_style
-                .foreground_color
-                .or(self.manifest.style.foreground_color)
-                .or_else(|| theme_foreground.map(theme_color))
-                .unwrap_or(defaults.foreground_color),
-            divider_color: self
-                .runtime_style
-                .divider_color
-                .or(self.manifest.style.divider_color)
-                .or_else(|| theme_divider.map(theme_color))
-                .unwrap_or(defaults.divider_color),
-        }
-    }
-
     pub fn set_navbar_visibility(&mut self, show: bool) {
         self.show_navbar = show;
     }
@@ -299,13 +175,8 @@ impl NavigationBarState {
         self.home_button = preference;
     }
 
-    pub fn clear_runtime_style(&mut self) {
-        self.runtime_style = NavigationBarStyle::default();
-    }
-
     pub(crate) fn restore_patchable_from(&mut self, original: &Self) {
         self.runtime_title.clone_from(&original.runtime_title);
-        self.runtime_style = original.runtime_style;
         self.home_button = original.home_button;
     }
 }
@@ -321,29 +192,12 @@ mod patch_tests {
                 .unwrap_err();
         assert!(error.to_string().contains("unknown field"));
 
-        let patch: NavigationBarPatch = serde_json::from_value(serde_json::json!({
-            "title": null,
-            "style": {"dividerColor": null}
-        }))
-        .unwrap();
+        let patch: NavigationBarPatch =
+            serde_json::from_value(serde_json::json!({"title": null})).unwrap();
         assert_eq!(patch.title, PatchField::Null);
-        assert!(matches!(
-            patch.style,
-            PatchField::Value(NavigationBarStylePatch {
-                divider_color: PatchField::Null,
-                ..
-            })
-        ));
-    }
-
-    #[test]
-    fn style_patch_rejects_translucent_opaque_fields() {
-        let patch: NavigationBarPatch = serde_json::from_value(serde_json::json!({
-            "style": {"backgroundColor": "#FFFFFF80"}
-        }))
-        .unwrap();
-        let error = patch.apply(&mut NavigationBarState::default()).unwrap_err();
-        assert!(error.contains("navigationBar.style.backgroundColor"));
+        let error = serde_json::from_value::<NavigationBarPatch>(serde_json::json!({"style": {}}))
+            .unwrap_err();
+        assert!(error.to_string().contains("unknown field"));
     }
 
     #[test]
@@ -356,19 +210,6 @@ mod patch_tests {
         let style: NavigationBarPatch =
             serde_json::from_value(serde_json::json!({"homeButton": "hidden"})).unwrap();
         assert!(style.check_writer(crate::PageRenderer::Gpu).is_ok());
-    }
-
-    #[test]
-    fn validation_failure_does_not_apply_earlier_patch_fields() {
-        let mut state = NavigationBarState::default();
-        let patch: NavigationBarPatch = serde_json::from_value(serde_json::json!({
-            "title": "Changed",
-            "style": {"backgroundColor": "#FFFFFF80"}
-        }))
-        .unwrap();
-
-        assert!(patch.apply_transactionally(&mut state).is_err());
-        assert_eq!(state.runtime_title, None);
     }
 
     #[test]
@@ -403,87 +244,33 @@ mod patch_tests {
 }
 
 impl crate::LxApp {
-    pub fn resolved_navigation_bar_style(&self, path: &str) -> ResolvedNavigationBarStyle {
-        let state = self.get_navbar_state(path);
+    /// The bar takes the roles of the theme the page renders with, so bar and page are one surface.
+    pub fn resolved_navigation_bar_style(&self, _path: &str) -> ResolvedNavigationBarStyle {
         let dark = self.appearance_state().resolved.is_dark();
-        let theme = lingxia_app_context::theme().and_then(|theme| theme.style(dark));
-        let defaults = if dark {
-            ResolvedNavigationBarStyle {
-                background_color: PageChromeColor::from_rgba(0x1C1C1EFF),
-                foreground_color: PageChromeColor::from_rgba(0xFFFFFFFF),
-                divider_color: PageChromeColor::from_rgba(0x38383AFF),
-            }
-        } else {
-            ResolvedNavigationBarStyle {
-                background_color: PageChromeColor::from_rgba(0xFFFFFFFF),
-                foreground_color: PageChromeColor::from_rgba(0x000000FF),
-                divider_color: PageChromeColor::from_rgba(0xE5E5EAFF),
-            }
-        };
-        state.resolved_style(theme, defaults)
+        let looks = self.theme_looks();
+        let role = |role| chrome_color(looks.role(role, dark, super::theme::high_contrast()));
+        ResolvedNavigationBarStyle {
+            background_color: role(Role::Surface),
+            foreground_color: role(Role::Text),
+            divider_color: role(Role::Line),
+        }
     }
 
     pub fn resolved_capsule_style(&self) -> ResolvedCapsuleStyle {
         let dark = self.appearance_state().resolved.is_dark();
-        let theme = lingxia_app_context::theme().and_then(|theme| theme.style(dark));
-        let defaults = if dark {
-            ResolvedCapsuleStyle {
-                background_color: PageChromeColor::from_rgba(0x1C1C1EFF),
-                foreground_color: PageChromeColor::from_rgba(0xFFFFFFFF),
-                divider_color: PageChromeColor::from_rgba(0x545458FF),
-                interaction_color: PageChromeColor::from_rgba(0x3A3A3CFF),
-            }
-        } else {
-            ResolvedCapsuleStyle {
-                background_color: PageChromeColor::from_rgba(0xFFFFFFFF),
-                foreground_color: PageChromeColor::from_rgba(0x000000FF),
-                divider_color: PageChromeColor::from_rgba(0xD1D1D6FF),
-                interaction_color: PageChromeColor::from_rgba(0xE5E5EAFF),
-            }
-        };
-        ResolvedCapsuleStyle::resolve(theme, defaults)
+        let looks = super::theme::host_looks().unwrap_or_else(|| lingxia_theme::looks(None));
+        ResolvedCapsuleStyle::from_palette(&looks, dark, super::theme::high_contrast())
     }
 }
 
-fn theme_color(color: lingxia_app_context::ThemeColor) -> PageChromeColor {
-    PageChromeColor::from_rgba((color.rgb() << 8) | 0xff)
+pub(crate) fn chrome_color(color: Rgba) -> PageChromeColor {
+    let [r, g, b, _] = color.0;
+    PageChromeColor::from_rgba(u32::from_be_bytes([r, g, b, 0xff]))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn color(value: &str) -> PageChromeColor {
-        PageChromeColor::parse(value).unwrap()
-    }
-
-    #[test]
-    fn runtime_manifest_theme_default_precedence() {
-        let config = NavigationBarConfig {
-            title: "Manifest".into(),
-            style: NavigationBarStyle {
-                foreground_color: Some(color("#222222")),
-                ..Default::default()
-            },
-        };
-        let mut state = NavigationBarState::from_config(NavigationStyle::Default, &config);
-        state.runtime_style.background_color = Some(color("#111111"));
-        let theme: ThemeStyle = serde_json::from_str(
-            r##"{"surfaceBackgroundColor":"#AAAAAA","foregroundColor":"#BBBBBB","separatorColor":"#CCCCCC"}"##,
-        )
-        .unwrap();
-        let resolved = state.resolved_style(
-            Some(&theme),
-            ResolvedNavigationBarStyle {
-                background_color: color("#DDDDDD"),
-                foreground_color: color("#EEEEEE"),
-                divider_color: color("#FFFFFF"),
-            },
-        );
-        assert_eq!(resolved.background_color, color("#111111"));
-        assert_eq!(resolved.foreground_color, color("#222222"));
-        assert_eq!(resolved.divider_color, color("#CCCCCC"));
-    }
 
     #[test]
     fn hidden_home_button_cannot_be_forced_by_navigation() {
@@ -496,26 +283,16 @@ mod tests {
     }
 
     #[test]
-    fn capsule_uses_semantic_theme_roles() {
-        let theme: ThemeStyle = serde_json::from_str(
-            r##"{
-                "surfaceBackgroundColor":"#111111",
-                "foregroundColor":"#222222",
-                "separatorColor":"#333333",
-                "selectionBackgroundColor":"#444444"
-            }"##,
-        )
-        .unwrap();
-        let defaults = ResolvedCapsuleStyle {
-            background_color: color("#AAAAAA"),
-            foreground_color: color("#BBBBBB"),
-            divider_color: color("#CCCCCC"),
-            interaction_color: color("#DDDDDD"),
-        };
-        let resolved = ResolvedCapsuleStyle::resolve(Some(&theme), defaults);
-        assert_eq!(resolved.background_color, color("#111111"));
-        assert_eq!(resolved.foreground_color, color("#222222"));
-        assert_eq!(resolved.divider_color, color("#333333"));
-        assert_eq!(resolved.interaction_color, color("#444444"));
+    fn the_capsule_takes_the_theme_roles() {
+        let looks = lingxia_theme::looks(None);
+        let capsule = ResolvedCapsuleStyle::from_palette(&looks, true, false);
+        assert_eq!(
+            capsule.background_color,
+            chrome_color(looks.role(Role::Surface, true, false))
+        );
+        assert_eq!(
+            capsule.foreground_color,
+            chrome_color(looks.role(Role::Text, true, false))
+        );
     }
 }

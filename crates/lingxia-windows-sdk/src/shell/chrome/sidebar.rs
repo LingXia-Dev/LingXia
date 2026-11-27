@@ -559,7 +559,7 @@ pub(super) fn draw_sidebar_items(
             // A flat selection avoids the horizontal shadow residue that was
             // especially visible while the old and new rows repainted during
             // tab switches. The accent guide already carries active emphasis.
-            fill_round_rect_aa(hdc, item_rect, px(6), shell_palette().selection_background);
+            fill_round_rect_aa(hdc, item_rect, px(6), shell_palette().tab_selected_background);
             let guide_x = rect.left + sidebar_item_inset() + px(12);
             fill_round_rect_aa(
                 hdc,

@@ -11,10 +11,6 @@ import { pinEnglish } from '../helpers/language.js';
 // Labels below are the English ones.
 test.beforeEach(pinEnglish);
 
-function hex(value: string | null | undefined): string {
-  return (value ?? '').replace(/\\/g, '/').toUpperCase();
-}
-
 async function navigationBar(app: TestApp): Promise<LxAppRuntimeNavigationBarInfo> {
   const state = (await app.info()).navigationBar;
   if (state === null || state === undefined) throw new Error('showcase NavigationBar snapshot is missing');
@@ -71,7 +67,7 @@ async function caughtChromeUpdate(
   }, target, patch);
 }
 
-test("apply navigationBar title, colors, home button, and reset", {
+test("apply navigationBar title, home button, and reset", {
   id: "UI-NAVBAR-001",
   covers: ['page.navigationBar.update'],
   app: SHOWCASE_APP_ID,
@@ -80,40 +76,28 @@ test("apply navigationBar title, colors, home button, and reset", {
   const { app, defer } = bindFixture(t, "UI-NAVBAR-001");
   defer(async () => {
     await app.logic.eval(async ({ currentPage }) => {
-      await currentPage()!.navigationBar.update({ title: null, style: null, homeButton: 'auto' });
+      await currentPage()!.navigationBar.update({ title: null, homeButton: 'auto' });
     }).catch(() => undefined);
   });
 
-  const ui = await t.step('drive the ui page presets', async () => {
+  const ui = await t.step('set the title from the ui page', async () => {
     await app.nav.reset({ page: 'ui', params: { type: 'navbar' } });
     const page = await app.page({ name: 'ui' }, { timeout: 30_000 });
-    await page.view.testId('navbar-preset-blue').click({ timeout: 30_000 });
-    const styled = await waitForNavBar(
-      app,
-      (state) => state.title === 'Blue Theme'
-        && hex(state.runtimeStyle.backgroundColor) === '#3B82F6'
-        && hex(state.runtimeStyle.foregroundColor) === '#FFFFFF',
-      'blue navigationBar preset',
-    );
-    expect(styled.homeButton).toBe('auto');
+    await page.view.testId('navbar-title-input').waitFor({ state: 'visible', timeout: 30_000 });
+    await page.view.testId('navbar-title-input').fill('Kept Title');
+    await page.view.testId('navbar-set-title').click();
+    const titled = await waitForNavBar(app, (state) => state.title === 'Kept Title', 'navigationBar title');
+    expect(titled.homeButton).toBe('auto');
     return page;
   });
 
-  await t.step('set divider color and hide the home button', async () => {
-    await app.logic.eval(async ({ currentPage }) => {
-      await currentPage()!.navigationBar.update({
-        style: { dividerColor: '#112233' },
-        homeButton: 'hidden',
-      });
-    });
-    const patched = await waitForNavBar(
+  await t.step('hide the home button', async () => {
+    await ui.view.testId('navbar-home-hide').click();
+    await waitForNavBar(
       app,
-      (state) => hex(state.runtimeStyle.dividerColor) === '#112233'
-        && state.homeButton === 'hidden'
-        && state.homeButtonVisible === false,
-      'divider color and hidden home button',
+      (state) => state.homeButton === 'hidden' && state.homeButtonVisible === false,
+      'hidden home button',
     );
-    expect(hex(patched.runtimeStyle.backgroundColor)).toBe('#3B82F6');
   });
 
   await t.step('restore the home button from the page control', async () => {
@@ -121,44 +105,22 @@ test("apply navigationBar title, colors, home button, and reset", {
     await waitForNavBar(app, (state) => state.homeButton === 'auto', 'auto home button');
   });
 
-  await t.step('reject an invalid color without mutating chrome', async () => {
+  await t.step('reject a colour patch without mutating chrome', async () => {
     const before = await navigationBar(app);
-    const rejected = await caughtChromeUpdate(app, 'navigationBar', { style: { backgroundColor: 'not-a-color' } });
+    const rejected = await caughtChromeUpdate(app, 'navigationBar', { style: { backgroundColor: '#3B82F6' } });
     expect(rejected.ok).toBeFalsy();
     expect(rejected.code).toBe('E_INVALID_ARG');
     expect(await navigationBar(app)).toEqual(before);
   });
 
-  await t.step('reset title and style with null', async () => {
+  await t.step('reset the title with null', async () => {
     await ui.view.testId('navbar-reset').click();
     await waitForNavBar(
       app,
       // The manifest title names a catalogue key; either language's text is the reset.
-      (state) => (state.title === 'User Interface' || state.title === '界面')
-        && state.runtimeStyle.backgroundColor === null
-        && state.runtimeStyle.foregroundColor === null
-        && state.runtimeStyle.dividerColor === null
-        && state.homeButton === 'auto',
+      (state) => (state.title === 'User Interface' || state.title === '界面') && state.homeButton === 'auto',
       'navigationBar reset to manifest title',
     );
-  });
-
-  await t.step('survive reLaunch', async () => {
-    await app.logic.eval(async ({ currentPage }) => {
-      await currentPage()!.navigationBar.update({
-        title: 'Kept Title',
-        style: { backgroundColor: '#10B981', foregroundColor: '#FFFFFF', dividerColor: '#0F766E' },
-      });
-    });
-    await waitForNavBar(app, (state) => state.title === 'Kept Title', 'title before relaunch');
-    await app.nav.reset({ page: 'ui', params: { type: 'navbar' } });
-    await waitForCurrentPage(app, 'ui', 30_000);
-    const relaunched = await app.page({ name: 'ui' });
-    await relaunched.view.testId('navbar-preset-blue').waitFor({ state: 'visible', timeout: 30_000 });
-    // Page onLoad sets the demo title again; the style patch is page-scoped and
-    // a new instance starts from the manifest unless Logic reapplies it.
-    const after = await navigationBar(app);
-    expect(after.title).toBe('Navigation Bar Demo');
   });
 });
 
@@ -419,7 +381,6 @@ test("assert tabBar failure codes, resets, and button-driven patches", {
     const invalid: JsonValue[] = [
       { items: { 'no-such-tab': { label: 'Invalid' } } },
       { items: [{ index: 1, label: 'Invalid' }] },
-      { style: { foregroundColor: 'not-a-color' } },
       { items: { api: { icon: '../secret.png' } } },
     ];
     for (const patch of invalid) {

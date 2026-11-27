@@ -1762,11 +1762,6 @@ export interface LxAppRuntimeNavigationBarInfo {
   title: string;
   homeButton: 'auto' | 'hidden';
   homeButtonVisible: boolean;
-  runtimeStyle: {
-    backgroundColor: string | null;
-    foregroundColor: string | null;
-    dividerColor: string | null;
-  };
 }
 
 /** Runtime TabBar state exposed for deterministic host-level assertions. */

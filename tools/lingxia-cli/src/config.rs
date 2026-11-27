@@ -215,10 +215,22 @@ pub struct ProductThemeFields {
     pub id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default_appearance: Option<lingxia_app_context::AppearancePreference>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub light: Option<lingxia_app_context::ThemeStyle>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub dark: Option<lingxia_app_context::ThemeStyle>,
+    #[serde(default, skip_serializing)]
+    pub light: Option<ColoursInThemeFiles>,
+    #[serde(default, skip_serializing)]
+    pub dark: Option<ColoursInThemeFiles>,
+}
+
+/// `theme.light` / `theme.dark`: always an error naming where colours live.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ColoursInThemeFiles;
+
+impl<'de> Deserialize<'de> for ColoursInThemeFiles {
+    fn deserialize<D: serde::Deserializer<'de>>(_: D) -> Result<Self, D::Error> {
+        Err(serde::de::Error::custom(
+            "theme colours come from themes/<id>.json (`lingxia theme new <id> -o themes/<id>.json`)",
+        ))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Default)]
@@ -259,8 +271,6 @@ impl ProductTheme {
     /// The runtime's half: colours and the default appearance; the pack is added at build.
     pub fn runtime(&self) -> Option<ThemeConfig> {
         ThemeConfig {
-            light: self.0.light,
-            dark: self.0.dark,
             default_appearance: self.0.default_appearance,
             pack: None,
         }
@@ -3111,7 +3121,6 @@ mod tests {
     }
 
     use super::*;
-    use lingxia_app_context::{ThemeColor, ThemeStyle};
     use tempfile::TempDir;
 
     fn load_config_yaml(source: &str) -> Result<LingXiaConfig> {
@@ -4051,10 +4060,7 @@ appLinks:
         let temp = TempDir::new().unwrap();
         let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
         config.theme = Some(ProductTheme(ProductThemeFields {
-            light: Some(ThemeStyle {
-                accent_color: Some(ThemeColor::parse("#a1b2c3").unwrap()),
-                ..ThemeStyle::default()
-            }),
+            id: Some("ocean".into()),
             ..Default::default()
         }));
 
@@ -4063,15 +4069,23 @@ appLinks:
         let loaded = LingXiaConfig::load(temp.path()).unwrap();
         assert_eq!(loaded.app.as_ref().unwrap().project_name, "my-app");
         assert_eq!(
-            loaded
-                .theme
-                .as_ref()
-                .and_then(|theme| theme.0.light.as_ref())
-                .and_then(|style| style.accent_color)
-                .map(ThemeColor::rgb),
-            Some(0xA1B2C3)
+            loaded.theme.as_ref().and_then(ProductTheme::id),
+            Some("ocean")
         );
         assert!(temp.path().join(HOST_CONFIG_FILE).exists());
+    }
+
+    #[test]
+    fn theme_is_an_id_or_a_map_and_colours_point_at_theme_files() {
+        let theme: ProductTheme = yaml::from_str("ocean").unwrap();
+        assert_eq!(theme.id(), Some("ocean"));
+        let theme: ProductTheme = yaml::from_str("defaultAppearance: dark").unwrap();
+        assert_eq!(theme.id(), None);
+        assert!(theme.runtime().is_some());
+        let error = yaml::from_str::<ProductTheme>("light:\n  accentColor: \"#a1b2c3\"")
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("themes/<id>.json"), "{error}");
     }
 
     #[test]

@@ -62,13 +62,6 @@ mod bridge {
         /// every item has a slot of its own. Desktop skins list all items and
         /// ignore this.
         pub overflow_start_index: i32,
-        /// Which style fields the app DECLARED (bit0 color, bit1
-        /// selectedColor, bit2 backgroundColor, bit3 borderStyle). Desktop
-        /// always clears bit2 — `backgroundColor` is mobile-only. The color
-        /// fields above always carry effective values (mobile defaults);
-        /// desktop skins use this mask to keep undeclared styles on the
-        /// yaml theme instead of inheriting light mobile defaults.
-        pub styled_mask: u32,
     }
 
     // TabBar item for Swift
@@ -240,11 +233,8 @@ mod bridge {
         #[swift_bridge(swift_name = "splashMarkLaunchFace")]
         fn splash_mark_launch_face(dark: bool);
 
-        #[swift_bridge(swift_name = "pageBackgroundColor")]
-        fn page_background_color(dark: bool) -> String;
-
-        #[swift_bridge(swift_name = "refreshIndicatorColor")]
-        fn refresh_indicator_color(dark: bool) -> String;
+        #[swift_bridge(swift_name = "themeRole")]
+        fn theme_role(appid: &str, role: &str, dark: bool) -> String;
 
         #[swift_bridge(swift_name = "forwardHostLog")]
         fn forward_host_log(
@@ -1110,22 +1100,10 @@ pub fn splash_mark_launch_face(dark: bool) {
     crate::splash::mark_launch_face(dark)
 }
 
-/// The host-declared page floor for one appearance, as `#RRGGBB`.
-///
-/// Empty means the host declared none and the platform should keep its own
-/// system background. Native chrome paints with this wherever it borders the
-/// page — the strip a pull-to-refresh opens above it, the container a
-/// navigation transition slides views across — because a WebView cannot be
-/// asked for its document colour in time to paint the frame already on
-/// screen.
-pub fn page_background_color(dark: bool) -> String {
-    lingxia_app_context::page_background_color(dark).unwrap_or_default()
-}
-
-/// The pull-to-refresh spinner colour for one appearance, as `#RRGGBB`:
-/// `accentColor`, else `mutedForegroundColor`. Empty keeps the platform's own.
-pub fn refresh_indicator_color(dark: bool) -> String {
-    lingxia_app_context::refresh_indicator_color(dark).unwrap_or_default()
+/// A theme role as `#rrggbb`: `appid`'s theme, or the host's for an empty `appid`. Empty when
+/// there is no host theme (the shell keeps native colours) or the role is unknown.
+pub fn theme_role(appid: &str, role: &str, dark: bool) -> String {
+    lxapp::theme::theme_role_hex(appid, role, dark).unwrap_or_default()
 }
 
 pub fn forward_host_log(
@@ -2610,10 +2588,6 @@ pub fn get_tab_bar(appid: &str) -> Option<self::bridge::TabBar> {
                 == lxapp::page_chrome::TabBarVisibilityPreference::Hidden,
             selected_index: tabbar.selected_index,
             overflow_start_index: tabbar.compact_overflow_slot_index(),
-            // Desktop sidebar is host chrome: a light-pinned lxapp must not
-            // paint `#FFFFFF` onto a dark sidebar. Mobile ignores this mask
-            // and keeps lxapp-resolved colors.
-            styled_mask: lxapp.tabbar_declared_color_mask(),
         })
     })
 }

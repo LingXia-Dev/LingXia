@@ -1,6 +1,5 @@
 {
   "navigationBar": {
-    "title": "AI Chat",
-    "style": { "backgroundColor": "#FFFFFF", "foregroundColor": "#000000" }
+    "title": "AI Chat"
   }
 }

@@ -229,7 +229,7 @@
   --lx-shadow-xl: rgb(0 0 0 / 0.25);
 
   /* Aliases for hand-written CSS and JS-drawn surfaces (charts) */
-  --lx-page: var(--lx-surface-50);
+  --lx-page: var(--lx-canvas); /* the theme's canvas: one surface with the native bars */
   --lx-surface-raised: var(--lx-surface-100);
   --lx-text: var(--lx-gray-900);
   --lx-text-secondary: var(--lx-gray-500);

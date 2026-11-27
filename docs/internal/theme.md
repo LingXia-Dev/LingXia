@@ -97,11 +97,17 @@ opening a page's lease registers it under the app session's worker before the
 page's host reads it. Leases count per worker: the pack stays registered while any page of that
 worker is live and is cleared when the last lease is disposed, so a relaunch that replaces pages
 keeps it. An lxapp without one
-uses the default pack. The host has no pack of its own.
+uses the host pack, else the default pack.
 
-Host chrome around a GPU page (navigation bar, tab bar, separator, window floor) takes `surface`,
-`line`, `text`, `text-muted`, `accent` and `canvas` from that page's palette,
-the same way in the Apple, Android and HarmonyOS adapters.
+`themes/<id>.json` beside `lingxia.yaml` is the host pack. `theme_for(appid)` is the lxapp's own
+pack, else the host's, else the default. There are no colour keys in `lingxia.yaml`, `lxapp.json`
+or page config.
+
+Host chrome around a page (navigation bar, tab bar, separator, window floor) takes `surface`,
+`line`, `text`, `text-muted`, `accent` and `canvas` from `theme_for(appid)` in the page's
+appearance, the same way on every host. Product chrome (desktop rows, aside) takes the host pack's
+roles. WebView pages get the same roles as `--lx-<role>` from the same resolver before first
+paint.
 
 ## Design-system names
 

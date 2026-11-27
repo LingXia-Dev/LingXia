@@ -39,19 +39,8 @@ pub(crate) fn runtime_info(mut value: Value) -> Value {
         &[
             ("home_button", "homeButton"),
             ("home_button_visible", "homeButtonVisible"),
-            ("runtime_style", "runtimeStyle"),
         ],
     );
-    if let Some(style) = value["navigationBar"].get_mut("runtimeStyle") {
-        rename(
-            style,
-            &[
-                ("background_color", "backgroundColor"),
-                ("foreground_color", "foregroundColor"),
-                ("divider_color", "dividerColor"),
-            ],
-        );
-    }
     rename(
         &mut value["tabBar"],
         &[
@@ -159,8 +148,7 @@ mod tests {
             "tab_bar": {"presentation": "standard", "visibility": "auto",
                 "effective_visible": true, "selected_index": 0,
                 "items": [{"index": 0, "text": "home_button", "icon_path": "my_icon.png", "badge": null, "red_dot": false}]},
-            "navigation_bar": {"title": "Home", "home_button": "auto", "home_button_visible": true,
-                "runtime_style": {"background_color": null, "foreground_color": "#fff", "divider_color": null}}
+            "navigation_bar": {"title": "Home", "home_button": "auto", "home_button_visible": true}
         }));
         assert_eq!(
             js,
@@ -168,8 +156,7 @@ mod tests {
                 "tabBar": {"presentation": "standard", "visibility": "auto",
                     "effectiveVisible": true, "selectedIndex": 0,
                     "items": [{"index": 0, "text": "home_button", "iconPath": "my_icon.png", "badge": null, "redDot": false}]},
-                "navigationBar": {"title": "Home", "homeButton": "auto", "homeButtonVisible": true,
-                    "runtimeStyle": {"backgroundColor": null, "foregroundColor": "#fff", "dividerColor": null}}
+                "navigationBar": {"title": "Home", "homeButton": "auto", "homeButtonVisible": true}
             })
         );
     }

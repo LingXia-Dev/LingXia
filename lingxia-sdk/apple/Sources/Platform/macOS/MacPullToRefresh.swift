@@ -357,7 +357,7 @@ final class MacPullToRefreshController {
         let dark = WebViewManager.resolvedDarkAppearance(appId: webView?.refreshAppId)
         bar.showPull(
             travel / Self.triggerDistance, in: container,
-            color: WebViewManager.declaredRefreshIndicatorColor(dark: dark))
+            color: WebViewManager.declaredRefreshIndicatorColor(appId: webView?.refreshAppId, dark: dark))
     }
 
     /// Slide the page down to reveal the strip behind it. Both edges move, so
@@ -400,7 +400,7 @@ final class MacPullToRefreshController {
         indicator.topInset = mobileTopInset
         let dark = WebViewManager.resolvedDarkAppearance(appId: webView?.refreshAppId)
         indicator.setColor(
-            WebViewManager.declaredRefreshIndicatorColor(dark: dark)
+            WebViewManager.declaredRefreshIndicatorColor(appId: webView?.refreshAppId, dark: dark)
                 ?? Self.contrastingColor(for: background))
     }
 
@@ -479,7 +479,7 @@ final class MacPullToRefreshController {
         } else if let container {
             let dark = WebViewManager.resolvedDarkAppearance(appId: webView?.refreshAppId)
             bar.start(
-                in: container, color: WebViewManager.declaredRefreshIndicatorColor(dark: dark))
+                in: container, color: WebViewManager.declaredRefreshIndicatorColor(appId: webView?.refreshAppId, dark: dark))
         }
         announce("lx_pull_refresh_refreshing")
         reportRefresh()

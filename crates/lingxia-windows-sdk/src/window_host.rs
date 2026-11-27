@@ -9699,14 +9699,12 @@ fn page_on_screen(hwnd: HWND, webtag_key: &str) -> bool {
         && window_handle_for_key(webtag_key) == Some(hwnd)
 }
 
-/// The host theme's refresh colour (`accentColor`, else
-/// `mutedForegroundColor`) for the current appearance, as `0xRRGGBB`.
+/// The host theme's accent for the current appearance, as `0xRRGGBB`.
 #[cfg(feature = "runtime")]
 fn refresh_bar_color() -> Option<u32> {
-    lingxia_app_context::theme()?
-        .style(lxapp::host_appearance_dark())?
-        .refresh_indicator_color()
-        .map(lingxia_app_context::ThemeColor::rgb)
+    let dark = lxapp::host_appearance_dark();
+    let [r, g, b, _] = lxapp::theme::host_role(lingxia_theme::Role::Accent, dark)?.0;
+    Some(u32::from_be_bytes([0, r, g, b]))
 }
 
 #[cfg(not(feature = "runtime"))]

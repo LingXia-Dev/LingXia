@@ -59,7 +59,7 @@ export default function ChannelPage() {
   const changePrefix = latest && latest.change > 0 ? '+' : '';
 
   return (
-    <div className="min-h-screen bg-surface-50 px-4 py-6" data-testid="channel-page">
+    <div className="min-h-screen bg-background px-4 py-6" data-testid="channel-page">
       {/* Connection status */}
       <div className="flex items-center gap-2 mb-4">
         <div

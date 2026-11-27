@@ -69,7 +69,7 @@ surfaces:
 | [`surfaces`](#surfaces) | For product hosts | Adaptive UI (generates `ui.json`) |
 | [`features`](#features) | Recommended | Native Rust compile-time switches |
 | [`capabilities`](#capabilities) | Recommended | Predeclared platform/runtime integrations |
-| [`theme`](#theme) | Optional | Semantic colors for host-owned native UI |
+| [`theme`](#theme) | Optional | The product's theme (`themes/<id>.json`) and default appearance |
 | [`settingsDestination`](#settingsdestination) | Optional | Target of the host Settings entry |
 | [`resources`](#resources) | Conditional | Bundled lxapp sources |
 | [`splash`](#splash) | Optional | Launch screen |
@@ -144,38 +144,18 @@ LingXia default, never from the host's.
 theme:
   id: ocean
   defaultAppearance: dark   # auto (default) | light | dark
-  light:
-    pageBackgroundColor: "#E9EAEE"
-    windowBackgroundColor: "#F4F5F7"
-    surfaceBackgroundColor: "#FFFFFF"
-    foregroundColor: "#111827"
-    mutedForegroundColor: "#667085"
-    accentColor: "#2865FF"
-    separatorColor: "#E5E7EB"
-    selectionBackgroundColor: "#EEF3FF"
-  dark:
-    pageBackgroundColor: "#1B1D21"
-    windowBackgroundColor: "#17191C"
-    surfaceBackgroundColor: "#23262B"
-    foregroundColor: "#F3F4F6"
-    mutedForegroundColor: "#9CA3AF"
-    accentColor: "#5B8CFF"
-    separatorColor: "#343840"
-    selectionBackgroundColor: "#303641"
 ```
 
-- Opaque `#RRGGBB` only. A missing role keeps the platform default for that
-  scheme; light and dark never fall back to each other.
-- Set `pageBackgroundColor` to your page's CSS floor in both schemes; native
-  chrome paints it where it borders the page.
-- The native refresh indicator uses `accentColor` (else `mutedForegroundColor`).
+- `theme.light` / `theme.dark` are errors: colours come only from theme files.
+- Native chrome takes roles: around a page (navigation bar, tab bar, pull-to-refresh, transition
+  floor) the roles of that page's theme; product chrome (desktop shell, capsule) the host theme's.
+  Without a host theme the desktop shell keeps native colours and pages use the LingXia default.
+- WebView pages get every role as a CSS variable before first paint: `var(--lx-canvas)`,
+  `var(--lx-text-muted)`, updated on appearance and contrast changes.
 - `defaultAppearance` applies until the user picks a scheme
   ([product settings](../lxapp/core.md#product-settings)); an lxapp's own
   `appearance` overrides both. The embedded browser's chrome and built-in
   pages follow the product scheme too.
-- Lxapp pages do not inherit these colors. A GPU page uses its lxapp's palette
-  ([theme pack](../lxapp/gpu/styling-motion.md#theme-pack)), and the bars and window floor around it
-  take that palette, not these keys. A WebView page follows `prefers-color-scheme`.
 
 ## `update`
 

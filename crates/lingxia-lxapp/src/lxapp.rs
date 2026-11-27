@@ -66,6 +66,7 @@ pub(crate) mod security;
 mod surface;
 pub use security::{LxAppSecurityPrivilege, is_public_network_address};
 pub mod tabbar;
+pub mod theme;
 #[cfg(test)]
 mod update_recovery_tests;
 pub mod uri;
@@ -1211,6 +1212,9 @@ pub(crate) struct LxAppState {
 
     /// App-declared actions surfaced by the host's secondary action affordance.
     more_actions: LxAppMoreActionState,
+
+    /// The resolved theme, read once per manifest load.
+    pub(crate) theme_looks: Option<Arc<lingxia_theme::ThemeLooks>>,
 }
 
 impl LxAppState {
@@ -1232,6 +1236,7 @@ impl LxAppState {
             open_region: None,
             surfaces: Mutex::new(SurfaceRecords::new()),
             more_actions: LxAppMoreActionState::default(),
+            theme_looks: None,
         }
     }
 }
@@ -1425,7 +1430,6 @@ pub struct LxAppRuntimeNavigationBarInfo {
     /// Back as the hosts are told it, and the stack depth it follows.
     pub back: LxAppRuntimeBackInfo,
     pub home: LxAppRuntimeHomeInfo,
-    pub runtime_style: LxAppRuntimeNavigationBarStyleInfo,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1437,13 +1441,6 @@ pub struct LxAppRuntimeBackInfo {
 #[derive(Debug, Clone, Serialize)]
 pub struct LxAppRuntimeHomeInfo {
     pub shown: bool,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct LxAppRuntimeNavigationBarStyleInfo {
-    pub background_color: Option<String>,
-    pub foreground_color: Option<String>,
-    pub divider_color: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1862,20 +1859,6 @@ impl LxApp {
                 },
                 home: LxAppRuntimeHomeInfo {
                     shown: state.home_button_visible(),
-                },
-                runtime_style: LxAppRuntimeNavigationBarStyleInfo {
-                    background_color: state
-                        .runtime_style
-                        .background_color
-                        .map(|color| color.to_string()),
-                    foreground_color: state
-                        .runtime_style
-                        .foreground_color
-                        .map(|color| color.to_string()),
-                    divider_color: state
-                        .runtime_style
-                        .divider_color
-                        .map(|color| color.to_string()),
                 },
             }
         });
@@ -2822,6 +2805,7 @@ impl LxApp {
         {
             let mut state = self.state.lock().unwrap();
             state.tabbar = tabbar;
+            state.theme_looks = None;
             if first_load {
                 state.appearance = LxAppAppearanceState {
                     preference,
@@ -2999,7 +2983,8 @@ impl LxApp {
     /// The theme this lxapp renders with: its own `theme.json`, else the host's theme. An
     /// lxapp's own theme was completed from the LingXia default, never from the host's.
     pub fn theme_pack(&self) -> Option<String> {
-        self.read_theme_pack().or_else(lingxia_app_context::host_theme_pack)
+        self.read_theme_pack()
+            .or_else(|| lingxia_app_context::host_theme_pack().map(str::to_owned))
     }
 
     /// The theme the lxapp bundles (`theme.json`, completed by `lingxia build`).

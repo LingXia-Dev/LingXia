@@ -2741,11 +2741,9 @@ fn build_tab_bars(
     } else {
         WindowsShellTabBarPosition::Right
     };
-    // Desktop sidebar never takes tabBar.style.backgroundColor (mobile-only);
-    // yaml `windowBackgroundColor` shows through. Color/selectedColor still
-    // apply on light host when the app declared them.
+    // The desktop sidebar is product chrome on the shell palette; the mobile bar takes the
+    // roles of the lxapp's theme.
     let resolved_style = app.resolved_tabbar_style();
-    let declared_mask = app.tabbar_declared_color_mask();
     let tabbar_background_transparent = tabbar.as_ref().is_some_and(|tabbar| {
         tabbar.presentation == lxapp::page_chrome::TabBarPresentation::Immersive
     });
@@ -2808,14 +2806,14 @@ fn build_tab_bars(
         },
         main_scroll_offset: ui_state.main_scroll_offset,
         footer_action_scroll_row: ui_state.footer_action_scroll_row,
-        color: if desktop_sidebar && declared_mask & 0b0001 == 0 {
+        color: if desktop_sidebar {
             super::style::shell_palette().text_muted
         } else {
             resolved_style
                 .map(|style| style.foreground_color.rgba() >> 8)
                 .unwrap_or(0x666666)
         },
-        selected_color: if desktop_sidebar && declared_mask & 0b0010 == 0 {
+        selected_color: if desktop_sidebar {
             super::style::shell_palette().accent
         } else {
             resolved_style
@@ -2828,9 +2826,7 @@ fn build_tab_bars(
             .and_then(|style| style.background_color)
             .map(|color| color.rgba() >> 8)
             .unwrap_or(0),
-        // Desktop mask already drops `backgroundColor`; keep the guard so a
-        // stale caller cannot paint a mobile white card on the sidebar.
-        paint_items_background: desktop_sidebar && declared_mask & 0b0100 != 0,
+        paint_items_background: false,
         background_transparent: tabbar_background_transparent,
         border_color: resolved_style
             .and_then(|style| style.divider_color)
@@ -4332,21 +4328,12 @@ fn lxapp_aside_tabbar(app: &LxApp) -> Option<lingxia_windows_contract::WindowsAs
         .iter()
         .position(|item| normalize_tab_path(&item.page_path) == target)
         .map_or(-1, |index| index as i32);
-    // Only what the app declared, as the sidebar: the resolved values carry
-    // mobile defaults designed for a light bar.
-    let style = app.resolved_tabbar_style();
-    let declared = app.tabbar_declared_color_mask();
+    // As the sidebar: product chrome on the shell palette.
     Some(lingxia_windows_contract::WindowsAsidePanelTabBar {
         items,
         selected_index,
-        color: style
-            .as_ref()
-            .filter(|_| declared & 0b0001 != 0)
-            .map(|style| style.foreground_color.rgba() >> 8),
-        selected_color: style
-            .as_ref()
-            .filter(|_| declared & 0b0010 != 0)
-            .map(|style| style.selected_foreground_color.rgba() >> 8),
+        color: None,
+        selected_color: None,
     })
 }
 

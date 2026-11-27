@@ -149,7 +149,9 @@ release();
 Which scheme applies: [Appearance](../guide.md#appearance).
 The runtime sets `color-scheme` and `data-theme="light|dark"` on `<html>`. Key
 theme CSS off `[data-theme]`, with a `prefers-color-scheme` fallback for first
-paint.
+paint. The theme's roles are CSS variables from the first paint and follow appearance and contrast:
+`background: var(--lx-canvas); color: var(--lx-text);` keeps the page one surface with its bars.
+A variable the page declares itself wins over the runtime's.
 
 ## Page chrome CSS
 

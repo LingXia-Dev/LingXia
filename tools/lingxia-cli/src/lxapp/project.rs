@@ -167,29 +167,23 @@ fn validate_page_configs(project_root: &Path, pages: &[String]) -> Result<()> {
         let object = value
             .as_object()
             .ok_or_else(|| anyhow!("{}: page config must be an object", relative.display()))?;
-        for (legacy, replacement) in [
-            ("navigationBarTitleText", "navigationBar.title"),
-            (
-                "navigationBarBackgroundColor",
-                "navigationBar.style.backgroundColor",
-            ),
-            (
-                "navigationBarTextStyle",
-                "navigationBar.style.foregroundColor",
-            ),
+        if object.contains_key("navigationBarTitleText") {
+            return Err(anyhow!(
+                "{} navigationBarTitleText: removed; use navigationBar.title",
+                relative.display()
+            ));
+        }
+        for field in [
+            "navigationBarBackgroundColor",
+            "navigationBarTextStyle",
+            "backgroundColor",
         ] {
-            if object.contains_key(legacy) {
+            if object.contains_key(field) {
                 return Err(anyhow!(
-                    "{} {legacy}: removed; use {replacement}",
+                    "{} {field}: colours come from the theme (the lxapp's theme.json, else the host's)",
                     relative.display()
                 ));
             }
-        }
-        if object.contains_key("backgroundColor") {
-            return Err(anyhow!(
-                "{} backgroundColor: removed; page background is host-owned",
-                relative.display()
-            ));
         }
         if object.contains_key("renderer") {
             return Err(anyhow!(
@@ -235,23 +229,21 @@ fn validate_page_configs(project_root: &Path, pages: &[String]) -> Result<()> {
             let navigation_bar = navigation_bar.as_object().ok_or_else(|| {
                 anyhow!("{} navigationBar: expected an object", relative.display())
             })?;
+            if navigation_bar.contains_key("style") {
+                return Err(anyhow!(
+                    "{} navigationBar.style: colours come from the theme (the lxapp's theme.json, else the host's)",
+                    relative.display()
+                ));
+            }
             reject_unknown_fields(
                 navigation_bar,
-                &["title", "style"],
+                &["title"],
                 &format!("{} navigationBar", relative.display()),
             )?;
             if let Some(title) = navigation_bar.get("title") {
                 validate_localized_text(title).map_err(|reason| {
                     anyhow!("{} navigationBar.title: {reason}", relative.display())
                 })?;
-            }
-            if let Some(style) = navigation_bar.get("style") {
-                validate_style_object(
-                    style,
-                    &["backgroundColor", "foregroundColor", "dividerColor"],
-                    &format!("{} navigationBar.style", relative.display()),
-                    &["backgroundColor", "foregroundColor"],
-                )?;
             }
         }
     }
@@ -271,12 +263,21 @@ fn validate_page_chrome_manifest(manifest: &Value) -> Result<()> {
     let tabbar = tabbar
         .as_object()
         .ok_or_else(|| anyhow!("tabBar: expected an object"))?;
+    for field in [
+        "style",
+        "color",
+        "selectedColor",
+        "backgroundColor",
+        "borderStyle",
+    ] {
+        if tabbar.contains_key(field) {
+            return Err(anyhow!(
+                "tabBar.{field}: colours come from the theme (the lxapp's theme.json, else the host's)"
+            ));
+        }
+    }
     for (legacy, replacement) in [
         ("list", "tabBar.items"),
-        ("color", "tabBar.style.foregroundColor"),
-        ("selectedColor", "tabBar.style.selectedForegroundColor"),
-        ("backgroundColor", "tabBar.style.backgroundColor"),
-        ("borderStyle", "tabBar.style.dividerColor"),
         ("position", "tabBar.presentation"),
         ("dimension", "host-owned layout"),
     ] {
@@ -287,42 +288,13 @@ fn validate_page_chrome_manifest(manifest: &Value) -> Result<()> {
     if !tabbar.get("items").is_some_and(Value::is_array) {
         return Err(anyhow!("tabBar.items: expected an array"));
     }
-    reject_unknown_fields(tabbar, &["presentation", "style", "items"], "tabBar")?;
-    let presentation = tabbar
-        .get("presentation")
-        .map(|value| {
-            value
-                .as_str()
-                .filter(|value| matches!(*value, "standard" | "immersive"))
-                .ok_or_else(|| anyhow!("tabBar.presentation: expected standard or immersive"))
-        })
-        .transpose()?
-        .unwrap_or("standard");
-    if let Some(style) = tabbar.get("style") {
-        let style = validate_style_object(
-            style,
-            &[
-                "foregroundColor",
-                "selectedForegroundColor",
-                "backgroundColor",
-                "dividerColor",
-            ],
-            "tabBar.style",
-            &[
-                "foregroundColor",
-                "selectedForegroundColor",
-                "backgroundColor",
-            ],
-        )?;
-        if presentation == "immersive" {
-            for field in ["backgroundColor", "dividerColor"] {
-                if style.contains_key(field) {
-                    return Err(anyhow!(
-                        "tabBar.style.{field}: must be omitted when tabBar.presentation is immersive"
-                    ));
-                }
-            }
-        }
+    reject_unknown_fields(tabbar, &["presentation", "items"], "tabBar")?;
+    if let Some(value) = tabbar.get("presentation")
+        && !matches!(value.as_str(), Some("standard" | "immersive"))
+    {
+        return Err(anyhow!(
+            "tabBar.presentation: expected standard or immersive"
+        ));
     }
     let items = tabbar["items"].as_array().expect("items checked above");
     // Mirrors TabBar::MIN_ITEMS/MAX_ITEMS in lingxia-lxapp; the runtime crate is
@@ -416,38 +388,6 @@ fn reject_unknown_fields(
         return Err(anyhow!("{path}.{field}: unknown field"));
     }
     Ok(())
-}
-
-fn validate_style_object<'a>(
-    value: &'a Value,
-    allowed: &[&str],
-    path: &str,
-    opaque: &[&str],
-) -> Result<&'a serde_json::Map<String, Value>> {
-    let style = value
-        .as_object()
-        .ok_or_else(|| anyhow!("{path}: expected an object"))?;
-    reject_unknown_fields(style, allowed, path)?;
-    for (field, value) in style {
-        let color = value
-            .as_str()
-            .ok_or_else(|| anyhow!("{path}.{field}: expected a CSS hex color"))?;
-        let hex = color
-            .strip_prefix('#')
-            .ok_or_else(|| anyhow!("{path}.{field}: expected #RRGGBB or #RRGGBBAA"))?;
-        let valid_length = hex.len() == 6 || (!opaque.contains(&field.as_str()) && hex.len() == 8);
-        if !valid_length || !hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-            return Err(anyhow!(
-                "{path}.{field}: expected {}",
-                if opaque.contains(&field.as_str()) {
-                    "opaque #RRGGBB"
-                } else {
-                    "#RRGGBB or #RRGGBBAA"
-                }
-            ));
-        }
-    }
-    Ok(style)
 }
 
 fn validate_lxapp_pages(pages: Option<&Value>) -> Result<()> {
@@ -1182,7 +1122,7 @@ mod tests {
             .unwrap_err()
             .to_string();
 
-        assert!(error.contains("backgroundColor: removed; page background is host-owned"));
+        assert!(error.contains("backgroundColor: colours come from the theme"));
     }
 
     #[test]
@@ -1252,7 +1192,6 @@ mod tests {
             ],
             "tabBar": {
                 "presentation": "immersive",
-                "style": {"foregroundColor":"#FFFFFF"},
                 "items": [
                     {"page":"home"},
                     {"page":"profile"}

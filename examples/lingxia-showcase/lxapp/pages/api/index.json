@@ -4,10 +4,6 @@
   "navigationBar": {
     "title": {
       "message": "title.api"
-    },
-    "style": {
-      "backgroundColor": "#3b82f6",
-      "foregroundColor": "#000000"
     }
   }
 }

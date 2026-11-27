@@ -8,7 +8,6 @@ use crate::config::{
     LingxiaServer, MacosConfig, PerEnvHosts, PerEnvServer, ResolvedEnv, SettingsDestination,
     UpdateSigningConfig,
 };
-use lingxia_app_context::{ThemeColor, ThemeStyle};
 use std::fs;
 use std::path::{Path, PathBuf};
 use tempfile::TempDir;
@@ -727,25 +726,18 @@ fn generated_app_json_includes_normalized_theme() {
     let mut config = LingXiaConfig::new_android("demo", "com.example.demo", "demo-home");
     config.theme = Some(crate::config::ProductTheme(
         crate::config::ProductThemeFields {
-            id: None,
-            light: Some(ThemeStyle {
-                accent_color: Some(ThemeColor::parse("#a1b2c3").unwrap()),
-                ..ThemeStyle::default()
-            }),
-            dark: Some(ThemeStyle {
-                separator_color: Some(ThemeColor::parse("#343840").unwrap()),
-                ..ThemeStyle::default()
-            }),
             default_appearance: Some(lingxia_app_context::AppearancePreference::Dark),
+            ..Default::default()
         },
     ));
 
     let app_json = build_app_json_from_config(&config, None, None, &test_resolved_env()).unwrap();
     let value: serde_json::Value = serde_json::from_str(&app_json).unwrap();
 
-    assert_eq!(value["theme"]["light"]["accentColor"], "#A1B2C3");
-    assert_eq!(value["theme"]["dark"]["separatorColor"], "#343840");
-    assert_eq!(value["theme"]["defaultAppearance"], "dark");
+    assert_eq!(
+        value["theme"],
+        serde_json::json!({ "defaultAppearance": "dark" })
+    );
 }
 
 #[test]

@@ -172,16 +172,10 @@ declare module 'liblingxia.so' {
   export function splashMarkLaunchFace(dark: boolean): void;
 
   /**
-   * The host-declared page floor for one appearance, as `#RRGGBB`, or an empty
-   * string when the host declared none.
+   * A theme role as `#rrggbb`: `appId`'s theme, or the host's for an empty `appId`.
+   * Empty when there is no host theme or the role is unknown.
    */
-  export function pageBackgroundColor(dark: boolean): string;
-
-  /**
-   * The pull-to-refresh spinner colour for one appearance, as `#RRGGBB`
-   * (`accentColor`, else `mutedForegroundColor`), or empty when neither is declared.
-   */
-  export function refreshIndicatorColor(dark: boolean): string;
+  export function themeRole(appId: string, role: string, dark: boolean): string;
 
   /**
    * Get LxApp information for a specific app

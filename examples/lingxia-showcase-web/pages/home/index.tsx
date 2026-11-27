@@ -40,7 +40,7 @@ const GROUPS: { title: string; demos: Demo[] }[] = [
 
 export default function HomePage() {
   return (
-    <div className="min-h-screen bg-surface-100" data-testid="home-page">
+    <div className="min-h-screen bg-background" data-testid="home-page">
       <div className="px-4 py-5 pb-12 space-y-5">
         <div>
           <div className="text-xl font-semibold text-gray-900">LingXia Showcase (WebView)</div>

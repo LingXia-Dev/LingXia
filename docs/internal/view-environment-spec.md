@@ -153,13 +153,11 @@ The layers have distinct responsibilities:
 
 ### 4.1 Manifest
 
-`tabBar` has three fields: `presentation` (`"standard"` by default, or
-`"immersive"`), `style`, and 2 to 10 `items`. The shapes are in
-`@lingxia/types`.
+`tabBar` has two fields: `presentation` (`"standard"` by default, or
+`"immersive"`) and 2 to 10 `items`. The shapes are in `@lingxia/types`.
 
-- Style colours MUST be opaque `#RRGGBB`.
-- An `immersive` tab bar MUST omit `style.backgroundColor` and
-  `style.dividerColor`; the host draws it see-through.
+- The tab bar has no colour fields; its colours are theme roles (shell UI
+  §6.4).
 - The manifest has no edge or size. The host owns tab bar placement and size.
 - The host grows a bottom bar by the system's bottom area below it (the iOS
   home indicator, the Android navigation bar or gesture zone, the HarmonyOS

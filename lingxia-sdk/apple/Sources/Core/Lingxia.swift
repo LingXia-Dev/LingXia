@@ -169,7 +169,6 @@ public enum Lingxia {
 
         let bundleConfig = try LxAppAppUIBundleLoader.loadFromMainBundle()
         _ = try initializeRuntime()
-        LxAppHostTheme.install(bundleConfig.app.theme)
 
         let controller = LxAppController()
         let shellConfiguration = LxAppShellConfiguration(

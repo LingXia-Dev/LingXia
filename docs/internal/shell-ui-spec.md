@@ -553,10 +553,10 @@ actions — bookmark, pin, copy link, open externally; an lxapp's More actions);
 ### 6.1 One model
 
 An lxapp declares two to ten tabs in `lxapp.json` `tabBar`, each with a page,
-label, icon and style. Every host shows the same items, selection, badges and
-red dots. `lx.app.tabBar.update` patches items, badges and visibility; colours
-are static in `tabBar.style` and a `style` field is rejected
-(`E_INVALID_ARG`). An lxapp without a tab bar gets `E_INVALID_STATE` with
+label and icon. Every host shows the same items, selection, badges and red
+dots. `lx.app.tabBar.update` patches items, badges and visibility. The bar has
+no colour configuration: its colours are theme roles (§6.4), and a `style`
+field is rejected (`E_INVALID_ARG`). An lxapp without a tab bar gets `E_INVALID_STATE` with
 `tabBarNotDeclared`.
 
 - `visibility: 'hidden'` hides the bar wherever it is projected; on a desktop
@@ -597,27 +597,22 @@ aggregate onto the group header.
 
 ### 6.4 Colours
 
-- **Touch hosts.** The bar sits on the lxapp's page. Its colours are the
-  static `tabBar.style`, then the lxapp's appearance defaults for unset keys. It
-  MUST NOT follow the system or host dark mode on its own: most lxapps have no
-  dark page, and a dark bar on a light page is worse than a light bar on a dark
-  system. A light-pinned lxapp keeps its authored bar. An immersive bar lets the
-  page run under it but keeps a translucent plate in the bar colour: labels
-  never sit directly on the page.
-- **Desktop.** The rows are host chrome and follow the host `theme`.
-  `backgroundColor` is touch-only and never paints the rows, even `#FFFFFF` on a
-  light sidebar. Other style keys tint the rows while the host is light; while
-  it is dark the host theme wins for every key, also for a light-pinned lxapp.
-  Unset keys inherit the shell theme.
-- **Inside an aside.** As on the desktop; an undeclared key falls back to the
-  host accent or muted foreground.
+There are no colour keys. The bars take theme roles: `surface` for the
+background, `text-muted` for unselected labels, `accent` for the selected label
+and the desktop rows' left-edge bar, `line` for the divider and the attribution
+line.
 
-| Style key | Touch bar | Desktop rows |
-|---|---|---|
-| `foregroundColor` | Unselected label | Unselected item title |
-| `selectedForegroundColor` | Selected label | Selected item title and its left-edge accent bar |
-| `backgroundColor` | Bar background | Unused |
-| `dividerColor` | Bar divider | Attribution line |
+- **Touch hosts.** The bar sits on the lxapp's page and takes the roles of that
+  page's theme (`theme_for(appid)`), in the page's appearance: it follows the
+  page, never the system or the host on its own.
+- **Immersive.** The page runs on under the bar, which is a material: the GPU
+  View blurs the page under the bar's strip and tints it with the theme's
+  `surface`; the host draws only the items. Its opacity is the framework's,
+  never the lxapp's, and labels keep 4.5:1 against it. With reduced
+  transparency or high contrast, and on a WebView page, the bar is a solid
+  plate in `surface`.
+- **Desktop and inside an aside.** The rows are host chrome and take the host
+  theme's roles.
 
 An item's single `iconPath` is a template the host tints with these colours.
 A raster icon keeps its own colours.

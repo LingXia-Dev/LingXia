@@ -192,7 +192,7 @@ final class GpuPullToRefresh {
     private func spinnerColor() -> UIColor? {
         let appId = page.map { gpuPageInfo($0.token).app_id.toString() }
         let dark = WebViewManager.resolvedDarkAppearance(appId: appId)
-        return WebViewManager.declaredRefreshIndicatorColor(dark: dark)
+        return WebViewManager.declaredRefreshIndicatorColor(appId: appId, dark: dark)
     }
 
     private func announce(_ key: String) {

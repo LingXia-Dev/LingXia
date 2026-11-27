@@ -233,17 +233,6 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
     /// Fired after a pin/unpin from the context menu so the sidebar
     /// re-renders its pin grid (the store itself lives in Rust).
     var onPinChanged: (() -> Void)?
-    /// Selected-state tint from this lxapp's tabbar style (`selectedColor`);
-    /// nil = system neutral. Feeds the items' selected state.
-    private var tabBarTint: NSColor?
-    /// Attribution-line base from the tabbar's borderStyle: "white" reads as
-    /// a light hairline, "black" (default) as the darker separator.
-    private var attributionBaseColor: NSColor = LxAppHostTheme.separator
-    /// Unselected item title tint from the tabbar's `color`; nil = neutral.
-    private var itemTint: NSColor?
-    /// Expanded items-area wash. Desktop mask never sets the
-    /// `backgroundColor` bit, so this stays nil (sidebar / yaml theme).
-    private var itemsAreaColor: NSColor?
     /// Thin vertical line binding the expanded items to their group header
     /// (Windows-baseline attribution line, tabbar-tinted).
     private let attributionLine = NSView()
@@ -316,29 +305,17 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
     private func applyColors() {
         updateActiveAppearance()
         attributionLine.layer?.backgroundColor =
-            themeCGColor(attributionBaseColor.withAlphaComponent(0.5))
+            themeCGColor(LxAppHostTheme.separator.withAlphaComponent(0.5))
         appNameLabel.textColor = LxAppHostTheme.foreground
         chevronIndicator.contentTintColor = LxAppHostTheme.mutedForeground
         closeButton.contentTintColor = LxAppHostTheme.mutedForeground.withAlphaComponent(0.9)
         menuButton.contentTintColor = LxAppHostTheme.mutedForeground.withAlphaComponent(0.9)
-        // Desktop never applies tabBar.style.backgroundColor; yaml theme wins.
-        itemsBackground.layer?.backgroundColor = themeCGColor((itemsAreaColor ?? NSColor.clear))
+        itemsBackground.layer?.backgroundColor = NSColor.clear.cgColor
     }
-
-    private var lastAppearanceIsDark: Bool?
 
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
-        // The declared-color mask depends on the host scheme, so a scheme flip
-        // re-reads it; re-parenting also lands here and only needs repainting.
-        let isDark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-        if let lastAppearanceIsDark, lastAppearanceIsDark != isDark {
-            self.lastAppearanceIsDark = isDark
-            refreshFromRust()
-        } else {
-            self.lastAppearanceIsDark = isDark
-            applyColors()
-        }
+        applyColors()
     }
 
     private func setupViews() {
@@ -563,17 +540,7 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
             return
         }
 
-        // Style follows the lxapp's tabbar config — but only fields the app
-        // DECLARED (styled_mask). The color values always carry effective
-        // mobile defaults, and those are designed for a light bar: inheriting
-        // them here would paint every unstyled app light-on-dark.
-        let mask = tabBar.styled_mask
-        itemTint = mask & 0b0001 != 0 ? PlatformColor(argb: tabBar.color) : nil
-        tabBarTint = mask & 0b0010 != 0 ? PlatformColor(argb: tabBar.selected_color) : nil
-        itemsAreaColor = mask & 0b0100 != 0 ? PlatformColor(argb: tabBar.background_color) : nil
-        attributionBaseColor = mask & 0b1000 != 0
-            ? PlatformColor(argb: tabBar.border_style)
-            : LxAppHostTheme.separator
+        // The sidebar is product chrome: it takes the host theme, not the lxapp's.
         applyColors()
 
         let items = tabBar.getItems(appId: providerAppId)
@@ -691,8 +658,6 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
             && zip(itemViews, items).allSatisfy({ $0.tabIndex == $1.cachedIndex })
         if canReuse {
             for (itemView, item) in zip(itemViews, items) {
-                itemView.selectedTint = tabBarTint
-                itemView.unselectedTint = itemTint
                 itemView.configure(item: item)
             }
         } else {
@@ -703,8 +668,6 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
             for (index, item) in items.enumerated() {
                 let itemView = SidebarItemView(appId: providerAppId, itemIndex: index)
                 itemView.translatesAutoresizingMaskIntoConstraints = false
-                itemView.selectedTint = tabBarTint
-                itemView.unselectedTint = itemTint
                 itemView.configure(item: item)
                 itemView.onClick = { [weak self] idx in
                     guard let self else { return }

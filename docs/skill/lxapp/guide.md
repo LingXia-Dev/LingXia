@@ -290,11 +290,6 @@ host `surfaces`.
   ],
   "tabBar": {
     "presentation": "standard",
-    "style": {
-      "foregroundColor": "#999999",
-      "selectedForegroundColor": "#1677ff",
-      "backgroundColor": "#ffffff"
-    },
     "items": [
       {
         "text":     "Home",
@@ -315,12 +310,11 @@ host `surfaces`.
 - `presentation` (default `"standard"`):
   - `"standard"`: the page ends above the bar; the bar is solid. For forms and dense lists.
   - `"immersive"`: the page runs on under the bar, which turns see-through; the framework sets how
-    much, so labels stay legible. For imagery and long feeds. Omit `backgroundColor` and
-    `dividerColor`. A GPU `<page>` still pads its content clear of the bar (the last row stays
+    much, so labels stay legible. For imagery and long feeds. A GPU `<page>` still pads its content clear of the bar (the last row stays
     reachable); `bleed="bottom"` takes a child (a map, a cover) under it.
-- Style keys are optional. Mobile uses them as declared (no OS dark mode by
-  itself); desktop draws the sidebar from the host `theme`: it ignores
-  `backgroundColor`, and a dark host ignores every style key. `lx.app.tabBar.update()` cannot change style.
+- Bars take the roles of the theme the page renders with (`surface`, `text-muted`, `accent`,
+  `line`; [theme](./gpu/styling-motion.md#theme)); there are no colour keys. The desktop sidebar
+  is product chrome and takes the host's theme.
 - With more than five items a phone shows the first four plus **More**; order
   items by use. A tablet shows all; desktop lists all in the sidebar.
 - `"showOn": ["mobile"]` or `["desktop"]` limits an item to mobile or desktop hosts.
@@ -330,7 +324,7 @@ host `surfaces`.
 
 ### Icons
 
-One icon per item. SVG is a template glyph tinted by the style colours; raster
+One icon per item. SVG is a template glyph tinted by the bar's roles; raster
 PNG/JPEG/WebP keeps its colours and is centre-cropped to a square. In
 `lxapp.json` `iconPath` is project-relative (usually `public/`). At runtime it
 may also be an `lx://temp`, `lx://usercache`, or `lx://userdata` path; network
@@ -394,11 +388,7 @@ Each page's `index.json`:
 {
   "navigationStyle": "default",
   "navigationBar": {
-    "title": "Profile",
-    "style": {
-      "backgroundColor": "#ffffff",
-      "foregroundColor": "#111111"
-    }
+    "title": "Profile"
   }
 }
 ```
@@ -433,6 +423,8 @@ translation, an argument a translation adds or drops, and a catalogue for an und
 - An argument is wrapped in bidi isolates (U+2066–2069) when the language is right to left or the
   argument holds right-to-left text, so it cannot reorder the sentence around it.
 - Logic: `lx.app.t('cart.items', { count })` for toasts, dialogs and action sheets.
+  A failure's words come from `lx.app.errorText(error, fallback?)`, the same `@view.error.*` words a View's
+  `errorText` says by `code`; `null` for `E_ABORT`.
 - WebView (React): `const t = useText()` from `@lingxia/react`; `t` from `@lingxia/bridge` elsewhere.
 - The View's own words (picker Cancel/Done, dialog OK) are `@view.*` keys; a catalogue that names
   one, e.g. `"@view.done"`, overrides it in that language only. The build checks an override against
@@ -479,7 +471,7 @@ await lx.app.tabBar.update({ items: { profile: { label: 'Me', badge: '3' } } });
 await lx.app.tabBar.update({ items: { profile: { label: null, badge: null } } });
 await lx.app.tabBar.update({ visibility: 'hidden' });   // or 'auto'
 await page.navigationBar.update({ title: 'Account' });
-await page.navigationBar.update({ style: null, homeButton: 'auto' });
+await page.navigationBar.update({ title: null, homeButton: 'auto' });
 ```
 
 ### Appearance

@@ -485,7 +485,7 @@ final class WebViewManager {
         // #f2f2f7 — then flashes white before its own background arrives. iOS
         // already resolves the canvas this way; macOS was the one host reading
         // the declaration and never using it.
-        if let declared = pageBackgroundHex(dark: dark) {
+        if let declared = pageBackgroundHex(appId: appId, dark: dark) {
             return (appearance, declared)
         }
 
@@ -497,29 +497,21 @@ final class WebViewManager {
         return (appearance, backgroundColor)
     }
 
-    /// `#RRGGBB` from the host theme, as the CLI writes it into `app.json`.
-    private static func pageBackgroundHex(dark: Bool) -> NSColor? {
-        declaredPageColor(dark: dark).map { NSColor(cgColor: $0.cgColor) ?? $0 }
+    private static func pageBackgroundHex(appId: String?, dark: Bool) -> NSColor? {
+        declaredPageColor(appId: appId, dark: dark).map { NSColor(cgColor: $0.cgColor) ?? $0 }
     }
     #endif
 
-    /// The colour the page itself paints, as the host declared it.
-    ///
-    /// Chrome that sits over the page — a load placeholder, an overflow panel,
-    /// the ground behind a transition — has to match this, not a system colour
-    /// that merely looks like a surface. Every platform had invented its own
-    /// answer here and they disagreed with each other and with the page.
-    ///
-    /// Returns `nil` when the host declares nothing, leaving the caller to pick
-    /// a platform default rather than guessing on its behalf.
-    static func declaredPageColor(dark: Bool) -> PlatformColor? {
-        platformColor(hex: pageBackgroundColor(dark).toString())
+    /// The page floor: `canvas` of the theme the lxapp renders with. Chrome that sits over the
+    /// page (a load placeholder, an overflow panel, the ground behind a transition) paints it.
+    /// `nil` without an lxapp and without a host theme.
+    static func declaredPageColor(appId: String?, dark: Bool) -> PlatformColor? {
+        platformColor(hex: themeRole(appId ?? "", "canvas", dark).toString())
     }
 
-    /// The host theme's pull-to-refresh spinner colour (`accentColor`, else
-    /// `mutedForegroundColor`), or `nil` to keep the platform's own.
-    static func declaredRefreshIndicatorColor(dark: Bool) -> PlatformColor? {
-        platformColor(hex: refreshIndicatorColor(dark).toString())
+    /// The pull-to-refresh spinner: the theme's `accent`.
+    static func declaredRefreshIndicatorColor(appId: String?, dark: Bool) -> PlatformColor? {
+        platformColor(hex: themeRole(appId ?? "", "accent", dark).toString())
     }
 
     private static func platformColor(hex: String) -> PlatformColor? {
@@ -555,7 +547,7 @@ final class WebViewManager {
     /// does a system colour make sense.
     static func overflowPanelColor(appId: String?) -> PlatformColor {
         let dark = resolvedDarkAppearance(appId: appId)
-        if let declared = declaredPageColor(dark: dark) {
+        if let declared = declaredPageColor(appId: appId, dark: dark) {
             return declared
         }
         #if os(macOS)

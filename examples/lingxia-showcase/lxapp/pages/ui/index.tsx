@@ -177,22 +177,6 @@ function Appearance({ data, actions }: Pane) {
 
 function Navbar({ data, actions }: Pane) {
   const title = useLocal('navTitle', '');
-  const background = useLocal('navBackground', '');
-  const foreground = useLocal('navForeground', '');
-  const preset = (name: string, backgroundColor: string, frontColor: string) => (
-    <Button
-      variant="secondary"
-      size="sm"
-      key={name}
-      testId={`navbar-preset-${name.toLowerCase()}`}
-      onClick={async () => {
-        await actions.updateNavigationBarTitle({ title: `${name} Theme` });
-        await actions.updateNavigationBarColors({ backgroundColor, frontColor });
-      }}
-    >
-      {name}
-    </Button>
-  );
   return (
     <Page testId="ui-page" title={data.navTitle ?? undefined} data={{ 'data-instance-tag': String(data.instanceTag ?? '') }}>
       <ChromeError data={data} />
@@ -201,27 +185,6 @@ function Navbar({ data, actions }: Pane) {
         <Button testId="navbar-set-title" onClick={() => title.value && actions.updateNavigationBarTitle({ title: title.value })}>
           {t('ui.setTitle')}
         </Button>
-        <view className="grid gap-2 grid-cols-2">
-          <Field testId="navbar-bg-input" label={t('ui.background')} bind={background} placeholder={t('ui.ffffff')} />
-          <Field testId="navbar-fg-input" label={t('ui.text')} bind={foreground} placeholder="#000000" />
-        </view>
-        <Button
-          testId="navbar-set-colors"
-          onClick={() =>
-            actions.updateNavigationBarColors({
-              backgroundColor: background.value || '#ffffff',
-              frontColor: foreground.value || '#000000',
-            })
-          }
-        >
-          {t('ui.setColors')}
-        </Button>
-        <view className="grid gap-2 grid-cols-2">
-          {preset('Dark', '#1f2937', '#ffffff')}
-          {preset('Blue', '#3b82f6', '#ffffff')}
-          {preset('Light', '#ffffff', '#000000')}
-          {preset('Green', '#10b981', '#ffffff')}
-        </view>
         <view className="grid gap-2 grid-cols-3">
           <Button
             variant="secondary"

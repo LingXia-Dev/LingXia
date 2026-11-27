@@ -236,26 +236,15 @@ final class LxAppViewController: UIViewController, ObservableObject {
         asideRegion = LxAppAsideRegion(owner: self)
     }
 
-    /// The canvas transparent-mode pages rubber-band against; it must carry
-    /// the lxapp's resolved scheme because the webview above it is clear.
-    /// The colour the canvas behind the page should be.
-    ///
-    /// The host's declared page floor first: it is the colour the lxapp paints
-    /// its own page with, so every strip of canvas the page does not cover —
-    /// the one a pull-to-refresh opens above it, the one a navigation
-    /// transition slides views across — reads as part of the page rather than
-    /// as a seam. WebKit's own `underPageBackgroundColor` comes next, which is
-    /// the real document colour once a page has painted, and `systemBackground`
-    /// last, which is right only for a host that never says otherwise.
+    /// The canvas behind the page: the `canvas` role of the lxapp's theme, so a strip the page does
+    /// not cover (pull-to-refresh, a navigation transition) reads as part of the page.
     private func resolvedCanvasColor() -> UIColor {
         // A GPU page names its own floor.
         if let chrome = (activeGpuView as? GpuPageView)?.hostChrome { return chrome.canvas }
-        let dark =
-            LxAppCore.currentAppId
-            .flatMap { LxAppAppearanceRegistry.resolvedDark(appId: $0) } ?? false
+        let appId = LxAppCore.currentAppId
+        let dark = appId.flatMap { LxAppAppearanceRegistry.resolvedDark(appId: $0) } ?? false
 
-        let declared = pageBackgroundColor(dark).toString()
-        if !declared.isEmpty, let color = UIColor(lingXiaHex: declared) {
+        if let color = WebViewManager.declaredPageColor(appId: appId, dark: dark) {
             return color
         }
         if let underPage = getCurrentWebView()?.underPageBackgroundColor {

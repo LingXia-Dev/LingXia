@@ -272,14 +272,7 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_splashMarkLaunchFace<'a>(
     crate::splash::mark_launch_face(dark)
 }
 
-/// The host-declared page floor for one appearance, as `#RRGGBB`.
-///
-/// Empty means the host declared none and the platform should keep its own
-/// system background. Native chrome paints with this wherever it borders the
-/// page — the strip a pull-to-refresh opens above it, the container a
-/// navigation transition slides views across — because a WebView cannot be
-/// asked for its document colour in time to paint the frame already on
-/// screen.
+/// The host theme's `canvas` as `#rrggbb`; empty without a host theme.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_app_NativeApi_pageBackgroundColor<'a>(
     mut env: EnvUnowned<'a>,
@@ -287,13 +280,12 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_pageBackgroundColor<'a>(
     dark: jboolean,
 ) -> JString<'a> {
     env.with_env(|env| {
-        env.new_string(lingxia_app_context::page_background_color(dark).unwrap_or_default())
+        env.new_string(lxapp::theme::theme_role_hex("", "canvas", dark).unwrap_or_default())
     })
     .resolve::<LogErrorAndDefault>()
 }
 
-/// The pull-to-refresh spinner colour for one appearance, as `#RRGGBB`:
-/// `accentColor`, else `mutedForegroundColor`. Empty keeps the platform's own.
+/// The host theme's `accent` as `#rrggbb`; empty without a host theme.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_app_NativeApi_refreshIndicatorColor<'a>(
     mut env: EnvUnowned<'a>,
@@ -301,7 +293,7 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_refreshIndicatorColor<'a>(
     dark: jboolean,
 ) -> JString<'a> {
     env.with_env(|env| {
-        env.new_string(lingxia_app_context::refresh_indicator_color(dark).unwrap_or_default())
+        env.new_string(lxapp::theme::theme_role_hex("", "accent", dark).unwrap_or_default())
     })
     .resolve::<LogErrorAndDefault>()
 }

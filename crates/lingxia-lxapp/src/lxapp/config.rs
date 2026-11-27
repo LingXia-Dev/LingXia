@@ -323,12 +323,21 @@ fn validate_removed_tabbar_fields(
     let Some(tabbar) = object.get("tabBar").and_then(Value::as_object) else {
         return Ok(());
     };
+    for field in [
+        "style",
+        "color",
+        "selectedColor",
+        "backgroundColor",
+        "borderStyle",
+    ] {
+        if tabbar.contains_key(field) {
+            return Err(serde_json::Error::custom(format!(
+                "tabBar.{field}: colours come from the theme (the lxapp's theme.json, else the host's)"
+            )));
+        }
+    }
     for (field, replacement) in [
         ("list", "tabBar.items"),
-        ("color", "tabBar.style.foregroundColor"),
-        ("selectedColor", "tabBar.style.selectedForegroundColor"),
-        ("backgroundColor", "tabBar.style.backgroundColor"),
-        ("borderStyle", "tabBar.style.dividerColor"),
         ("position", "remove it; the host owns tabbar placement"),
         ("dimension", "remove it; the host owns tabbar size"),
     ] {

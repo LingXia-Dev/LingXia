@@ -35,6 +35,8 @@ pub(super) struct ShellPalette {
     /// Low-contrast wash for an active top-level lxapp group. Its selected
     /// tabbar child remains the stronger white card, matching macOS hierarchy.
     pub group_active_background: u32,
+    /// The selected tab row: the one accented level, so the group header stays neutral.
+    pub tab_selected_background: u32,
     pub sidebar_background: u32,
     pub text_primary: u32,
     pub text_muted: u32,
@@ -104,6 +106,7 @@ fn fluent_shell_palette(dark: bool, accent: u32) -> ShellPalette {
         panel_background,
         selection_background,
         group_active_background: selection_background,
+        tab_selected_background: selection_background,
         sidebar_background: window_background,
         text_primary,
         text_muted,
@@ -122,6 +125,7 @@ fn high_contrast_shell_palette(colors: super::theme::SystemColors) -> ShellPalet
         panel_background: colors.window,
         selection_background: colors.control,
         group_active_background: colors.control,
+        tab_selected_background: colors.control,
         sidebar_background: colors.window,
         text_primary: colors.window_text,
         text_muted: colors.gray_text,
@@ -134,49 +138,60 @@ fn high_contrast_shell_palette(colors: super::theme::SystemColors) -> ShellPalet
     }
 }
 
-fn apply_theme_style(
-    mut palette: ShellPalette,
-    style: Option<&lingxia_app_context::ThemeStyle>,
-) -> ShellPalette {
-    let Some(style) = style else {
-        return palette;
-    };
-    if let Some(color) = style.window_background_color {
-        palette.window_background = color.rgb();
-        palette.sidebar_background = color.rgb();
-    }
-    if let Some(color) = style.surface_background_color {
-        palette.panel_background = color.rgb();
-        palette.control_surface = color.rgb();
-        palette.address_background = color.rgb();
-    }
-    if let Some(color) = style.foreground_color {
-        palette.text_primary = color.rgb();
-        palette.frame_button_icon = color.rgb();
-    }
-    if let Some(color) = style.muted_foreground_color {
-        palette.text_muted = color.rgb();
-        palette.sidebar_header_text = color.rgb();
-    }
-    if let Some(color) = style.accent_color {
-        palette.accent = color.rgb();
-    }
-    if let Some(color) = style.separator_color {
-        palette.divider = color.rgb();
-    }
-    if let Some(color) = style.selection_background_color {
-        palette.selection_background = color.rgb();
-        palette.group_active_background = color.rgb();
-    }
-    palette
+/// The host theme's roles the shell paints with, as `0xRRGGBB`.
+#[derive(Clone, Copy)]
+struct HostRoles {
+    canvas: u32,
+    surface: u32,
+    text: u32,
+    text_muted: u32,
+    accent: u32,
+    line: u32,
+    selection: u32,
+    tab_selected: u32,
 }
 
-fn palette_for(
-    dark: bool,
-    accent: u32,
-    style: Option<&lingxia_app_context::ThemeStyle>,
-) -> ShellPalette {
-    apply_theme_style(fluent_shell_palette(dark, accent), style)
+/// `None` without a host theme: the shell keeps Fluent colours and the system accent.
+fn host_roles(dark: bool) -> Option<HostRoles> {
+    use lingxia_theme::Role;
+    let pack = lingxia_app_context::host_theme_pack()?;
+    let looks = lingxia_theme::looks(Some(pack));
+    let rgb = |role| {
+        let [r, g, b, _] = looks.role(role, dark, false).0;
+        u32::from_be_bytes([0, r, g, b])
+    };
+    Some(HostRoles {
+        canvas: rgb(Role::Canvas),
+        surface: rgb(Role::Surface),
+        text: rgb(Role::Text),
+        text_muted: rgb(Role::TextMuted),
+        accent: rgb(Role::Accent),
+        line: rgb(Role::Line),
+        selection: rgb(Role::SurfaceRaised),
+        tab_selected: rgb(Role::AccentSoft),
+    })
+}
+
+fn palette_for(dark: bool, accent: u32, roles: Option<HostRoles>) -> ShellPalette {
+    let mut palette = fluent_shell_palette(dark, accent);
+    let Some(roles) = roles else {
+        return palette;
+    };
+    palette.window_background = roles.canvas;
+    palette.sidebar_background = roles.canvas;
+    palette.panel_background = roles.surface;
+    palette.control_surface = roles.surface;
+    palette.address_background = roles.surface;
+    palette.text_primary = roles.text;
+    palette.frame_button_icon = roles.text;
+    palette.text_muted = roles.text_muted;
+    palette.sidebar_header_text = roles.text_muted;
+    palette.accent = roles.accent;
+    palette.divider = roles.line;
+    palette.selection_background = roles.selection;
+    palette.group_active_background = roles.selection;
+    palette.tab_selected_background = roles.tab_selected;
+    palette
 }
 
 /// The active palette for the current system theme. Values are cached atomics,
@@ -186,8 +201,7 @@ pub(super) fn shell_palette() -> ShellPalette {
         return high_contrast_shell_palette(super::theme::system_colors());
     }
     let dark = super::theme::chrome_is_dark();
-    let style = lingxia_app_context::theme().and_then(|theme| theme.style(dark));
-    palette_for(dark, super::theme::system_accent(), style)
+    palette_for(dark, super::theme::system_accent(), host_roles(dark))
 }
 
 /// Hover wash (`0xAARRGGBB`) for interactive chrome; an alpha overlay reads
@@ -297,28 +311,23 @@ pub(super) const GLYPH_NAV_HOME: &str = "\u{e80f}";
 
 #[cfg(test)]
 mod tests {
-    use super::{high_contrast_shell_palette, palette_for};
+    use super::{HostRoles, high_contrast_shell_palette, palette_for};
     use crate::shell::theme::SystemColors;
-    use lingxia_app_context::{ThemeColor, ThemeStyle};
 
     #[test]
-    fn app_theme_maps_semantic_roles_into_windows_shell() {
-        let color = |value| Some(ThemeColor::parse(value).unwrap());
-        let style = ThemeStyle {
-            window_background_color: color("#101112"),
-            surface_background_color: color("#202122"),
-            foreground_color: color("#F0F1F2"),
-            muted_foreground_color: color("#A0A1A2"),
-            accent_color: color("#304FFE"),
-            separator_color: color("#303132"),
-            selection_background_color: color("#404142"),
-            // Roles the Windows shell does not consume (the page floor is for
-            // chrome that borders lxapp pages) stay default, so a new role
-            // does not break this exhaustive mapping test.
-            ..ThemeStyle::default()
+    fn host_theme_roles_map_into_the_windows_shell() {
+        let roles = HostRoles {
+            canvas: 0x101112,
+            surface: 0x202122,
+            text: 0xF0F1F2,
+            text_muted: 0xA0A1A2,
+            accent: 0x304FFE,
+            line: 0x303132,
+            selection: 0x404142,
+            tab_selected: 0x505152,
         };
 
-        let palette = palette_for(true, 0xABCDEF, Some(&style));
+        let palette = palette_for(true, 0xABCDEF, Some(roles));
 
         assert_eq!(palette.window_background, 0x101112);
         assert_eq!(palette.sidebar_background, 0x101112);
@@ -333,24 +342,7 @@ mod tests {
         assert_eq!(palette.divider, 0x303132);
         assert_eq!(palette.selection_background, 0x404142);
         assert_eq!(palette.group_active_background, 0x404142);
-    }
-
-    #[test]
-    fn partial_theme_keeps_fluent_defaults_for_omitted_roles() {
-        let style = ThemeStyle {
-            accent_color: Some(ThemeColor::parse("#304FFE").unwrap()),
-            ..ThemeStyle::default()
-        };
-
-        let palette = palette_for(false, 0xABCDEF, Some(&style));
-
-        assert_eq!(palette.window_background, 0xF3F3F3);
-        assert_eq!(palette.panel_background, 0xFBFBFB);
-        assert_eq!(palette.text_primary, 0x1A1A1A);
-        assert_eq!(palette.text_muted, 0x5C5C5C);
-        assert_eq!(palette.accent, 0x304FFE);
-        assert_eq!(palette.divider, 0xE5E5E5);
-        assert_eq!(palette.selection_background, 0xE0E0E0);
+        assert_eq!(palette.tab_selected_background, 0x505152);
     }
 
     #[test]

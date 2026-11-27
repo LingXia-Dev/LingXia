@@ -22,7 +22,7 @@ export default function FeedbackPage() {
   };
 
   return (
-    <main className="feedback-page min-h-screen bg-surface-50 px-5 pt-6 text-gray-900">
+    <main className="feedback-page min-h-screen bg-background px-5 pt-6 text-gray-900">
       <div className="mx-auto flex w-full max-w-lg flex-col gap-6">
         <header>
           <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-100 text-xl">

@@ -920,24 +920,12 @@ rong::js_api! {
         /// Whether the tab bar shows: `auto` leaves it to the runtime, or always `visible` or `hidden`.
         type TabBarVisibilityPreference = r###"'auto' | 'visible' | 'hidden'"###;
 
-        /// Navigation bar colors to change; `null` restores the declared one.
-        type NavigationBarStylePatch = r###"{
-    /** Bar color. */
-    backgroundColor?: string | null;
-    /** Title and button color. */
-    foregroundColor?: string | null;
-    /** The line under the bar. */
-    dividerColor?: string | null;
-}"###;
-
         /// Navigation bar fields to change; fields left out keep their value.
         type NavigationBarPatch = r###"{
     /** Title text; `null` restores the declared one. */
     title?: string | null;
     /** Whether the home button may show. */
     homeButton?: VisibilityPreference;
-    /** Colors to change; `null` restores every declared color. */
-    style?: NavigationBarStylePatch | null;
 }"###;
 
         /// One tab's label, icons and badge to change.
@@ -949,9 +937,9 @@ rong::js_api! {
      * `lx://userdata` path from a LingXia file API. Network URLs are rejected —
      * download first (`lx.network.download`) and pass the returned path.
      *
-     * SVG (and SF Symbols) are template-tinted with `foregroundColor` /
-     * `selectedForegroundColor`. Raster files (PNG/JPEG/WebP) keep their own
-     * colour so a brand mark is not flattened into a solid square.
+     * SVG (and SF Symbols) are template-tinted with the theme's `text-muted`
+     * and `accent`. Raster files (PNG/JPEG/WebP) keep their own colour so a
+     * brand mark is not flattened into a solid square.
      */
     icon?: string | null;
     /** Text in a badge, `true` for a dot without text, `null` to remove either. */
@@ -959,10 +947,7 @@ rong::js_api! {
 }"###;
 
         /// Patch for `lx.app.tabBar.update()`. Items, badges, and
-        /// visibility only — a `style` field is rejected. Colors stay in
-        /// static `lxapp.json` `tabBar.style`. `backgroundColor` is
-        /// mobile-only; the desktop sidebar follows the host
-        /// `lingxia.yaml` theme.
+        /// visibility; the bar's colours are the theme's roles.
         ///
         /// @example
         /// ```ts

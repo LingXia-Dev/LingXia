@@ -4,16 +4,16 @@ use lxapp::tabbar::TabBarPatch;
 use rong::{JSContext, JSObject, JSResult};
 use serde_json::{Map, Value};
 
-/// The tab bar declared by this lxapp: visibility, items, badges, and style.
+/// The tab bar declared by this lxapp: visibility, items and badges.
 fn namespace(ctx: &JSContext) -> JSResult<JSObject> {
     crate::namespace::child(ctx, &crate::namespace::app(ctx)?, "tabBar")
 }
 
 /// Patch this lxapp's tab bar: items by tab name, badges and visibility. Unset
-/// fields stay; colors stay in `lxapp.json` `tabBar.style`.
+/// fields stay; the bar's colours are the theme's roles.
 ///
-/// @platform macOS, Windows: the bar is the sidebar, which follows the host theme; `backgroundColor` does not paint it, and a dark host ignores every style key.
-/// @throws {E_INVALID_ARG} A `style` field, an unknown one, or a name that is not a tab.
+/// @platform macOS, Windows: the bar is the sidebar, which takes the host theme.
+/// @throws {E_INVALID_ARG} An unknown field, or a name that is not a tab.
 /// @throws {E_INVALID_STATE} The app declares no tab bar; `reason` is `'tabBarNotDeclared'`.
 async fn update(ctx: JSContext, patch: JSObject) -> JSResult<()> {
     let app = LxApp::from_ctx(&ctx)?;

@@ -27,9 +27,6 @@ final class AsideTabBarView: NSView {
     private var items: [TabBarItem] = []
     private var selectedIndex: Int32 = -1
     private var shown = false
-    /// Declared `tabBar.style` colours; nil keeps the host theme's.
-    private var itemTint: NSColor?
-    private var selectedTint: NSColor?
 
     init(appId: String) {
         self.appId = appId
@@ -128,11 +125,6 @@ final class AsideTabBarView: NSView {
         let next: [TabBarItem] = (0..<count).compactMap { getTabBarItem(appId, Int32($0)) }
         let visible = tabBar?.is_visible == true && next.count > 1
         let selected = tabBar?.selected_index ?? -1
-        // Only what the app declared (styled_mask), as the sidebar: the
-        // effective values are mobile defaults designed for a light bar.
-        let mask = tabBar?.styled_mask ?? 0
-        itemTint = tabBar.flatMap { mask & 0b0001 != 0 ? PlatformColor(argb: $0.color) : nil }
-        selectedTint = tabBar.flatMap { mask & 0b0010 != 0 ? PlatformColor(argb: $0.selected_color) : nil }
         if next.map(\.index) != items.map(\.index)
             || next.map({ $0.text.toString() }) != items.map({ $0.text.toString() })
             || next.map({ $0.icon_path.toString() }) != items.map({ $0.icon_path.toString() }) {
@@ -212,8 +204,9 @@ final class AsideTabBarView: NSView {
     }
 
     private func applySelection() {
-        let selectedColor = selectedTint ?? LxAppHostTheme.accent
-        let idleColor = itemTint ?? LxAppHostTheme.mutedForeground
+        // As the sidebar: product chrome on the host theme.
+        let selectedColor = LxAppHostTheme.accent
+        let idleColor = LxAppHostTheme.mutedForeground
         var selectedButton: NSButton?
         for case let button as NSButton in stack.arrangedSubviews {
             let selected = Int32(button.tag) == selectedIndex

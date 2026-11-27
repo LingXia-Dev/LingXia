@@ -37,15 +37,8 @@ class SidebarItemView: NSView {
     private var badgeCollapsed: NSLayoutConstraint?
     private var badgeTextPins: [NSLayoutConstraint] = []
     /// Accent bar at the row's leading edge while selected (Windows-style),
-    /// colored from the tabbar's selectedColor.
+    /// in the host theme's accent.
     private let accentBar = NSView()
-    /// Selected-state tint from the lxapp's tabbar style (`selectedColor`);
-    /// nil falls back to the system accent (spec: style follows the tabbar
-    /// config, the shell injects no accent of its own).
-    var selectedTint: NSColor? { didSet { updateAppearance() } }
-    /// Unselected title tint from the tabbar's `color`; nil keeps the neutral
-    /// label color.
-    var unselectedTint: NSColor? { didSet { updateAppearance() } }
     /// The item's single icon; selection is styled, not swapped, exactly like
     /// the mobile tabbar.
     private var iconPath = ""
@@ -274,15 +267,12 @@ class SidebarItemView: NSView {
     }
 
     private func updateAppearance() {
-        let accent = selectedTint ?? LxAppHostTheme.accent
+        let accent = LxAppHostTheme.accent
         accentBar.isHidden = !isSelected
         accentBar.layer?.backgroundColor = themeCGColor(accent)
         if isSelected {
-            // Windows-baseline selected card: a light floating card on the
-            // dark base, accent icon + accent bar. The title takes the
-            // tabbar's selectedColor (mobile parity); a near-neutral dark
-            // stands in when the app declares none.
-            selectionBackground.layer?.backgroundColor = themeCGColor(LxAppHostTheme.selectionBackground)
+            // Selected card: accent-soft fill, accent icon and bar.
+            selectionBackground.layer?.backgroundColor = themeCGColor(LxAppHostTheme.selectedTabBackground)
             selectionBackground.shadow = {
                 let shadow = NSShadow()
                 shadow.shadowBlurRadius = 6
@@ -291,19 +281,19 @@ class SidebarItemView: NSView {
                 return shadow
             }()
             titleLabel.font = NSFont.systemFont(ofSize: 15, weight: .medium)
-            titleLabel.textColor = selectedTint ?? LxAppHostTheme.foreground
+            titleLabel.textColor = LxAppHostTheme.foreground
             iconView.contentTintColor = iconIsTemplate ? accent : nil
         } else if isHovered {
             selectionBackground.shadow = nil
             titleLabel.font = NSFont.systemFont(ofSize: 15, weight: .regular)
             selectionBackground.layer?.backgroundColor = themeCGColor(NSColor.labelColor.withAlphaComponent(0.06))
-            titleLabel.textColor = unselectedTint ?? LxAppHostTheme.foreground
+            titleLabel.textColor = LxAppHostTheme.foreground
             iconView.contentTintColor = iconIsTemplate ? LxAppHostTheme.mutedForeground : nil
         } else {
             selectionBackground.shadow = nil
             titleLabel.font = NSFont.systemFont(ofSize: 15, weight: .regular)
             selectionBackground.layer?.backgroundColor = NSColor.clear.cgColor
-            titleLabel.textColor = unselectedTint ?? LxAppHostTheme.foreground
+            titleLabel.textColor = LxAppHostTheme.foreground
             iconView.contentTintColor = iconIsTemplate ? LxAppHostTheme.mutedForeground : nil
         }
     }

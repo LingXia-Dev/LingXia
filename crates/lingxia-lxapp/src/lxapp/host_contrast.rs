@@ -115,6 +115,8 @@ fn publish(update: HostContrastUpdate) {
         .map(|entry| (entry.key().clone(), entry.value().clone()))
         .collect();
     for (appid, app) in apps {
+        // Native bars resolve their roles for the contrast in effect.
+        app.sync_host_ui();
         for page in app.live_page_instances() {
             page.push_contrast();
         }

@@ -35,6 +35,7 @@ impl LxApp {
 
         let mut injected_data = self.inject_content_security_policy(&data);
         injected_data = self.inject_bridge_config(&injected_data, bridge_nonce);
+        injected_data = self.inject_role_style(&injected_data);
 
         // Inject global app.css if it exists (optional)
         if let Ok(app_css_data) = self.read_bytes("lxapp.css") {
@@ -161,6 +162,15 @@ impl LxApp {
         let seed = super::surface::view_surface_context_seed(&self.appid);
         let content = self.content_language(&super::display_language());
         inject_bridge_config_into(html_data, bridge_nonce, seed.as_deref(), Some(&content))
+    }
+
+    /// The theme's `--lx-<role>` variables. At the end of `<head>`: the charset meta must stay
+    /// within the first bytes the parser sniffs.
+    fn inject_role_style(&self, html_data: &[u8]) -> Vec<u8> {
+        let tag = self.role_style_tag();
+        let html = String::from_utf8_lossy(html_data);
+        let (before, after) = html.split_at(role_style_position(&html));
+        format!("{before}{tag}{after}").into_bytes()
     }
 
     /// Inject CSS into HTML content
@@ -442,6 +452,36 @@ fn strip_content_security_policy_meta(html: &str) -> String {
     out
 }
 
+/// Where the role `<style>` goes: first in `<head>` (after a charset `<meta>`, which must stay
+/// early), so a page stylesheet naming the same variables comes later and wins.
+fn role_style_position(html: &str) -> usize {
+    let Some(head) = find_ascii_case_insensitive(html, "<head").filter(|&at| {
+        matches!(
+            html.as_bytes().get(at + 5),
+            Some(b'>' | b' ' | b'\t' | b'\n' | b'\r')
+        )
+    }) else {
+        return 0;
+    };
+    let Some(head_open_end) = html[head..].find('>').map(|end| head + end + 1) else {
+        return 0;
+    };
+    let head_end = find_ascii_case_insensitive(&html[head_open_end..], "</head")
+        .map_or(html.len(), |end| head_open_end + end);
+    let mut from = head_open_end;
+    while let Some(meta) = find_ascii_case_insensitive(&html[from..head_end], "<meta") {
+        let start = from + meta;
+        let Some(end) = html[start..head_end].find('>').map(|end| start + end + 1) else {
+            break;
+        };
+        if find_ascii_case_insensitive(&html[start..end], "charset").is_some() {
+            return end;
+        }
+        from = end;
+    }
+    head_open_end
+}
+
 fn find_ascii_case_insensitive(haystack: &str, needle: &str) -> Option<usize> {
     let needle = needle.as_bytes();
     if needle.is_empty() {
@@ -465,8 +505,21 @@ fn rewrite_dev_view_script(html: &[u8], src: &str) -> Vec<u8> {
 mod tests {
     use super::{
         BRIDGE_RUNTIME_TAG, build_content_security_policy, find_bridge_runtime_script_start,
-        inject_bridge_config_into, rewrite_dev_view_script, strip_content_security_policy_meta,
+        inject_bridge_config_into, rewrite_dev_view_script, role_style_position,
+        strip_content_security_policy_meta,
     };
+
+    #[test]
+    fn the_role_style_goes_first_in_head_after_the_charset() {
+        let html = r#"<!doctype html><html><head><meta charset="utf-8"><link rel=stylesheet href=a.css></head><body></body></html>"#;
+        assert_eq!(
+            &html[..role_style_position(html)],
+            r#"<!doctype html><html><head><meta charset="utf-8">"#
+        );
+        let html = "<html><HEAD><title>t</title></head><header></header></html>";
+        assert_eq!(&html[..role_style_position(html)], "<html><HEAD>");
+        assert_eq!(role_style_position("<p>no head</p>"), 0);
+    }
 
     #[test]
     fn csp_allows_all_https_images() {

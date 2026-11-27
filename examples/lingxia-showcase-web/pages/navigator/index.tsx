@@ -16,7 +16,7 @@ export default function NavigatorPage() {
   };
 
   return (
-    <div className="min-h-screen bg-surface-50" data-testid="navigator-page">
+    <div className="min-h-screen bg-background" data-testid="navigator-page">
       <div className="px-4 py-5 space-y-4">
         {/* Header */}
         <div className="bg-linear-to-br from-blue-500 via-blue-600 to-cyan-600 rounded-2xl px-5 py-6 shadow-lg">

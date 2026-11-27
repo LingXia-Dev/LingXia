@@ -1,5 +1,4 @@
 use semver::Version;
-use serde::de::Error as _;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -89,97 +88,6 @@ impl std::fmt::Display for AppEnv {
     }
 }
 
-/// Opaque sRGB color used by the host theme wire format.
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub struct ThemeColor(u32);
-
-impl ThemeColor {
-    pub fn parse(value: &str) -> Result<Self, String> {
-        if value.len() != 7 || !value.starts_with('#') {
-            return Err("theme colors must use opaque #RRGGBB syntax".to_string());
-        }
-        let rgb = u32::from_str_radix(&value[1..], 16)
-            .map_err(|_| "theme colors must use opaque #RRGGBB syntax".to_string())?;
-        Ok(Self(rgb))
-    }
-
-    pub const fn rgb(self) -> u32 {
-        self.0
-    }
-}
-
-impl std::fmt::Debug for ThemeColor {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "ThemeColor(#{:06X})", self.0)
-    }
-}
-
-impl std::fmt::Display for ThemeColor {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "#{:06X}", self.0)
-    }
-}
-
-impl Serialize for ThemeColor {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        serializer.serialize_str(&self.to_string())
-    }
-}
-
-impl<'de> Deserialize<'de> for ThemeColor {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let value = String::deserialize(deserializer)?;
-        Self::parse(&value).map_err(D::Error::custom)
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ThemeStyle {
-    /// The page floor: the colour an lxapp's own CSS paints its page with.
-    ///
-    /// The host declares it because native chrome has to agree with it in
-    /// places the page cannot reach — the strip a pull-to-refresh opens above
-    /// the page, the container a navigation transition slides views across —
-    /// and no platform can ask a WebView what colour its document is early
-    /// enough to paint the frame the user is already looking at. Unset falls
-    /// back to the platform's own system background, which is what every host
-    /// got before this existed.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub page_background_color: Option<ThemeColor>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub window_background_color: Option<ThemeColor>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub surface_background_color: Option<ThemeColor>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub foreground_color: Option<ThemeColor>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub muted_foreground_color: Option<ThemeColor>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub accent_color: Option<ThemeColor>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub separator_color: Option<ThemeColor>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub selection_background_color: Option<ThemeColor>,
-}
-
-impl ThemeStyle {
-    pub fn is_empty(&self) -> bool {
-        *self == Self::default()
-    }
-
-    /// The pull-to-refresh spinner: the accent, else the muted foreground.
-    pub fn refresh_indicator_color(&self) -> Option<ThemeColor> {
-        self.accent_color.or(self.muted_foreground_color)
-    }
-}
-
 /// Light/dark as a choice: `auto` follows the system, `light` and `dark` pin
 /// it. The product's setting, an lxapp manifest's pin, and `theme`'s default
 /// all speak it.
@@ -220,10 +128,6 @@ impl std::str::FromStr for AppearancePreference {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Default)]
 #[serde(deny_unknown_fields)]
 pub struct ThemeConfig {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub light: Option<ThemeStyle>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub dark: Option<ThemeStyle>,
     /// The product's appearance until the user picks one. A saved choice always
     /// wins, and an lxapp that pins a scheme in its manifest keeps it. Absent
     /// means `auto`: follow the system.
@@ -241,25 +145,11 @@ pub struct ThemeConfig {
 
 impl ThemeConfig {
     pub fn normalized(mut self) -> Option<Self> {
-        self.light = self.light.filter(|style| !style.is_empty());
-        self.dark = self.dark.filter(|style| !style.is_empty());
         // `auto` is what an absent default already means.
         self.default_appearance = self
             .default_appearance
             .filter(|appearance| *appearance != AppearancePreference::Auto);
-        (self.light.is_some()
-            || self.dark.is_some()
-            || self.default_appearance.is_some()
-            || self.pack.is_some())
-        .then_some(self)
-    }
-
-    pub fn style(&self, dark: bool) -> Option<&ThemeStyle> {
-        if dark {
-            self.dark.as_ref()
-        } else {
-            self.light.as_ref()
-        }
+        (self.default_appearance.is_some() || self.pack.is_some()).then_some(self)
     }
 }
 
@@ -993,26 +883,12 @@ pub fn take_pending_campaign() -> Option<(String, u32)> {
 /// `None` means the host did not declare one and the platform should keep
 /// using its own system background.
 /// The host theme pack as JSON, if the product ships one.
-pub fn host_theme_pack() -> Option<String> {
-    serde_json::to_string(theme()?.pack.as_ref()?).ok()
-}
-
-pub fn page_background_color(dark: bool) -> Option<String> {
-    theme()?
-        .style(dark)?
-        .page_background_color
-        .map(|color| color.to_string())
-}
-
-/// The pull-to-refresh spinner colour for one appearance, as `#RRGGBB`.
-///
-/// `None` means the host declared neither `accentColor` nor
-/// `mutedForegroundColor`, and the platform keeps its own spinner colour.
-pub fn refresh_indicator_color(dark: bool) -> Option<String> {
-    theme()?
-        .style(dark)?
-        .refresh_indicator_color()
-        .map(|color| color.to_string())
+pub fn host_theme_pack() -> Option<&'static str> {
+    static PACK: OnceLock<Option<String>> = OnceLock::new();
+    // The config is set once, so the pack is serialised once it exists.
+    let config = APP_CONFIG.get()?;
+    PACK.get_or_init(|| serde_json::to_string(config.theme.as_ref()?.pack.as_ref()?).ok())
+        .as_deref()
 }
 
 pub fn product_name() -> Option<&'static str> {
@@ -1470,8 +1346,8 @@ mod runner_identity_tests {
 #[cfg(test)]
 mod tests {
     use super::{
-        AppConfig, AppContextError, CampaignHandoff, SettingsDestination, ThemeColor, ThemeConfig,
-        ThemeStyle, set_app_config,
+        AppConfig, AppContextError, CampaignHandoff, SettingsDestination, ThemeConfig,
+        set_app_config,
     };
     use std::collections::BTreeMap;
 
@@ -1641,69 +1517,16 @@ mod tests {
     }
 
     #[test]
-    fn theme_colors_validate_and_serialize_canonically() {
-        let config = AppConfig::parse_and_validate(
-            r##"{
-                "productName": "Theme Test",
-                "productVersion": "1.0.0",
-                "theme": {
-                    "light": { "accentColor": "#a1b2c3" },
-                    "dark": { "separatorColor": "#343840" }
-                }
-            }"##,
-        )
-        .expect("valid theme");
-
-        let light = config
-            .theme
-            .as_ref()
-            .and_then(|theme| theme.light.as_ref())
-            .expect("light style");
-        assert_eq!(light.accent_color.map(ThemeColor::rgb), Some(0xA1B2C3));
-
-        let json = serde_json::to_string(&config).expect("serialize app config");
-        assert!(json.contains("#A1B2C3"));
-    }
-
-    #[test]
-    fn refresh_indicator_colors_follow_theme_roles() {
-        let style = |json: &str| -> ThemeStyle { serde_json::from_str(json).expect("theme style") };
-
-        let both = style(r##"{ "accentColor": "#2865FF", "mutedForegroundColor": "#667085" }"##);
-        assert_eq!(
-            both.refresh_indicator_color().map(ThemeColor::rgb),
-            Some(0x2865FF)
-        );
-
-        let muted_only = style(r##"{ "mutedForegroundColor": "#667085" }"##);
-        assert_eq!(
-            muted_only.refresh_indicator_color().map(ThemeColor::rgb),
-            Some(0x667085)
-        );
-
-        let unrelated = style(r##"{ "pageBackgroundColor": "#E9EAEE" }"##);
-        assert_eq!(unrelated.refresh_indicator_color(), None);
-    }
-
-    #[test]
-    fn theme_rejects_alpha_and_unknown_fields() {
+    fn theme_rejects_colour_keys() {
         for theme in [
-            r##"{ "light": { "accentColor": "#80A1B2C3" } }"##,
-            r##"{ "light": { "sidebarBackgroundColor": "#A1B2C3" } }"##,
-            r##"{ "highContrast": { "accentColor": "#A1B2C3" } }"##,
+            r##"{ "light": { "accentColor": "#A1B2C3" } }"##,
+            r##"{ "dark": { "separatorColor": "#343840" } }"##,
         ] {
             let json = format!(
                 r#"{{ "productName": "Theme Test", "productVersion": "1.0.0", "theme": {theme} }}"#
             );
             assert!(AppConfig::parse_and_validate(&json).is_err(), "{theme}");
         }
-    }
-
-    #[test]
-    fn empty_theme_blocks_normalize_to_absence() {
-        let theme: ThemeConfig =
-            serde_json::from_str(r#"{ "light": {}, "dark": {} }"#).expect("parse empty theme");
-        assert!(theme.normalized().is_none());
     }
 
     #[test]
@@ -1784,10 +1607,10 @@ mod tests {
         assert!(theme.normalized().is_none());
 
         let theme: ThemeConfig = serde_json::from_str(
-            r##"{ "defaultAppearance": "auto", "light": { "accentColor": "#A1B2C3" } }"##,
+            r##"{ "defaultAppearance": "auto", "pack": { "name": "ocean", "version": 1 } }"##,
         )
         .expect("parse theme");
-        let theme = theme.normalized().expect("colors keep the theme");
+        let theme = theme.normalized().expect("a pack keeps the theme");
         assert_eq!(theme.default_appearance, None);
     }
 

@@ -4687,10 +4687,6 @@
     "defaultMessage": "Back to previous page",
     "description": "Text on the ui page."
   },
-  "ui.background": {
-    "defaultMessage": "Background",
-    "description": "Text on the ui page."
-  },
   "ui.backgroundingFiresOnhideOnshow": {
     "defaultMessage": "Backgrounding fires onHide / onShow on the same instance. Leaving the page fires onUnload.",
     "description": "Text on the ui page."
@@ -4801,10 +4797,6 @@
   },
   "ui.enterToastMessage": {
     "defaultMessage": "Enter toast message",
-    "description": "Text on the ui page."
-  },
-  "ui.ffffff": {
-    "defaultMessage": "#ffffff",
     "description": "Text on the ui page."
   },
   "ui.height": {
@@ -5039,10 +5031,6 @@
     "defaultMessage": "Set Badge",
     "description": "Text on the ui page."
   },
-  "ui.setColors": {
-    "defaultMessage": "Set Colors",
-    "description": "Text on the ui page."
-  },
   "ui.setOrRemoveThe": {
     "defaultMessage": "Set or remove the badge on tab 1",
     "description": "Text on the ui page."
@@ -5122,10 +5110,6 @@
   "ui.surfaceOpen": {
     "defaultMessage": "Open (already open)",
     "description": "The open button while a surface is open."
-  },
-  "ui.text": {
-    "defaultMessage": "Text",
-    "description": "Text on the ui page."
   },
   "ui.thePreviousTagIs": {
     "defaultMessage": "The previous tag is saved in app storage and survives a page reset.",

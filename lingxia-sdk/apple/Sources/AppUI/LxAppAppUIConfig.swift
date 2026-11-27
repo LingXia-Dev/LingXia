@@ -9,7 +9,6 @@ struct LxAppGeneratedAppConfig: Decodable, Sendable {
     let homeAppVersion: String?
     let cacheMaxSizeMB: Int?
     let capabilities: LxAppGeneratedCapabilitiesConfig?
-    let theme: LxAppGeneratedThemeConfig?
     let settingsDestination: LxAppGeneratedSettingsDestination?
 }
 
@@ -63,21 +62,6 @@ enum LxAppGeneratedSettingsDestination: Decodable, Sendable {
 
 struct LxAppGeneratedCapabilitiesConfig: Decodable, Sendable {
     let terminal: Bool?
-}
-
-struct LxAppGeneratedThemeConfig: Decodable, Sendable {
-    let light: LxAppGeneratedThemeStyle?
-    let dark: LxAppGeneratedThemeStyle?
-}
-
-struct LxAppGeneratedThemeStyle: Decodable, Sendable {
-    let windowBackgroundColor: String?
-    let surfaceBackgroundColor: String?
-    let foregroundColor: String?
-    let mutedForegroundColor: String?
-    let accentColor: String?
-    let separatorColor: String?
-    let selectionBackgroundColor: String?
 }
 
 struct LxAppUIConfig: Decodable, Sendable {

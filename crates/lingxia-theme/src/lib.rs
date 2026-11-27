@@ -4,6 +4,7 @@
 mod color;
 mod derive;
 mod generated;
+mod looks;
 
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{LazyLock, Mutex};
@@ -12,6 +13,7 @@ use serde::{Deserialize, Serialize};
 
 pub use color::{Oklch, Rgba, contrast, distance, ensure_contrast, over};
 pub use generated::{COMPOSITE_CONTRAST, CONTRAST, ROLE_COUNT, Role, SCALE_STEPS, Tier};
+pub use looks::{ThemeLooks, looks};
 
 /// The pack shipped when a host names none.
 pub fn default_pack() -> Pack {

@@ -1610,6 +1610,11 @@ impl PageInstance {
             more: update.preference == crate::lxapp::ContrastPreference::More,
             revision: update.revision,
         });
+        if let Some(webview) = self.webview() {
+            let app = self.owning_lxapp();
+            let dark = app.appearance_state().resolved.is_dark();
+            let _ = webview.exec_js(&app.role_style_script(dark));
+        }
     }
 
     pub(crate) fn push_view_environment(&self, update: PageViewEnvironment) {

@@ -9,16 +9,12 @@ enum LxAppHostThemeRole {
     case accent
     case separator
     case selectionBackground
+    case selectedTabBackground
 }
 
+/// Product chrome colours: the host theme's roles, or AppKit's own colours when the product
+/// ships no theme.
 enum LxAppHostTheme {
-    // Installed once during runtime startup, before any shell views exist.
-    private nonisolated(unsafe) static var config: LxAppGeneratedThemeConfig?
-
-    static func install(_ config: LxAppGeneratedThemeConfig?) {
-        self.config = config
-    }
-
     static var windowBackground: NSColor {
         adaptive(.windowBackground)
     }
@@ -43,22 +39,39 @@ enum LxAppHostTheme {
         adaptive(.separator)
     }
 
+    /// The neutral selected fill (an active lxapp, a browser tab).
     static var selectionBackground: NSColor {
         adaptive(.selectionBackground)
     }
 
+    /// The selected tab row: the one accented level, so the lxapp's header stays neutral.
+    static var selectedTabBackground: NSColor {
+        adaptive(.selectedTabBackground)
+    }
+
     private static func adaptive(_ role: LxAppHostThemeRole) -> NSColor {
-        let config = config
-        return NSColor(name: nil) { appearance in
-            resolve(role, config: config, appearance: appearance) ?? platformDefault(role)
-        }
+        NSColor(name: nil) { appearance in resolved(role, for: appearance) }
     }
 
     static func resolved(
         _ role: LxAppHostThemeRole,
         for appearance: NSAppearance
     ) -> NSColor {
-        resolve(role, config: config, appearance: appearance) ?? platformDefault(role)
+        let dark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        return parseColor(themeRole("", roleName(role), dark).toString()) ?? platformDefault(role)
+    }
+
+    private static func roleName(_ role: LxAppHostThemeRole) -> String {
+        switch role {
+        case .windowBackground: "canvas"
+        case .surfaceBackground: "surface"
+        case .foreground: "text"
+        case .mutedForeground: "text-muted"
+        case .accent: "accent"
+        case .separator: "line"
+        case .selectionBackground: "surface-raised"
+        case .selectedTabBackground: "accent-soft"
+        }
     }
 
     private static func platformDefault(_ role: LxAppHostThemeRole) -> NSColor {
@@ -69,28 +82,8 @@ enum LxAppHostTheme {
         case .mutedForeground: .secondaryLabelColor
         case .accent: .controlAccentColor
         case .separator: .separatorColor
-        case .selectionBackground: .unemphasizedSelectedContentBackgroundColor
+        case .selectionBackground, .selectedTabBackground: .unemphasizedSelectedContentBackgroundColor
         }
-    }
-
-    private static func resolve(
-        _ role: LxAppHostThemeRole,
-        config: LxAppGeneratedThemeConfig?,
-        appearance: NSAppearance
-    ) -> NSColor? {
-        let dark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-        guard let style = dark ? config?.dark : config?.light else { return nil }
-
-        let value = switch role {
-        case .windowBackground: style.windowBackgroundColor
-        case .surfaceBackground: style.surfaceBackgroundColor
-        case .foreground: style.foregroundColor
-        case .mutedForeground: style.mutedForegroundColor
-        case .accent: style.accentColor
-        case .separator: style.separatorColor
-        case .selectionBackground: style.selectionBackgroundColor
-        }
-        return value.flatMap(parseColor)
     }
 
     private static func parseColor(_ value: String) -> NSColor? {

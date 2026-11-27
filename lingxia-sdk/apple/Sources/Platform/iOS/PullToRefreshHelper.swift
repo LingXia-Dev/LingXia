@@ -206,8 +206,9 @@ class PullToRefreshHelper: NSObject {
     }
 
     private func spinnerColor() -> UIColor? {
-        let dark = WebViewManager.resolvedDarkAppearance(appId: webView?.appId)
-        return WebViewManager.declaredRefreshIndicatorColor(dark: dark)
+        let appId = webView?.appId
+        let dark = WebViewManager.resolvedDarkAppearance(appId: appId)
+        return WebViewManager.declaredRefreshIndicatorColor(appId: appId, dark: dark)
     }
 
     /// The inset still owed back to the scroll view; zero after this, so it is paid once.

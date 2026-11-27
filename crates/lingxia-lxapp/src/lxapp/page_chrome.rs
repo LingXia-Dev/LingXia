@@ -316,6 +316,8 @@ impl LxApp {
             webview
                 .exec_js(&publication_script(&layout, appearance))
                 .map_err(lingxia_error::Error::from)?;
+            // The role variables follow the scheme this publication stamps.
+            let _ = webview.exec_js(&self.role_style_script(appearance.is_dark()));
         }
         Ok(())
     }

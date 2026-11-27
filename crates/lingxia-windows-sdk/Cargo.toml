@@ -89,6 +89,7 @@ webview-input = ["host-api", "lingxia?/webview-input"]
 [dependencies]
 lingxia = { workspace = true, default-features = false, optional = true }
 lingxia-error = { workspace = true }
+lingxia-theme = { workspace = true }
 lingxia-app-context = { workspace = true, optional = true }
 lingxia-browser = { workspace = true, optional = true }
 lingxia-logic = { workspace = true, optional = true }

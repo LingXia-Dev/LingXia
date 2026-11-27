@@ -1847,18 +1847,6 @@ export type NavigationBarPatch = {
     title?: string | null;
     /** Whether the home button may show. */
     homeButton?: VisibilityPreference;
-    /** Colors to change; `null` restores every declared color. */
-    style?: NavigationBarStylePatch | null;
-};
-
-/** Navigation bar colors to change; `null` restores the declared one. */
-export type NavigationBarStylePatch = {
-    /** Bar color. */
-    backgroundColor?: string | null;
-    /** Title and button color. */
-    foregroundColor?: string | null;
-    /** The line under the bar. */
-    dividerColor?: string | null;
 };
 
 export type NetworkApi = globalThis.NetworkApi;
@@ -2969,9 +2957,9 @@ export type TabBarItemPatch = {
      * `lx://userdata` path from a LingXia file API. Network URLs are rejected —
      * download first (`lx.network.download`) and pass the returned path.
      *
-     * SVG (and SF Symbols) are template-tinted with `foregroundColor` /
-     * `selectedForegroundColor`. Raster files (PNG/JPEG/WebP) keep their own
-     * colour so a brand mark is not flattened into a solid square.
+     * SVG (and SF Symbols) are template-tinted with the theme's `text-muted`
+     * and `accent`. Raster files (PNG/JPEG/WebP) keep their own colour so a
+     * brand mark is not flattened into a solid square.
      */
     icon?: string | null;
     /** Text in a badge, `true` for a dot without text, `null` to remove either. */
@@ -2980,10 +2968,7 @@ export type TabBarItemPatch = {
 
 /**
  * Patch for `lx.app.tabBar.update()`. Items, badges, and
- * visibility only — a `style` field is rejected. Colors stay in
- * static `lxapp.json` `tabBar.style`. `backgroundColor` is
- * mobile-only; the desktop sidebar follows the host
- * `lingxia.yaml` theme.
+ * visibility; the bar's colours are the theme's roles.
  * @example
  * ```ts
  * await lx.app.tabBar.update({ items: { home: { badge: '3' } } });
@@ -4494,9 +4479,9 @@ declare global {
   interface TabBarApi {
     /**
      * Patch this lxapp's tab bar: items by tab name, badges and visibility. Unset
-     * fields stay; colors stay in `lxapp.json` `tabBar.style`.
-     * @platform macOS, Windows: the bar is the sidebar, which follows the host theme; `backgroundColor` does not paint it, and a dark host ignores every style key.
-     * @throws {E_INVALID_ARG} A `style` field, an unknown one, or a name that is not a tab.
+     * fields stay; the bar's colours are the theme's roles.
+     * @platform macOS, Windows: the bar is the sidebar, which takes the host theme.
+     * @throws {E_INVALID_ARG} An unknown field, or a name that is not a tab.
      * @throws {E_INVALID_STATE} The app declares no tab bar; `reason` is `'tabBarNotDeclared'`.
      */
     update(patch: TabBarPatch): Promise<void>;

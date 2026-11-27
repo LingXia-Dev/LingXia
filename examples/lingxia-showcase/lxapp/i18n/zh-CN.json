@@ -3515,9 +3515,6 @@
   "ui.backToPreviousPage": {
     "defaultMessage": "返回上一页"
   },
-  "ui.background": {
-    "defaultMessage": "背景"
-  },
   "ui.backgroundingFiresOnhideOnshow": {
     "defaultMessage": "切到后台会在同一实例上触发 onHide / onShow；离开页面会触发 onUnload。"
   },
@@ -3601,9 +3598,6 @@
   },
   "ui.enterToastMessage": {
     "defaultMessage": "输入提示消息"
-  },
-  "ui.ffffff": {
-    "defaultMessage": "#ffffff"
   },
   "ui.height": {
     "defaultMessage": "高度"
@@ -3779,9 +3773,6 @@
   "ui.setBadge": {
     "defaultMessage": "设置角标"
   },
-  "ui.setColors": {
-    "defaultMessage": "设置颜色"
-  },
   "ui.setOrRemoveThe": {
     "defaultMessage": "设置或移除标签 1 上的角标"
   },
@@ -3841,9 +3832,6 @@
   },
   "ui.surfaceOpen": {
     "defaultMessage": "已打开"
-  },
-  "ui.text": {
-    "defaultMessage": "文字"
   },
   "ui.thePreviousTagIs": {
     "defaultMessage": "上一个标记保存在应用存储中，页面重置后仍会保留。"

@@ -27,7 +27,7 @@ import { NavigationBar, NavigationBarState, NAVBAR_TOTAL_HEIGHT, isColorDark } f
 import { NavigationButton, CapsuleButton, CAPSULE_ID, CAPSULE_ROW_ID } from './LxAppDrawables';
 import { TabBar, tabBarExtraBottomHeight } from './TabBar';
 import { TabBarPosition, TabBarItem, UiEventType } from 'liblingxia.so';
-import liblingxia, { gpuPageChromeSnapshot, gpuPageDeclineChromeSnapshot, gpuPageCloseRequest, gpuPageScrollsRightAt, tabBarVisibleOn, gpuPageTransitionStart, gpuPageTransitionFrame, gpuPageTransitionEnd, TabBarState, getNavigationBarState, isPullDownRefreshEnabled, reportPullRefreshIndicator, onPageShow, onLxappEvent, setSurfaceViewport, setSurfaceWidth, pageBackgroundColor, refreshIndicatorColor, syncLxappHostUI } from 'liblingxia.so';
+import liblingxia, { gpuPageChromeSnapshot, gpuPageDeclineChromeSnapshot, gpuPageCloseRequest, gpuPageScrollsRightAt, tabBarVisibleOn, gpuPageTransitionStart, gpuPageTransitionFrame, gpuPageTransitionEnd, TabBarState, getNavigationBarState, isPullDownRefreshEnabled, reportPullRefreshIndicator, onPageShow, onLxappEvent, setSurfaceViewport, setSurfaceWidth, themeRole, syncLxappHostUI } from 'liblingxia.so';
 import { notePageOrigin, setCapsuleGeometryListener } from './capsuleGeometry';
 import { NAVIGATION_ACTION_BACK, NAVIGATION_ACTION_HOME, CAPSULE_ACTION_CLOSE } from '../app/NativeBridge';
 import { AnimationType, EDGE_BACK_SWIPE_ZONE_WIDTH_VP } from './LxAppNavigation';
@@ -52,64 +52,25 @@ const BAR_BOTTOM = 1;
 const COLOR_BLACK = '#000000';
 const COLOR_TRANSPARENT = Color.Transparent;
 
-const canvasColorCache: Map<boolean, ResourceColor> = new Map<boolean, ResourceColor>();
-
 /**
- * The colour the canvas behind the page should be, or transparent when the
- * host declares no page floor.
- *
- * The web stack is transparent all the way down, so anything the page does not
- * cover falls through to the ability window — which is the system default
- * white, in both appearances. That shows wherever native chrome borders the
- * page: the strip a pull-to-refresh opens above it most visibly. Painting the
- * host's declared page floor there makes the strip read as part of the page.
+ * The canvas behind the page: the `canvas` role of the lxapp's theme. The web stack is
+ * transparent, so a strip the page does not cover (a pull-to-refresh) shows this, not the
+ * ability window's system white.
  */
-function resolveCanvasColor(dark: boolean): ResourceColor {
-  // Memoized per appearance: this is read from a @Builder, which ArkUI re-runs
-  // on every state change around it, and the answer comes from app config that
-  // cannot change while the process lives. "No colour declared" is memoized
-  // too — it is the default, and the common case. Only the pre-runtime throw
-  // stays unmemoized, so an early call cannot poison the slot.
-  const cached: ResourceColor | undefined = canvasColorCache.get(dark);
-  if (cached !== undefined) {
-    return cached;
-  }
+function resolveCanvasColor(appId: string, dark: boolean): ResourceColor {
   try {
-    const declared: string = pageBackgroundColor(dark);
-    const answer: ResourceColor = declared.length > 0 ? declared : COLOR_TRANSPARENT;
-    canvasColorCache.set(dark, answer);
-    return answer;
+    const color: string = themeRole(appId, 'canvas', dark);
+    return color.length > 0 ? color : COLOR_TRANSPARENT;
   } catch (_error) {
     // Runtime not up yet; the page paints over this almost immediately.
     return COLOR_TRANSPARENT;
   }
 }
 
-let refreshColorLight: string | undefined = undefined;
-let refreshColorDark: string | undefined = undefined;
-
-/**
- * The host theme's pull-to-refresh spinner colour (`accentColor`, else
- * `mutedForegroundColor`), or empty to keep the system colour. A declared
- * colour is memoized per appearance for the same reason as
- * resolveCanvasColor; an empty answer is not, since it may only mean the
- * runtime has not loaded the theme yet.
- */
-function resolveRefreshIndicatorColor(dark: boolean): string {
-  const cached: string | undefined = dark ? refreshColorDark : refreshColorLight;
-  if (cached !== undefined) {
-    return cached;
-  }
+/** The pull-to-refresh spinner: the theme's `accent`; empty keeps the system colour. */
+function resolveRefreshIndicatorColor(appId: string, dark: boolean): string {
   try {
-    const declared: string = refreshIndicatorColor(dark);
-    if (declared) {
-      if (dark) {
-        refreshColorDark = declared;
-      } else {
-        refreshColorLight = declared;
-      }
-    }
-    return declared;
+    return themeRole(appId, 'accent', dark);
   } catch (_error) {
     return '';
   }
@@ -1149,7 +1110,7 @@ export struct LxAppContainer {
           tabbar: this.tabBarState,
           appId: this.appId,
           refreshKey: key,
-          pageCanvasColor: resolveCanvasColor(this.appearanceDark),
+          pageCanvasColor: resolveCanvasColor(this.appId, this.appearanceDark),
           bottomInset: this.isTabBarVertical() ? 0 : this.bottomIndicatorInset,
           covered: this.isGpuTopLayer() || this.hidden,
           onTabSelected: (appId: string, index: number, item: TabBarItem): void => this.handleTabSelected(index)
@@ -1401,7 +1362,7 @@ export struct LxAppContainer {
     RefreshHeader({
       isRefreshing: this.isRefreshing,
       pullProgress: Math.min(1, this.pullOffsetVp / PULL_TRIGGER_VP),
-      spinnerColor: resolveRefreshIndicatorColor(this.appearanceDark)
+      spinnerColor: resolveRefreshIndicatorColor(this.appId, this.appearanceDark)
     })
       .offset({ y: this.getCurrentNavTop() })
       // At rest the shifted header sits behind the navbar, which may be translucent.
@@ -1448,7 +1409,7 @@ export struct LxAppContainer {
     // background: the stack inside is transparent, so without a colour here
     // the pull bares the ability window, which is system white in both
     // appearances.
-    .backgroundColor(resolveCanvasColor(this.appearanceDark))
+    .backgroundColor(resolveCanvasColor(this.appId, this.appearanceDark))
     .width('100%')
     .height('100%')
     // No shared navbar padding here: each webview wrapper reserves its own
@@ -2341,7 +2302,7 @@ export struct LxAppContainer {
         page: page,
         chromeInsets: this.getGpuChromeInsets(page.webTag),
         pageVisible: this.isGpuPageShown(page.webTag),
-        floor: resolveCanvasColor(this.appearanceDark),
+        floor: resolveCanvasColor(this.appId, this.appearanceDark),
         appearanceDark: this.appearanceDark,
       })
         .translate(this.getRenderTranslation(page.webTag))
