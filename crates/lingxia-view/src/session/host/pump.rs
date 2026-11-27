@@ -696,7 +696,14 @@ impl<A: PlatformAdapter> Inner<A> {
         );
         let (frame, nodes) = match prepared {
             Ok(prepared) => prepared,
-            Err(error) if error == DECLINED => return Ok((None, None)),
+            // Host requests never wait for a drawable: only the paint does.
+            Err(error) if error == DECLINED => {
+                let drained = self.drained(session)?.map(|(connection, mut update)| {
+                    update.changed = update.local_changed;
+                    (connection, update)
+                });
+                return Ok((None, drained));
+            }
             Err(error) => return Err(error),
         };
         let update = if self.logic {

@@ -8289,3 +8289,61 @@ fn a_held_catch_up_frame_runs_on_the_clock_a_later_park_moved() {
         log.warnings
     );
 }
+
+#[test]
+fn a_page_title_reaches_the_host_while_its_target_declines_every_frame() {
+    if !bounded_jobs() {
+        return;
+    }
+    let worker = ViewWorker::spawn("test-title-declined").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &(source("function render({data}){return h('page',{title:data.title},h('text',{},data.title))}")
+            + "\nglobalThis.__lingxiaActionCatalog={__names:[],__modes:{}};"),
+        true,
+    );
+    // No drawable: a locked screen or an attaching target declines every frame.
+    host.adapter()
+        .pending
+        .store(true, std::sync::atomic::Ordering::Release);
+    host.set_visible(true);
+    let connection = ConnectionTicket::new(1);
+    host.connect(connection);
+    platform.settle(&[&host]);
+    let titles = |host: &ViewHost<Fake>| -> Vec<serde_json::Value> {
+        host.adapter()
+            .log
+            .lock()
+            .unwrap()
+            .messages
+            .iter()
+            .filter_map(|(_, message)| serde_json::from_str::<serde_json::Value>(message).ok())
+            .filter(|message| message["method"] == "host.navigation.setTitle")
+            .map(|message| message["params"]["title"].clone())
+            .collect()
+    };
+    deliver(
+        &host,
+        connection,
+        serde_json::json!({"v":2,"kind":"state.snapshot","rev":0,"state":{"title":"Inbox"}}),
+    );
+    platform.settle(&[&host]);
+    deliver(
+        &host,
+        connection,
+        serde_json::json!({"v":2,"kind":"state.patch","baseRev":0,"rev":1,
+            "ops":[{"op":"replace","path":"/title","value":"Archive"}]}),
+    );
+    platform.settle(&[&host]);
+    assert!(host.adapter().log.lock().unwrap().presented.is_empty());
+    assert_eq!(titles(&host), ["Inbox", "Archive"]);
+    // The first shown frame carries the title already sent: nothing is sent again.
+    host.adapter()
+        .pending
+        .store(false, std::sync::atomic::Ordering::Release);
+    host.surface_changed();
+    platform.settle(&[&host]);
+    assert_eq!(last(&host), ["Archive"]);
+    assert_eq!(titles(&host), ["Inbox", "Archive"]);
+}

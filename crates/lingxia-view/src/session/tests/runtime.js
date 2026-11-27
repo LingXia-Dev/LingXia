@@ -7197,8 +7197,9 @@
     const pressable = /* @__PURE__ */ new Map();
     for (const entry of candidate.callbacks.values()) if (entry.press) pressable.set(entry.press.identity, entry.press.callback);
     refreshPresses(pressable);
-    syncPageTitle(candidate.tree?.wire?.find(([key]) => key === "pageTitle")?.[1]);
+    syncPageTitle(pageTitleOf(candidate));
   }
+  var pageTitleOf = (candidate) => candidate.tree?.wire?.find(([key]) => key === "pageTitle")?.[1];
   var probeRows = 2e3;
   function probeListRow(testId) {
     const base = page.committed;
@@ -7237,6 +7238,7 @@
     }
   }
   function discard(keepUpdates = false) {
+    if (keepUpdates && render.candidate) syncPageTitle(pageTitleOf(render.candidate));
     render.candidate = null;
     if (!keepUpdates) page.updates.clear();
   }

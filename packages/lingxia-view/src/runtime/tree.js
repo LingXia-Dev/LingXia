@@ -183,8 +183,10 @@ function commitCandidate() {
   for (const entry of candidate.callbacks.values()) if (entry.press) pressable.set(entry.press.identity, entry.press.callback);
   refreshPresses(pressable);
   // Read from the committed root, which may be a recalled subtree that did not resolve again.
-  syncPageTitle(candidate.tree?.wire?.find(([key]) => key === 'pageTitle')?.[1]);
+  syncPageTitle(pageTitleOf(candidate));
 }
+
+const pageTitleOf = candidate => candidate.tree?.wire?.find(([key]) => key === 'pageTitle')?.[1];
 
 // Native drops the candidate. A frame the target merely declined keeps pending updates
 // (the user's taps survive it); any other candidate failure reverts them.
@@ -222,6 +224,8 @@ export function probeListRow(testId) {
 }
 
 export function discard(keepUpdates = false) {
+  // A declined frame renders these updates again; its title goes to the host now, not with paint.
+  if (keepUpdates && render.candidate) syncPageTitle(pageTitleOf(render.candidate));
   render.candidate = null;
   if (!keepUpdates) page.updates.clear();
 }
