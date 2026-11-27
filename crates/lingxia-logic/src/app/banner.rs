@@ -58,7 +58,7 @@ pub(super) fn init(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
 async fn show(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
     let (invocation, (request, raw_targets)) =
         authorization::require_before_decode(&ctx, LogicRoute::AppBannerShow, || {
-            decode_show(options)
+            decode_show(options).map_err(|error| error.at_argument(1))
         })?;
     let app = invocation.lxapp();
     let runtime = app.runtime.clone();
@@ -202,7 +202,9 @@ pub(super) fn dismiss_notifications(
 async fn dismiss(ctx: JSContext, id: JSValue) -> JSResult<()> {
     let (invocation, id) =
         authorization::require_before_decode(&ctx, LogicRoute::AppBannerDismiss, || {
-            let id = id.to_rust::<String>()?;
+            let id = id
+                .to_rust::<String>()
+                .map_err(|error| error.at_argument(1))?;
             if id.is_empty() {
                 return Err(js_invalid_parameter_error(
                     "lx.host.banner.dismiss id must not be empty",

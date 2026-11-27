@@ -2,7 +2,7 @@ use super::download::options_string;
 use super::{network_security, normalize_relative_path};
 use crate::i18n::{
     js_error, js_error_from_business_code_with_detail, js_internal_error,
-    js_invalid_parameter_error, server_error_status,
+    js_invalid_parameter_error, js_resource_not_found_error, server_error_status,
 };
 use futures::channel::{mpsc, oneshot};
 use futures::lock::Mutex;
@@ -347,7 +347,7 @@ fn resolve_upload_path(
     };
 
     if !resolved.exists() {
-        return Err(js_invalid_parameter_error(
+        return Err(js_resource_not_found_error(
             "network.upload file does not exist",
         ));
     }
@@ -492,7 +492,8 @@ fn upload_result_to_js(ctx: &JSContext, result: UploadCompletion) -> JSResult<JS
 ///
 /// @default A `POST` with a `multipart/form-data` body.
 ///
-/// @throws {E_INVALID_ARG} A malformed URL, a missing or unreadable file, or bad headers.
+/// @throws {E_INVALID_ARG} A URL that is not absolute http(s), an unreadable file, or bad headers.
+/// @throws {E_NOT_FOUND} No file at `path`.
 /// @throws {E_ABORT} `cancel()` was called or `signal` was aborted (on `result`).
 /// @throws {E_NETWORK} The server answered with an error status (`reason` `'serverErrorStatus'`, the status in `data.status`) or did not answer (`'connectionFailed'`), on `result`.
 /// @throws {E_TIMEOUT} The server stopped answering (on `result`).

@@ -67,7 +67,9 @@ async fn storage_get(
     options: Optional<JSObject>,
 ) -> JSResult<JSValue> {
     let decode = match options.0 {
-        Some(options) => options.get::<_, Option<JSFunc>>("decode")?,
+        Some(options) => options
+            .get::<_, Option<JSFunc>>("decode")
+            .map_err(|error| error.at_field("decode").at_argument(2))?,
         None => None,
     };
     let (native, get) = native_method(&ctx, "get")?;

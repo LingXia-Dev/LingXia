@@ -1,4 +1,6 @@
-use crate::i18n::{js_internal_error, js_service_unavailable_error, js_state_error};
+use crate::i18n::{
+    js_internal_error, js_invalid_parameter_error, js_service_unavailable_error, js_state_error,
+};
 use lxapp::LxApp;
 use lxapp::dialogs::{DialogDecision, ModalShown};
 use rong::{FromJSObject, JSContext, JSObject, JSResult, JSValue, RongJSError};
@@ -8,7 +10,7 @@ use std::sync::Arc;
 #[derive(FromJSObject)]
 #[ts_skip]
 struct JSDialogOptions {
-    title: Option<String>,
+    title: String,
     message: Option<String>,
     tone: Option<String>,
     #[js_name = "confirmText"]
@@ -35,7 +37,7 @@ fn dialog_options(
 ) -> JSResult<(JSModalOptions, Option<JSObject>)> {
     let options = if value.is_string() {
         JSDialogOptions {
-            title: Some(value.to_rust::<String>()?),
+            title: value.to_rust::<String>()?,
             message: None,
             tone: None,
             confirm_text: None,
@@ -43,12 +45,20 @@ fn dialog_options(
             signal: None,
         }
     } else {
-        value.to_rust::<JSDialogOptions>()?
+        value
+            .to_rust::<JSDialogOptions>()
+            .map_err(|error| error.at_argument(1))?
     };
+    // An empty title draws a dialog with no accessible name, which the View layer refuses.
+    if options.title.trim().is_empty() {
+        return Err(js_invalid_parameter_error(
+            "a dialog needs a non-empty title",
+        ));
+    }
     crate::task_object::validate_abort_signal(options.signal.as_ref())?;
     let destructive = super::destructive(options.tone.as_deref())?;
     let modal = JSModalOptions {
-        title: options.title,
+        title: Some(options.title),
         content: options.message,
         show_cancel: Some(show_cancel),
         cancel_text: options.cancel_text.filter(|_| show_cancel),
@@ -116,6 +126,7 @@ fn watched_modal(appid: &str, options: &JSModalOptions) -> DialogDecision<bool> 
 
 /// Acknowledgement-only dialog. Resolves when the user dismisses it.
 ///
+/// @throws {E_INVALID_ARG} A missing or empty `title`.
 /// @throws {E_ABORT} `signal` aborted; the dialog is closed.
 /// @throws {E_INVALID_STATE} No page can show a dialog now; `reason` is `'appClosed'` when the app is not open.
 /// @throws {E_INTERNAL} The dialog could not be shown.
@@ -126,6 +137,7 @@ async fn alert(ctx: JSContext, options: JSValue) -> JSResult<()> {
 
 /// Ask a yes/no question. Dismissal resolves false; presentation failure rejects.
 ///
+/// @throws {E_INVALID_ARG} A missing or empty `title`.
 /// @throws {E_ABORT} `signal` aborted; the dialog is closed.
 /// @throws {E_INVALID_STATE} No page can show a dialog now; `reason` is `'appClosed'` when the app is not open.
 /// @throws {E_INTERNAL} The dialog could not be shown.

@@ -11,6 +11,7 @@
   {"key":"device.haptics","predicate":"Haptics"},
   {"key":"pick.directory","predicate":"PickDirectory"},
   {"key":"pick.camera","predicate":"PickCamera"},
+  {"key":"media.saveToLibrary","predicate":"SaveToLibrary"},
   {"key":"app.browser","predicate":"Browser"},
   {"key":"app.proxy","predicate":"Proxy"},
   {"key":"app.appUse","predicate":"AppUse"},

@@ -471,6 +471,14 @@ fn read_optional_signal(obj: &JSObject) -> JSResult<Option<JSObject>> {
 /// The positional subject of `download` / `upload`: a URL string.
 pub(super) fn read_url_argument(url: &JSValue, api_name: &str) -> JSResult<String> {
     if let Some(text) = crate::url::text_of(url) {
+        // Checked before the domain policy, which would read a relative URL as a host.
+        let trimmed = text.trim();
+        if !crate::url::is_http_url(trimmed) || crate::url::split_url_scheme_host(trimmed).is_none()
+        {
+            return Err(js_invalid_parameter_error(format!(
+                "{api_name} url must be an absolute http or https URL"
+            )));
+        }
         return Ok(text);
     }
     if url.is_object() {

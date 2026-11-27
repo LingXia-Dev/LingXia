@@ -66,7 +66,8 @@ async fn app_screenshot(
         .0
         .filter(|value| !value.is_undefined() && !value.is_null())
         .map(|value| value.to_rust::<JSAppScreenshotOptions>())
-        .transpose()?;
+        .transpose()
+        .map_err(|error| error.at_argument(1))?;
     let window_id = options.and_then(|options| options.window_id);
     let platform = lxapp::get_platform()
         .ok_or_else(|| js_service_unavailable_error("platform is not initialized"))?;

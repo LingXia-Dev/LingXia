@@ -70,9 +70,7 @@ async fn get_image_info_api(ctx: JSContext, path: String) -> JSResult<ImageInfo>
     let runtime = &lxapp.runtime;
 
     let trimmed_path = path.trim();
-    let resolved = lxapp
-        .resolve_accessible_path(trimmed_path)
-        .map_err(js_error)?;
+    let resolved = super::resolve_input_file(&lxapp, trimmed_path)?;
     let normalized_path = resolved.to_string_lossy().into_owned();
 
     let response_path =
@@ -125,9 +123,7 @@ async fn compress_image_api(
     let runtime = &lxapp.runtime;
     let options = options.0.unwrap_or_default();
 
-    let resolved_source = lxapp
-        .resolve_accessible_path(path.trim())
-        .map_err(js_error)?;
+    let resolved_source = super::resolve_input_file(&lxapp, &path)?;
     let source_uri = resolved_source.to_string_lossy().into_owned();
 
     let output_path = generate_compress_output_path(&lxapp.temp_dir)?;

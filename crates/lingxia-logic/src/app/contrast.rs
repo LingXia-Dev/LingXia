@@ -28,14 +28,19 @@ pub(super) fn init_host(ctx: &JSContext, host: &JSObject) -> JSResult<()> {
 
 fn get(ctx: JSContext) -> JSResult<String> {
     authorization::require(&ctx, LogicRoute::AppContrastPreferenceGet)?;
-    Ok(lxapp::host_contrast_update().preference.as_str().to_string())
+    Ok(lxapp::host_contrast_update()
+        .preference
+        .as_str()
+        .to_string())
 }
 
 /// `'more'` puts every View page in high contrast; `'auto'` follows the system.
 async fn set(ctx: JSContext, preference: JSValue) -> JSResult<()> {
     let (_, preference) =
         authorization::require_before_decode(&ctx, LogicRoute::AppContrastPreferenceSet, || {
-            preference.to_rust::<String>()
+            preference
+                .to_rust::<String>()
+                .map_err(|error| error.at_argument(1))
         })?;
     let preference = preference
         .parse::<ContrastPreference>()
@@ -51,7 +56,11 @@ fn watch(ctx: JSContext, callback: JSValue, options: Optional<JSValue>) -> JSRes
         let (_, callback) = authorization::require_before_decode(
             &ctx,
             LogicRoute::AppContrastPreferenceWatch,
-            || callback.to_rust::<JSFunc>(),
+            || {
+                callback
+                    .to_rust::<JSFunc>()
+                    .map_err(|error| error.at_argument(1))
+            },
         )?;
         let last_revision = Rc::new(Cell::new(0));
         let last: Rc<RefCell<Option<String>>> = Rc::default();

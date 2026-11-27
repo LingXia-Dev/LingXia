@@ -38,6 +38,7 @@ enum Predicate {
     Haptics,
     PickDirectory,
     PickCamera,
+    SaveToLibrary,
     Automation,
 }
 
@@ -178,6 +179,14 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
                 ))
             }
             Predicate::PickCamera => !cfg!(target_os = "windows"),
+            // Desktop hosts have no system photo library to save into.
+            Predicate::SaveToLibrary => {
+                cfg!(any(
+                    target_os = "android",
+                    target_os = "ios",
+                    target_env = "ohos"
+                ))
+            }
             Predicate::Automation => lingxia_app_context::capability::build::automation(),
         }
     })

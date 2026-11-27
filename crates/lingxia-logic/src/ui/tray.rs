@@ -1,5 +1,5 @@
 use crate::authorization::{self, LogicRoute};
-use crate::i18n::js_error;
+use crate::i18n::{js_error, js_invalid_parameter_error};
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lxapp::{app_handler_unsub, register_app_handler, unregister_app_handler};
 use rong::{FromJSObject, JSContext, JSFunc, JSObject, JSResult, JSValue, function::Optional};
@@ -103,10 +103,54 @@ fn on_click(ctx: JSContext, handler: JSFunc, options: Optional<JSValue>) -> JSRe
 /// Replace the tray's dropdown menu. A picked item runs its `onSelect`.
 ///
 /// @supports host.tray
+/// @throws {E_INVALID_ARG} An item without a non-empty `label`, or a field of the wrong type.
 /// @throws {E_NOT_SUPPORTED} Off the desktop.
 fn replace_menu(ctx: JSContext, items: Vec<JSObject>) -> JSResult<()> {
     let lxapp = require_tray(&ctx, LogicRoute::TrayMenuReplace)?;
     let appid = lxapp.appid.clone();
+
+    // Validate the whole menu first: a refused item leaves the current menu in place.
+    let mut specs: Vec<Value> = Vec::with_capacity(items.len());
+    let mut handlers: Vec<(usize, JSFunc)> = Vec::new();
+    for (i, item) in items.iter().enumerate() {
+        let field =
+            |name: &str, error: rong::RongJSError| error.at_field(name).at_index(i).at_argument(1);
+        if item
+            .get_opt::<_, bool>("separator")
+            .map_err(|error| field("separator", error))?
+            .unwrap_or(false)
+        {
+            specs.push(json!({ "separator": true }));
+            continue;
+        }
+        let label = item
+            .get_opt::<_, String>("label")
+            .map_err(|error| field("label", error))?
+            .filter(|label| !label.trim().is_empty())
+            .ok_or_else(|| {
+                js_invalid_parameter_error(format!(
+                    "lx.host.tray.menu.replace item {i} needs a non-empty label"
+                ))
+            })?;
+        // Natives take `enabled`.
+        let disabled = item
+            .get_opt::<_, bool>("disabled")
+            .map_err(|error| field("disabled", error))?;
+        let checked = item
+            .get_opt::<_, bool>("checked")
+            .map_err(|error| field("checked", error))?;
+        if let Some(on_select) = item
+            .get_opt::<_, JSFunc>("onSelect")
+            .map_err(|error| field("onSelect", error))?
+        {
+            handlers.push((i, on_select));
+        }
+        specs.push(json!({
+            "label": label,
+            "enabled": !disabled.unwrap_or(false),
+            "checked": checked.unwrap_or(false),
+        }));
+    }
 
     // Drop the previous menu's per-index click handlers.
     let previous = MENU_COUNTS.lock().ok().and_then(|m| m.get(&appid).copied());
@@ -115,21 +159,8 @@ fn replace_menu(ctx: JSContext, items: Vec<JSObject>) -> JSResult<()> {
             unregister_app_handler(&ctx, &format!("lx.host.tray.menu:{i}"), None);
         }
     }
-
-    let mut specs: Vec<Value> = Vec::with_capacity(items.len());
-    for (i, item) in items.iter().enumerate() {
-        if item.get::<_, bool>("separator").unwrap_or(false) {
-            specs.push(json!({ "separator": true }));
-            continue;
-        }
-        let label = item.get::<_, String>("label").unwrap_or_default();
-        // Natives take `enabled`.
-        let enabled = !item.get::<_, bool>("disabled").unwrap_or(false);
-        let checked = item.get::<_, bool>("checked").unwrap_or(false);
-        specs.push(json!({ "label": label, "enabled": enabled, "checked": checked }));
-        if let Ok(on_select) = item.get::<_, JSFunc>("onSelect") {
-            register_app_handler(&ctx, &format!("lx.host.tray.menu:{i}"), on_select)?;
-        }
+    for (i, on_select) in handlers {
+        register_app_handler(&ctx, &format!("lx.host.tray.menu:{i}"), on_select)?;
     }
 
     if let Ok(mut counts) = MENU_COUNTS.lock() {

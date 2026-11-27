@@ -225,7 +225,10 @@ fn parse_read_kind(options: Option<JSValue>) -> JSResult<Option<ClipboardKind>> 
             "clipboard.read options must be an object",
         ));
     };
-    let Some(kind) = obj.get_opt::<_, String>("type")? else {
+    let Some(kind) = obj
+        .get_opt::<_, String>("type")
+        .map_err(|error| error.at_field("type").at_argument(1))?
+    else {
         return Ok(None);
     };
     ClipboardKind::parse(&kind)

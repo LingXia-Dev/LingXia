@@ -3109,7 +3109,7 @@ impl LxApp {
     pub fn resolve_accessible_path(&self, path: &str) -> Result<PathBuf, lingxia_error::Error> {
         let path = path.trim();
         if path.is_empty() {
-            return Err(lingxia_error::Error::not_found("empty path"));
+            return Err(lingxia_error::Error::invalid_arg("empty path"));
         }
 
         // 1. Handle lx:// URIs (Internal helper already does logical joining and ".." check)
@@ -3140,7 +3140,7 @@ impl LxApp {
             .any(|component| matches!(component, std::path::Component::ParentDir))
             || (!path_ref.is_absolute() && uri::has_invalid_segment(path))
         {
-            return Err(lingxia_error::Error::not_found(
+            return Err(lingxia_error::Error::invalid_arg(
                 "directory traversal not allowed",
             ));
         }
@@ -3209,7 +3209,8 @@ impl LxApp {
             }
         }
 
-        Err(lingxia_error::Error::not_found(format!(
+        // A path outside every root is the caller's mistake, not a missing file.
+        Err(lingxia_error::Error::invalid_arg(format!(
             "Access denied: {}",
             path
         )))

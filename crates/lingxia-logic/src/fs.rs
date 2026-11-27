@@ -1,7 +1,7 @@
 use crate::dismissal::{canceled, completed};
 use crate::i18n::{
     js_error, js_error_from_business_code_with_detail, js_internal_error,
-    js_invalid_parameter_error, js_resource_not_found_error,
+    js_invalid_parameter_error, js_resource_not_found_error, js_state_error,
 };
 use base64::{Engine as _, engine::general_purpose};
 use lingxia_service::file::{
@@ -86,9 +86,7 @@ fn resolve_open_file_request(
         ));
     }
 
-    let resolved_path = lxapp
-        .resolve_accessible_path(path)
-        .map_err(crate::i18n::js_error)?;
+    let resolved_path = crate::media::resolve_input_file(lxapp, path)?;
 
     Ok(OpenFileRequest {
         mime_type: mime_from_extension(&resolved_path),
@@ -155,7 +153,7 @@ async fn open_file(
 #[ts_skip]
 struct JSFileDialogFilter {
     name: Option<String>,
-    extensions: Option<Vec<String>>,
+    extensions: Vec<String>,
 }
 
 #[derive(FromJSObject, Clone, Default)]
@@ -412,7 +410,7 @@ fn selected_directory_path_to_uri(lxapp: &LxApp, raw_path: &str) -> JSResult<Str
 /// if (picked.status === 'ok') await attach(picked.file.path);
 /// ```
 ///
-/// @throws {E_INVALID_ARG} A `defaultPath` outside lxapp storage.
+/// @throws {E_INVALID_ARG} A `defaultPath` outside lxapp storage, or a filter without `extensions`.
 /// @throws {E_ABORT} `signal` aborted.
 /// @throws {E_INTERNAL} The picker failed or returned a file the lxapp cannot read.
 async fn pick_file(ctx: JSContext, options: Optional<JSPickFileOptions>) -> JSResult<JSObject> {
@@ -426,7 +424,7 @@ async fn pick_file(ctx: JSContext, options: Optional<JSPickFileOptions>) -> JSRe
 /// Picks one or more files. Resolves `{ status: 'canceled' }` only when the
 /// user dismisses the picker, otherwise `{ status: 'ok', files }`.
 ///
-/// @throws {E_INVALID_ARG} A `defaultPath` outside lxapp storage.
+/// @throws {E_INVALID_ARG} A `defaultPath` outside lxapp storage, or a filter without `extensions`.
 /// @throws {E_ABORT} `signal` aborted.
 /// @throws {E_INTERNAL} The picker failed or returned a file the lxapp cannot read.
 async fn pick_files(ctx: JSContext, options: Optional<JSPickFileOptions>) -> JSResult<JSObject> {
@@ -457,7 +455,7 @@ async fn run_file_picker(
         .unwrap_or_default()
         .into_iter()
         .filter_map(|item| {
-            let extensions = normalize_extensions(item.extensions);
+            let extensions = normalize_extensions(Some(item.extensions));
             if extensions.is_empty() {
                 return None;
             }
@@ -877,12 +875,15 @@ fn file_stats(metadata: std::fs::Metadata) -> FileStats {
 
 fn ensure_not_exists(path: &Path, api_name: &'static str) -> JSResult<()> {
     if std::fs::symlink_metadata(path).is_ok() {
-        return Err(js_error_from_business_code_with_detail(
-            1002,
-            format!("{api_name} destination already exists"),
-        ));
+        return Err(already_exists(format!(
+            "{api_name} destination already exists"
+        )));
     }
     Ok(())
+}
+
+fn already_exists(detail: String) -> rong::RongJSError {
+    rong::HostError::new(rong::error::E_ALREADY_EXISTS, detail).into()
 }
 
 fn ensure_no_symlink_ancestors(
@@ -1319,7 +1320,8 @@ async fn fs_read_dir(ctx: JSContext, path: String) -> JSResult<Vec<DirEntry>> {
 /// Create a managed directory. An existing directory resolves.
 ///
 /// @throws {E_INVALID_ARG} A read-only or outside path, or one through a symlink.
-/// @throws {E_INTERNAL} The parent is missing without `recursive`, or the OS refused.
+/// @throws {E_NOT_FOUND} The parent is missing without `recursive`.
+/// @throws {E_INTERNAL} The OS refused.
 async fn fs_mkdir(
     ctx: JSContext,
     path: String,
@@ -1340,7 +1342,7 @@ async fn fs_mkdir(
     } else {
         std::fs::create_dir(&path.path)
     }
-    .map_err(|err| js_internal_error(format!("fs.mkdir failed: {err}")))?;
+    .map_err(|err| filesystem_error(err, "fs.mkdir"))?;
     finish_write(&lxapp, &path);
     Ok(())
 }
@@ -1352,8 +1354,9 @@ async fn fs_mkdir(
 /// await lx.fs.write('notes/today.md', { data: '# Today' });
 /// ```
 ///
-/// @throws {E_INVALID_ARG} A read-only path, data that does not encode, a file
-/// already there with `overwrite: false`, or a write over the storage quota.
+/// @throws {E_INVALID_ARG} A read-only path, data that does not encode, or a write over
+/// the storage quota.
+/// @throws {E_ALREADY_EXISTS} A file already there with `overwrite: false`.
 async fn fs_write(ctx: JSContext, path: String, options: JSFsWriteOptions) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let path = resolve_writable_path(&lxapp, &path, "fs.write", "path")?;
@@ -1384,8 +1387,9 @@ async fn fs_write(ctx: JSContext, path: String, options: JSFsWriteOptions) -> JS
 /// ```
 ///
 /// @throws {E_NOT_FOUND} No source file.
-/// @throws {E_INVALID_ARG} A source that is not a file, a read-only destination,
-/// one already there without `overwrite`, or a copy over the storage quota.
+/// @throws {E_INVALID_ARG} A source that is not a file, a read-only destination, or a
+/// copy over the storage quota.
+/// @throws {E_ALREADY_EXISTS} A destination already there without `overwrite`.
 async fn fs_copy(ctx: JSContext, source: String, options: JSFsMoveOptions) -> JSResult<()> {
     let JSFsMoveOptions {
         to: destination,
@@ -1430,8 +1434,8 @@ async fn fs_copy(ctx: JSContext, source: String, options: JSFsMoveOptions) -> JS
 /// ```
 ///
 /// @throws {E_NOT_FOUND} No source.
-/// @throws {E_INVALID_ARG} A destination already there without `overwrite`, an
-/// overwrite of a directory, or a move over the storage quota.
+/// @throws {E_INVALID_ARG} An overwrite of a directory, or a move over the storage quota.
+/// @throws {E_ALREADY_EXISTS} A destination already there without `overwrite`.
 async fn fs_rename(ctx: JSContext, source: String, options: JSFsMoveOptions) -> JSResult<()> {
     let JSFsMoveOptions {
         to: destination,
@@ -1457,9 +1461,8 @@ async fn fs_rename(ctx: JSContext, source: String, options: JSFsMoveOptions) -> 
     ensure_write_quota(&lxapp, &destination, incoming, Some(&source), true)?;
     if std::fs::symlink_metadata(&destination.path).is_ok() {
         if !overwrite {
-            return Err(js_error_from_business_code_with_detail(
-                1002,
-                "fs.rename destination already exists",
+            return Err(already_exists(
+                "fs.rename destination already exists".to_string(),
             ));
         }
         if !(symlink_metadata(&source, "fs.rename")?
@@ -1502,7 +1505,8 @@ async fn fs_rename(ctx: JSContext, source: String, options: JSFsMoveOptions) -> 
 ///
 /// @throws {E_NOT_FOUND} Nothing at the path.
 /// @throws {E_INVALID_ARG} A read-only path, or one through a symlink.
-/// @throws {E_INTERNAL} A non-empty directory without `recursive`, or the OS refused.
+/// @throws {E_INVALID_STATE} A non-empty directory without `recursive`; `reason` is `'directoryNotEmpty'`.
+/// @throws {E_INTERNAL} The OS refused.
 async fn fs_remove(
     ctx: JSContext,
     path: String,
@@ -1521,7 +1525,13 @@ async fn fs_remove(
         } else {
             std::fs::remove_dir(&path.path)
         }
-        .map_err(|err| js_internal_error(format!("fs.remove directory failed: {err}")))?;
+        .map_err(|err| match err.kind() {
+            std::io::ErrorKind::DirectoryNotEmpty => js_state_error(
+                "directoryNotEmpty",
+                "fs.remove directory is not empty; pass recursive: true",
+            ),
+            _ => js_internal_error(format!("fs.remove directory failed: {err}")),
+        })?;
     } else {
         return Err(js_invalid_parameter_error(
             "fs.remove path must reference a file, symlink, or directory",

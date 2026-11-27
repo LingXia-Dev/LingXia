@@ -4,7 +4,7 @@ mod types;
 
 use crate::I18nKey;
 use crate::dismissal::canceled;
-use crate::i18n::{js_error, js_internal_error, t};
+use crate::i18n::{js_error, js_internal_error, js_invalid_parameter_error, t};
 use cache::ensure_temp_media_path;
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lingxia_platform::traits::media_interaction::PickMediaMode;
@@ -42,13 +42,19 @@ rong::js_api! {
 /// dismisses the sheet, picker or camera, otherwise `{ status: 'ok', files }`.
 ///
 /// @supports pick.camera
-/// @throws {E_INVALID_ARG} A `sources` or `types` entry outside its union, or an empty `sources`.
+/// @throws {E_INVALID_ARG} A `sources` or `types` entry outside its union, an empty `sources`,
+/// or a `limit` of 0.
 /// @throws {E_NOT_SUPPORTED} Only the camera on a host without `pick.camera`; with the library,
 /// such a host opens the library without asking.
 /// @throws {E_ABORT} `signal` aborted; the source sheet is closed.
 /// @throws {E_INTERNAL} The picker failed or returned an invalid payload.
 async fn pick_media(ctx: JSContext, options: Optional<JSPickMediaOptions>) -> JSResult<JSObject> {
     let opts = options.0.unwrap_or_default();
+    if opts.count == Some(0) {
+        return Err(js_invalid_parameter_error(
+            "pick.media limit must be at least 1",
+        ));
+    }
     let sources = parse_sources(opts.sources)?;
     let mode = parse_pick_mode(opts.types)?;
     let camera = CameraSettings::from_media_option(opts.camera)?;

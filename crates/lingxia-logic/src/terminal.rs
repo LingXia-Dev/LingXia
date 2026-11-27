@@ -259,7 +259,10 @@ async fn settings_get(ctx: JSContext) -> JSResult<JSValue> {
 
 async fn settings_update(ctx: JSContext, patch: JSValue) -> JSResult<JSValue> {
     let (_, data_dir, system_is_dark) = context(&ctx, LogicRoute::TerminalSettingsUpdate)?;
-    let options = patch.clone().to_rust::<RevisionOptions>()?;
+    let options = patch
+        .clone()
+        .to_rust::<RevisionOptions>()
+        .map_err(|error| error.at_argument(1))?;
     let patch = patch.into_object().ok_or_else(|| {
         RongJSError::from(HostError::new(
             rong::error::E_INVALID_ARG,
@@ -283,7 +286,9 @@ async fn settings_update(ctx: JSContext, patch: JSValue) -> JSResult<JSValue> {
 
 async fn settings_reset(ctx: JSContext, options: JSValue) -> JSResult<JSValue> {
     let (_, data_dir, system_is_dark) = context(&ctx, LogicRoute::TerminalSettingsReset)?;
-    let options = options.to_rust::<ResetOptions>()?;
+    let options = options
+        .to_rust::<ResetOptions>()
+        .map_err(|error| error.at_argument(1))?;
     lingxia_terminal_config::runtime::reset_config_if_revision(
         &data_dir,
         options.scope.as_deref(),
@@ -301,7 +306,9 @@ async fn schemes_list(ctx: JSContext) -> JSResult<JSValue> {
 
 async fn schemes_import(ctx: JSContext, options: JSValue) -> JSResult<JSValue> {
     let (_, data_dir, _) = context(&ctx, LogicRoute::TerminalSchemesImport)?;
-    let options = options.to_rust::<ImportOptions>()?;
+    let options = options
+        .to_rust::<ImportOptions>()
+        .map_err(|error| error.at_argument(1))?;
     let details = import_scheme_text(
         &data_dir,
         &options.text,
@@ -454,7 +461,9 @@ async fn conpty_status(ctx: JSContext) -> JSResult<JSValue> {
 #[cfg(target_os = "windows")]
 async fn conpty_install(ctx: JSContext, options: JSValue) -> JSResult<JSValue> {
     let (app, data_dir, _) = context(&ctx, LogicRoute::TerminalConptyInstall)?;
-    let options = options.to_rust::<InstallConptyOptions>()?;
+    let options = options
+        .to_rust::<InstallConptyOptions>()
+        .map_err(|error| error.at_argument(1))?;
     let logical_path = options.path.trim();
     if !logical_path.starts_with("lx://temp/") {
         return Err(HostError::new(
@@ -485,7 +494,9 @@ async fn conpty_install(ctx: JSContext, options: JSValue) -> JSResult<JSValue> {
 #[cfg(target_os = "windows")]
 async fn conpty_set_enabled(ctx: JSContext, options: JSValue) -> JSResult<JSValue> {
     let (_, data_dir, _) = context(&ctx, LogicRoute::TerminalConptySetEnabled)?;
-    let options = options.to_rust::<SetConptyEnabledOptions>()?;
+    let options = options
+        .to_rust::<SetConptyEnabledOptions>()
+        .map_err(|error| error.at_argument(1))?;
     let status = lingxia_terminal_config::windows::set_enabled(&data_dir, options.enabled)
         .map_err(|error| HostError::new(rong::error::E_INVALID_STATE, error.to_string()))?;
     to_js(&ctx, &status)
@@ -637,7 +648,9 @@ fn install_on_change(
         move |ctx: JSContext, listener: JSValue, options: Optional<JSValue>| -> JSResult<JSFunc> {
             lxapp::lx::subscribe(&ctx, options.0, || {
                 require_access(&ctx, LogicRoute::TerminalSettingsOnChange)?;
-                let listener = listener.to_rust::<JSFunc>()?;
+                let listener = listener
+                    .to_rust::<JSFunc>()
+                    .map_err(|error| error.at_argument(1))?;
                 let slot = {
                     let mut slots = listeners.borrow_mut();
                     slots.push(Some(listener));

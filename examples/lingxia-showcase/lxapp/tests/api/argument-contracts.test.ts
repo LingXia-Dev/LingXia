@@ -89,9 +89,8 @@ test('reject malformed transfer arguments before touching the network', {
     { label: 'empty url', api: 'network.download', args: [''], code: 'E_INVALID_ARG' },
     { label: 'empty to', api: 'network.download', args: ['https://example.com/a', { to: '' }], code: 'E_INVALID_ARG' },
     // Home has no provider, so public hosts are allowed. ftp is not a grant
-    // question; the transfer client rejects the scheme as a network error.
-    // Transfer-time failures surface on `result`, not from the factory call.
-    { label: 'non-http scheme', api: 'network.download', args: ['ftp://example.com/a'], then: 'result', code: 'E_NETWORK' },
+    // question; the URL is refused before anything reaches the network.
+    { label: 'non-http scheme', api: 'network.download', args: ['ftp://example.com/a'], then: 'result', code: 'E_INVALID_ARG' },
     // A dev session unlocks loopback so the suite can reach a fixture. Port 1
     // answers nothing, so this fails at connect. A release build has no dev
     // session and denies loopback outright.
@@ -108,7 +107,7 @@ test('reject malformed transfer arguments before touching the network', {
     { label: 'upload raw with fields', api: 'network.upload', args: ['http://127.0.0.1:1/upload', { path: 'a.bin', bodyMode: 'raw', fields: { note: 'x' } }], code: 'E_INVALID_ARG' },
     { label: 'upload raw with field', api: 'network.upload', args: ['http://127.0.0.1:1/upload', { path: 'a.bin', bodyMode: 'raw', field: 'asset' }], code: 'E_INVALID_ARG' },
     // Shape is fine here; the file simply is not there.
-    { label: 'upload missing file', api: 'network.upload', args: ['http://127.0.0.1:1/upload', { path: 'no-such-file.bin' }], code: 'E_INVALID_ARG' },
+    { label: 'upload missing file', api: 'network.upload', args: ['http://127.0.0.1:1/upload', { path: 'no-such-file.bin' }], code: 'E_NOT_FOUND' },
   ]);
 });
 

@@ -646,6 +646,12 @@ pub(crate) async fn open_url_text(
     // chrome. Refusing it here would take URL asides away from every phone —
     // `scope` is how that platform difference is reported, not a rejection.
     let realized = resolve_placement(&ctx, &options, &["main", "aside"], "main", |_| true)?;
+    if realized != "aside" && get_property(&options, "edge").is_some() {
+        return Err(surface_error(
+            SurfaceErrorCode::InvalidArg,
+            "edge is only valid when the url opens as an aside",
+        ));
+    }
 
     let spec = JSObject::new(&ctx);
     spec.set("url", url)?;
@@ -716,6 +722,7 @@ fn get_surface(ctx: JSContext, key: String) -> JSResult<JSValue> {
 ///
 /// @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app, or the app is taken down; `reason` is `'appUnderMaintenance'` or `'appSuspended'`.
 /// @throws {E_INVALID_ARG} An empty app id, an unknown option, or an unknown `as`.
+/// @throws {E_NOT_FOUND} The app is not installed and no update provider can install it.
 /// @throws {E_SURFACE_ROLE_LOCKED} The app is the root main surface and cannot change role.
 /// @throws {E_SURFACE_CONFLICT} The app is already open in the other role; `reason` is `'appOpenInOtherRole'`.
 async fn open_app(

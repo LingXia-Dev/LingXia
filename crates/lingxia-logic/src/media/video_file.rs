@@ -194,9 +194,7 @@ async fn get_video_info_api(ctx: JSContext, path: String) -> JSResult<JSVideoInf
     let runtime = &lxapp.runtime;
 
     let trimmed_path = path.trim();
-    let resolved = lxapp
-        .resolve_accessible_path(trimmed_path)
-        .map_err(js_error)?;
+    let resolved = super::resolve_input_file(&lxapp, trimmed_path)?;
     let normalized_path = resolved.to_string_lossy().into_owned();
 
     let response_path =
@@ -236,9 +234,7 @@ async fn extract_video_thumbnail_api(
     let runtime = &lxapp.runtime;
     let options = options.0.unwrap_or_default();
 
-    let resolved_source = lxapp
-        .resolve_accessible_path(path.trim())
-        .map_err(js_error)?;
+    let resolved_source = super::resolve_input_file(&lxapp, &path)?;
     let source_uri = resolved_source.to_string_lossy().into_owned();
 
     let explicit_output_uri = explicit_lx_output_uri(options.to.as_deref());
@@ -291,6 +287,7 @@ async fn extract_video_thumbnail_api(
 /// const { path, size } = await task.result;
 /// ```
 ///
+/// @throws {E_NOT_FOUND} No file at the path.
 /// @throws {E_INVALID_ARG} A path the lxapp may not read, `to` equal to the source, or `quality` mixed with `bitrate`, `fps` or `resolution`.
 /// @throws {E_ABORT} `cancel()` was called or `signal` was aborted (on `result`).
 /// @throws {E_INTERNAL} The transcode failed (on `result`).
@@ -304,9 +301,7 @@ fn compress_video_api(
     let lxapp = LxApp::from_ctx(&ctx)?;
     let runtime = lxapp.runtime.clone();
 
-    let resolved_source = lxapp
-        .resolve_accessible_path(path.trim())
-        .map_err(js_error)?;
+    let resolved_source = super::resolve_input_file(&lxapp, &path)?;
     let source_uri = resolved_source.to_string_lossy().into_owned();
 
     let explicit_output_uri = explicit_lx_output_uri(options.to.as_deref());

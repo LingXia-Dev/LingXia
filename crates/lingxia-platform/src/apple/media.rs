@@ -123,7 +123,7 @@ impl MediaInteraction for Platform {
         #[cfg(not(target_os = "ios"))]
         {
             let _ = request;
-            Err(Error::internal(
+            Err(Error::not_supported(
                 "save_image_to_photos_album is only supported on iOS".to_string(),
             ))
         }
@@ -138,7 +138,7 @@ impl MediaInteraction for Platform {
         #[cfg(not(target_os = "ios"))]
         {
             let _ = request;
-            Err(Error::internal(
+            Err(Error::not_supported(
                 "save_video_to_photos_album is only supported on iOS".to_string(),
             ))
         }

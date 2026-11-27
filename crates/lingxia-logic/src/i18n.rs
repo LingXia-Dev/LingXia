@@ -53,6 +53,7 @@ pub(crate) const STATE_REASONS: &[(&str, &str)] = &[
     ("appClosed", rong::error::E_INVALID_STATE),
     ("pageUnloaded", rong::error::E_INVALID_STATE),
     ("tabBarNotDeclared", rong::error::E_INVALID_STATE),
+    ("directoryNotEmpty", rong::error::E_INVALID_STATE),
 ];
 
 /// Whether a reason is one `LxErrorReason` lists.

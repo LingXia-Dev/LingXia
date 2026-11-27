@@ -17,10 +17,24 @@ rong::js_api! {
 /// Save a picture or a video to the system photo library; which one comes from
 /// the file's extension, else its leading bytes.
 ///
-/// @throws {E_INVALID_ARG} The file is neither.
+/// @supports media.saveToLibrary
+/// @throws {E_NOT_FOUND} No file at the path.
+/// @throws {E_INVALID_ARG} The file is neither, or a path the lxapp may not read.
+/// @throws {E_NOT_SUPPORTED} A desktop host, which has no system photo library.
 async fn save_to_library(ctx: JSContext, path: String) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
-    let resolved = lxapp.resolve_accessible_path(&path).map_err(js_error)?;
+    // A path the lxapp may not read is refused everywhere, before the host's gate.
+    lxapp
+        .resolve_accessible_path(path.trim())
+        .map_err(js_error)?;
+    if !crate::capability::exposes(&ctx, "media.saveToLibrary") {
+        return Err(rong::HostError::new(
+            rong::error::E_NOT_SUPPORTED,
+            "lx.media.saveToLibrary: this host has no photo library; check lx.supports('media.saveToLibrary') first",
+        )
+        .into());
+    }
+    let resolved = super::resolve_input_file(&lxapp, &path)?;
     let mime = crate::pick::mime_for_path(&resolved);
     let image = if mime.starts_with("image/") {
         true

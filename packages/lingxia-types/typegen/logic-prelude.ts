@@ -544,7 +544,7 @@ declare global {
      * Download over HTTP(S), streamed to disk. Returns the task before the
      * transfer starts: `result` settles once, iterating streams progress,
      * `cancel()` aborts.
-     * @throws {E_INVALID_ARG} A malformed URL or options, or a `to` already in use.
+     * @throws {E_INVALID_ARG} A URL that is not absolute http(s), malformed options, or a `to` already in use.
      * @throws {E_PERMISSION_DENIED} `to: 'downloads'` without the host's Downloads grant.
      * @throws {E_ABORT} `cancel()` was called or `signal` was aborted (on `result`).
      * @throws {E_NETWORK} The server answered with an error status (`reason` `'serverErrorStatus'`, the status in `data.status`) or did not answer (`'connectionFailed'`), on `result`.

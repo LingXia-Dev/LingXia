@@ -547,7 +547,7 @@ declare global {
      * Download over HTTP(S), streamed to disk. Returns the task before the
      * transfer starts: `result` settles once, iterating streams progress,
      * `cancel()` aborts.
-     * @throws {E_INVALID_ARG} A malformed URL or options, or a `to` already in use.
+     * @throws {E_INVALID_ARG} A URL that is not absolute http(s), malformed options, or a `to` already in use.
      * @throws {E_PERMISSION_DENIED} `to: 'downloads'` without the host's Downloads grant.
      * @throws {E_ABORT} `cancel()` was called or `signal` was aborted (on `result`).
      * @throws {E_NETWORK} The server answered with an error status (`reason` `'serverErrorStatus'`, the status in `data.status`) or did not answer (`'connectionFailed'`), on `result`.
@@ -1796,8 +1796,9 @@ export type LxAppUpdateApi = globalThis.LxAppUpdateApi;
  * - `appClosed` with `E_INVALID_STATE`
  * - `pageUnloaded` with `E_INVALID_STATE`
  * - `tabBarNotDeclared` with `E_INVALID_STATE`
+ * - `directoryNotEmpty` with `E_INVALID_STATE`
  */
-export type LxErrorReason = 'userCanceled' | 'userDeclined' | 'cameraPermissionDenied' | 'locationPermissionDenied' | 'microphonePermissionDenied' | 'photosPermissionDenied' | 'storagePermissionDenied' | 'clipboardPermissionDenied' | 'locationServicesDisabled' | 'refreshNotEnabled' | 'networkUnavailable' | 'serverErrorStatus' | 'connectionFailed' | 'deviceUnsupported' | 'hostUpgradeRequired' | 'wifiSystemError' | 'wifiPasswordWrong' | 'wifiTimedOut' | 'wifiUnsupported' | 'wifiPermissionDenied' | 'wifiPromptUnanswered' | 'wifiConnectionDeclined' | 'wifiDisabled' | 'wifiNetworkNotFound' | 'placementUnsupported' | 'appOpenInOtherRole' | 'appUnderMaintenance' | 'appSuspended' | 'tabAlreadyOpen' | 'stackFull' | 'revisionOutdated' | 'appClosed' | 'pageUnloaded' | 'tabBarNotDeclared';
+export type LxErrorReason = 'userCanceled' | 'userDeclined' | 'cameraPermissionDenied' | 'locationPermissionDenied' | 'microphonePermissionDenied' | 'photosPermissionDenied' | 'storagePermissionDenied' | 'clipboardPermissionDenied' | 'locationServicesDisabled' | 'refreshNotEnabled' | 'networkUnavailable' | 'serverErrorStatus' | 'connectionFailed' | 'deviceUnsupported' | 'hostUpgradeRequired' | 'wifiSystemError' | 'wifiPasswordWrong' | 'wifiTimedOut' | 'wifiUnsupported' | 'wifiPermissionDenied' | 'wifiPromptUnanswered' | 'wifiConnectionDeclined' | 'wifiDisabled' | 'wifiNetworkNotFound' | 'placementUnsupported' | 'appOpenInOtherRole' | 'appUnderMaintenance' | 'appSuspended' | 'tabAlreadyOpen' | 'stackFull' | 'revisionOutdated' | 'appClosed' | 'pageUnloaded' | 'tabBarNotDeclared' | 'directoryNotEmpty';
 
 export type MediaApi = globalThis.MediaApi;
 
@@ -3946,7 +3947,8 @@ declare global {
     /**
      * Create a managed directory. An existing directory resolves.
      * @throws {E_INVALID_ARG} A read-only or outside path, or one through a symlink.
-     * @throws {E_INTERNAL} The parent is missing without `recursive`, or the OS refused.
+     * @throws {E_NOT_FOUND} The parent is missing without `recursive`.
+     * @throws {E_INTERNAL} The OS refused.
      */
     mkdir(path: ManagedPath, options?: FsMkdirOptions): Promise<void>;
     /**
@@ -3955,8 +3957,9 @@ declare global {
      * ```ts
      * await lx.fs.write('notes/today.md', { data: '# Today' });
      * ```
-     * @throws {E_INVALID_ARG} A read-only path, data that does not encode, a file
-     * already there with `overwrite: false`, or a write over the storage quota.
+     * @throws {E_INVALID_ARG} A read-only path, data that does not encode, or a write over
+     * the storage quota.
+     * @throws {E_ALREADY_EXISTS} A file already there with `overwrite: false`.
      */
     write(path: ManagedPath, options: FsWriteOptions): Promise<void>;
     /**
@@ -3966,8 +3969,9 @@ declare global {
      * await lx.fs.copy(picked, { to: 'lx://userdata/avatar.jpg', overwrite: true });
      * ```
      * @throws {E_NOT_FOUND} No source file.
-     * @throws {E_INVALID_ARG} A source that is not a file, a read-only destination,
-     * one already there without `overwrite`, or a copy over the storage quota.
+     * @throws {E_INVALID_ARG} A source that is not a file, a read-only destination, or a
+     * copy over the storage quota.
+     * @throws {E_ALREADY_EXISTS} A destination already there without `overwrite`.
      */
     copy(source: ManagedPath, options: FsCopyOptions): Promise<void>;
     /**
@@ -3977,15 +3981,16 @@ declare global {
      * await lx.fs.rename('drafts/a.txt', { to: 'notes/a.txt' });
      * ```
      * @throws {E_NOT_FOUND} No source.
-     * @throws {E_INVALID_ARG} A destination already there without `overwrite`, an
-     * overwrite of a directory, or a move over the storage quota.
+     * @throws {E_INVALID_ARG} An overwrite of a directory, or a move over the storage quota.
+     * @throws {E_ALREADY_EXISTS} A destination already there without `overwrite`.
      */
     rename(source: ManagedPath, options: FsRenameOptions): Promise<void>;
     /**
      * Remove a managed file or directory.
      * @throws {E_NOT_FOUND} Nothing at the path.
      * @throws {E_INVALID_ARG} A read-only path, or one through a symlink.
-     * @throws {E_INTERNAL} A non-empty directory without `recursive`, or the OS refused.
+     * @throws {E_INVALID_STATE} A non-empty directory without `recursive`; `reason` is `'directoryNotEmpty'`.
+     * @throws {E_INTERNAL} The OS refused.
      */
     remove(path: ManagedPath, options?: FsRemoveOptions): Promise<void>;
   }
@@ -4185,7 +4190,10 @@ declare global {
     /**
      * Save a picture or a video to the system photo library; which one comes from
      * the file's extension, else its leading bytes.
-     * @throws {E_INVALID_ARG} The file is neither.
+     * @supports media.saveToLibrary
+     * @throws {E_NOT_FOUND} No file at the path.
+     * @throws {E_INVALID_ARG} The file is neither, or a path the lxapp may not read.
+     * @throws {E_NOT_SUPPORTED} A desktop host, which has no system photo library.
      */
     saveToLibrary(path: ManagedPath): Promise<void>;
     /**
@@ -4224,6 +4232,7 @@ declare global {
      * for await (const { fraction } of task) render(fraction);
      * const { path, size } = await task.result;
      * ```
+     * @throws {E_NOT_FOUND} No file at the path.
      * @throws {E_INVALID_ARG} A path the lxapp may not read, `to` equal to the source, or `quality` mixed with `bitrate`, `fps` or `resolution`.
      * @throws {E_ABORT} `cancel()` was called or `signal` was aborted (on `result`).
      * @throws {E_INTERNAL} The transcode failed (on `result`).
@@ -4259,7 +4268,8 @@ declare global {
      * object-storage URLs expect. The task comes back before the transfer starts;
      * iterate it for progress, await `result` for the answer.
      * @default A `POST` with a `multipart/form-data` body.
-     * @throws {E_INVALID_ARG} A malformed URL, a missing or unreadable file, or bad headers.
+     * @throws {E_INVALID_ARG} A URL that is not absolute http(s), an unreadable file, or bad headers.
+     * @throws {E_NOT_FOUND} No file at `path`.
      * @throws {E_ABORT} `cancel()` was called or `signal` was aborted (on `result`).
      * @throws {E_NETWORK} The server answered with an error status (`reason` `'serverErrorStatus'`, the status in `data.status`) or did not answer (`'connectionFailed'`), on `result`.
      * @throws {E_TIMEOUT} The server stopped answering (on `result`).
@@ -4321,7 +4331,7 @@ declare global {
      * const picked = await lx.pick.file({ filters: [{ extensions: ['pdf'] }] });
      * if (picked.status === 'ok') await attach(picked.file.path);
      * ```
-     * @throws {E_INVALID_ARG} A `defaultPath` outside lxapp storage.
+     * @throws {E_INVALID_ARG} A `defaultPath` outside lxapp storage, or a filter without `extensions`.
      * @throws {E_ABORT} `signal` aborted.
      * @throws {E_INTERNAL} The picker failed or returned a file the lxapp cannot read.
      */
@@ -4329,7 +4339,7 @@ declare global {
     /**
      * Picks one or more files. Resolves `{ status: 'canceled' }` only when the
      * user dismisses the picker, otherwise `{ status: 'ok', files }`.
-     * @throws {E_INVALID_ARG} A `defaultPath` outside lxapp storage.
+     * @throws {E_INVALID_ARG} A `defaultPath` outside lxapp storage, or a filter without `extensions`.
      * @throws {E_ABORT} `signal` aborted.
      * @throws {E_INTERNAL} The picker failed or returned a file the lxapp cannot read.
      */
@@ -4352,7 +4362,8 @@ declare global {
      * compression is `lx.media.compressImage`. Resolves `{ status: 'canceled' }` when the person
      * dismisses the sheet, picker or camera, otherwise `{ status: 'ok', files }`.
      * @supports pick.camera
-     * @throws {E_INVALID_ARG} A `sources` or `types` entry outside its union, or an empty `sources`.
+     * @throws {E_INVALID_ARG} A `sources` or `types` entry outside its union, an empty `sources`,
+     * or a `limit` of 0.
      * @throws {E_NOT_SUPPORTED} Only the camera on a host without `pick.camera`; with the library,
      * such a host opens the library without asking.
      * @throws {E_ABORT} `signal` aborted; the source sheet is closed.
@@ -4437,6 +4448,7 @@ declare global {
      * Show another lxapp in a shell slot. Control app only.
      * @throws {E_PERMISSION_DENIED} From an lxapp other than the Control app, or the app is taken down; `reason` is `'appUnderMaintenance'` or `'appSuspended'`.
      * @throws {E_INVALID_ARG} An empty app id, an unknown option, or an unknown `as`.
+     * @throws {E_NOT_FOUND} The app is not installed and no update provider can install it.
      * @throws {E_SURFACE_ROLE_LOCKED} The app is the root main surface and cannot change role.
      * @throws {E_SURFACE_CONFLICT} The app is already open in the other role; `reason` is `'appOpenInOtherRole'`.
      */
@@ -4506,6 +4518,7 @@ declare global {
     /**
      * Replace the tray's dropdown menu. A picked item runs its `onSelect`.
      * @supports host.tray
+     * @throws {E_INVALID_ARG} An item without a non-empty `label`, or a field of the wrong type.
      * @throws {E_NOT_SUPPORTED} Off the desktop.
      */
     replace(items: readonly (TrayMenuItem | TrayMenuSeparator)[]): void;
@@ -4526,6 +4539,7 @@ declare global {
     actionSheet(options: ActionSheetOptions): Promise<ActionSheetResult>;
     /**
      * Acknowledgement-only dialog. Resolves when the user dismisses it.
+     * @throws {E_INVALID_ARG} A missing or empty `title`.
      * @throws {E_ABORT} `signal` aborted; the dialog is closed.
      * @throws {E_INVALID_STATE} No page can show a dialog now; `reason` is `'appClosed'` when the app is not open.
      * @throws {E_INTERNAL} The dialog could not be shown.
@@ -4533,6 +4547,7 @@ declare global {
     alert(options: string | AlertOptions): Promise<void>;
     /**
      * Ask a yes/no question. Dismissal resolves false; presentation failure rejects.
+     * @throws {E_INVALID_ARG} A missing or empty `title`.
      * @throws {E_ABORT} `signal` aborted; the dialog is closed.
      * @throws {E_INVALID_STATE} No page can show a dialog now; `reason` is `'appClosed'` when the app is not open.
      * @throws {E_INTERNAL} The dialog could not be shown.
@@ -4585,4 +4600,4 @@ declare global {
 export {};
 
 /** Feature contracts generated from the runtime registry. */
-export type LxFeature = 'app.appUse' | 'app.browser' | 'app.browserUse' | 'app.computerUse' | 'app.mediaCapture' | 'app.proxy' | 'automation' | 'device.haptics' | 'host.autostart' | 'host.badge' | 'host.banner' | 'host.notification' | 'host.selfUpdate' | 'host.terminal' | 'host.terminal.conpty' | 'host.tray' | 'pick.camera' | 'pick.directory' | 'surface.tab' | 'surface.window' | 'surface.window.fullChrome';
+export type LxFeature = 'app.appUse' | 'app.browser' | 'app.browserUse' | 'app.computerUse' | 'app.mediaCapture' | 'app.proxy' | 'automation' | 'device.haptics' | 'host.autostart' | 'host.badge' | 'host.banner' | 'host.notification' | 'host.selfUpdate' | 'host.terminal' | 'host.terminal.conpty' | 'host.tray' | 'media.saveToLibrary' | 'pick.camera' | 'pick.directory' | 'surface.tab' | 'surface.window' | 'surface.window.fullChrome';

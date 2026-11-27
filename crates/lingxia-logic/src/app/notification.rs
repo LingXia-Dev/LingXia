@@ -160,7 +160,7 @@ mod guest_prompt {
 async fn show(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
     let (invocation, request) =
         authorization::require_before_decode(&ctx, LogicRoute::AppNotificationShow, || {
-            decode_show(options)
+            decode_show(options).map_err(|error| error.at_argument(1))
         })?;
     let scope = AttentionScope::of(&invocation);
     let caller = invocation.lxapp();
@@ -245,7 +245,9 @@ async fn show(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
 async fn cancel(ctx: JSContext, id: JSValue) -> JSResult<()> {
     let (invocation, id) =
         authorization::require_before_decode(&ctx, LogicRoute::AppNotificationCancel, || {
-            let id = id.to_rust::<String>()?;
+            let id = id
+                .to_rust::<String>()
+                .map_err(|error| error.at_argument(1))?;
             if id.is_empty() {
                 return Err(js_invalid_parameter_error(
                     "lx.host.notification.cancel id must not be empty",

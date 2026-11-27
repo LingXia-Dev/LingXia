@@ -244,7 +244,9 @@ fn sidebar_actions_replace(ctx: JSContext, items: JSValue) -> JSResult<Promise> 
 fn replace_now(ctx: &JSContext, items: JSValue) -> JSResult<()> {
     let (_, items) =
         authorization::require_before_decode(ctx, LogicRoute::ShellSidebarReplace, || {
-            items.to_rust::<Vec<JSObject>>()
+            items
+                .to_rust::<Vec<JSObject>>()
+                .map_err(|error| error.at_argument(1))
         })?;
     let parsed = items
         .iter()
@@ -272,7 +274,9 @@ fn sidebar_actions_update(ctx: JSContext, id: JSValue, patch: JSValue) -> JSResu
 fn update_now(ctx: &JSContext, id: JSValue, patch: JSValue) -> JSResult<()> {
     let (_, (id, patch)) =
         authorization::require_before_decode(ctx, LogicRoute::ShellSidebarUpdate, || {
-            let id = id.to_rust::<String>()?;
+            let id = id
+                .to_rust::<String>()
+                .map_err(|error| error.at_argument(1))?;
             let patch = patch.into_object().ok_or_else(|| {
                 rong::HostError::new(
                     rong::error::E_INVALID_ARG,
@@ -303,7 +307,7 @@ fn sidebar_actions_remove(ctx: JSContext, id: JSValue) -> JSResult<Promise> {
 fn remove_now(ctx: &JSContext, id: JSValue) -> JSResult<()> {
     let (_, id) =
         authorization::require_before_decode(ctx, LogicRoute::ShellSidebarRemove, || {
-            id.to_rust::<String>()
+            id.to_rust::<String>().map_err(|error| error.at_argument(1))
         })?;
     let mut handlers = retained_handlers(ctx);
     handlers.remove(id.trim());

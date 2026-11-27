@@ -11,6 +11,20 @@ mod video_file;
 
 use rong::{JSContext, JSObject, JSResult};
 
+/// The file an API reads from: refused before the platform sees it, so a missing
+/// file is `E_NOT_FOUND` everywhere rather than whatever the decoder says.
+pub(crate) fn resolve_input_file(lxapp: &lxapp::LxApp, path: &str) -> JSResult<std::path::PathBuf> {
+    let resolved = lxapp
+        .resolve_accessible_path(path.trim())
+        .map_err(crate::i18n::js_error)?;
+    if !resolved.exists() {
+        return Err(crate::i18n::js_resource_not_found_error(format!(
+            "no such file: {path}"
+        )));
+    }
+    Ok(resolved)
+}
+
 pub(crate) fn media_namespace(ctx: &JSContext) -> JSResult<JSObject> {
     let lx = ctx.global().get::<_, JSObject>("lx")?;
     match lx.get::<_, JSObject>("media") {

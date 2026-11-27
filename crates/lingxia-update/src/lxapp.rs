@@ -235,7 +235,7 @@ pub async fn ensure_first_install<H: LxAppUpdateHost>(host: &H) -> Result<(), Up
     }
 
     if !host.has_update_provider() {
-        return Err(UpdateError::unsupported(format!(
+        return Err(UpdateError::not_found(format!(
             "lxapp '{}' is not installed; remote install unavailable",
             host.target_appid()
         )));
