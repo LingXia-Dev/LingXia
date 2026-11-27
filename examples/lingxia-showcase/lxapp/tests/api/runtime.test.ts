@@ -234,7 +234,7 @@ test("clear, prefix-list, missing vs null, and persist storage across reLaunch",
     await storage.set(ns + '-a', 1);
     await storage.set(ns + '-b', 2);
     await storage.set(ns + '-null', null);
-    const prefixed = (await storage.list(ns)).sort();
+    const prefixed = [...(await storage.list(ns))].sort();
     const storedNull = await storage.get(ns + '-null');
     const missing = await storage.get(ns + '-missing');
     const listedNull = prefixed.includes(ns + '-null');

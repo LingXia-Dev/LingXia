@@ -28,7 +28,7 @@ test('a tab returned to shows its last frame until a new one is shown', {
     const label = `away ${away} ms`;
     if (back.reveal.covers > before.reveal.covers) {
       // Taken away by a frame shown since the return, at the page's current size.
-      expect(back.reveal.lastCoverMs, label).not.toBeNull();
+      expect(back.reveal.lastCoverMs, label).not.toBe(null);
     } else if (hostReveal) {
       expect(['frame', 'current', 'deadline'], label).toContain(back.reveal.lastReveal?.reason);
     } else {
