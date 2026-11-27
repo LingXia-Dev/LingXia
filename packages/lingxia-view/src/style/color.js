@@ -19,6 +19,15 @@ export function appColorName(value) {
 /** A role or an app colour; which app colours exist is the build's question. */
 export const isColorName = value => isRole(value) || appColorName(value) !== undefined;
 
+const hex = /^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/;
+const look = /^light-dark\(([^,()]+),([^,()]+)\)$/;
+/** A colour the core resolves at paint: hex, a role or app colour, or a class's `light-dark(a,b)` of those. */
+export function isPaintColor(value) {
+  if (typeof value !== 'string') return false;
+  const pair = look.exec(value);
+  return pair ? [pair[1], pair[2]].every(side => hex.test(side.trim()) || isColorName(side.trim())) : hex.test(value) || isColorName(value);
+}
+
 const appList = appColors => appColors?.size ? `; this app's colours: ${[...appColors].map(name => `app.${name}`).join(', ')}` : '';
 
 /**
@@ -34,7 +43,7 @@ export function colorProblem(value, where = 'a page colour', appColors) {
 
 /** Runtime admits what the wire carries: hex too, since the build already refused authored hex. */
 export function wireColorProblem(value, where) {
-  return /^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(value) ? undefined : colorProblem(value, where);
+  return look.test(value) ? (isPaintColor(value) ? undefined : colorProblem(value, where)) : hex.test(value) ? undefined : colorProblem(value, where);
 }
 
 /** Plot series take the categorical roles or the app's own colours. */

@@ -1102,6 +1102,30 @@ function inert(name) {
   return families.find(([test]) => test.test(base))?.[1] ?? `${base} (it sets nothing the native renderer draws)`;
 }
 
+// Keys the core resolves against the palette at paint; gradients and vectors take literals.
+const lookKey = /^(color|[a-z]+Color)$/;
+const lookFree = new Set(['gradient', 'backgroundImage', 'maskImage', 'fill', 'stroke']);
+const wireColor = /^(#[0-9a-f]{6}([0-9a-f]{2})?|(app\.)?[a-z][a-z0-9-]*(\/\d{1,3})?)$/;
+
+/** `light` and `dark` as one value whose differing colours become `light-dark(…)`, so an
+ * appearance switch repaints without a rerun; undefined when anything else differs. */
+function pairLooks(light, dark, key = '') {
+  if (JSON.stringify(light) === JSON.stringify(dark)) return light;
+  if (typeof light === 'string' && typeof dark === 'string')
+    return lookKey.test(key) && wireColor.test(light) && wireColor.test(dark) ? `light-dark(${light},${dark})` : undefined;
+  if (!light || !dark || typeof light !== 'object' || typeof dark !== 'object' || lookFree.has(key)) return undefined;
+  if (Array.isArray(light) !== Array.isArray(dark)) return undefined;
+  const keys = Object.keys(light);
+  if (keys.length !== Object.keys(dark).length || !keys.every(k => Object.hasOwn(dark, k))) return undefined;
+  const out = Array.isArray(light) ? [] : {};
+  for (const k of keys) {
+    const value = pairLooks(light[k], dark[k], Array.isArray(light) ? key : k);
+    if (value === undefined) return undefined;
+    out[k] = value;
+  }
+  return out;
+}
+
 const paintsColor = result => Object.keys(result.style).some(key => styleTable[key]?.lower === 'color') ||
   Boolean(result.gradient) || result.shadow?.color !== undefined || result.shadow?.ringColor !== undefined
   || result.shadow?.ringOffsetColor !== undefined || result.shadow?.insetRingColor !== undefined;
@@ -1181,7 +1205,9 @@ export async function compileUtilities(candidates, theme = '', { literalColors: 
       const light = when.appearance === 'dark' ? undefined : lower(palettes.light);
       const dark = lower(palettes.dark);
       if (when.appearance === 'dark' && !literal && paintsColor(dark)) throw new RoleError('roles follow appearance; drop dark:');
+      const looks = when.appearance ? undefined : pairLooks(light, dark);
       if (when.appearance || JSON.stringify(light) === JSON.stringify(dark)) rules.push({ name, when, ...dark });
+      else if (looks) rules.push({ name, when, ...looks });
       else rules.push({ name, when: { ...when, appearance: 'light' }, ...light }, { name, when: { ...when, appearance: 'dark' }, ...dark });
     } catch (error) {
       if (!(error instanceof Unsupported) && !String(error.message).startsWith('UI_ANIMATION')) throw error;

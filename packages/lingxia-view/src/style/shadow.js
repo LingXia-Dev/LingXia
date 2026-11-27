@@ -1,4 +1,4 @@
-import { isColorName } from './color.js';
+import { isPaintColor } from './color.js';
 const show = value => {
   if (typeof value === 'number') return String(value);
   try { return (JSON.stringify(value) ?? typeof value).slice(0, 40); }
@@ -20,14 +20,14 @@ export function normalizeShadows(value) {
       result[key] = number;
     }
     result.color = shadow.color === undefined ? 'currentColor' : shadow.color;
-    if (result.color !== 'currentColor' && (typeof result.color !== 'string' || !(/^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(result.color) || isColorName(result.color)))) invalid();
+    if (result.color !== 'currentColor' && !isPaintColor(result.color)) invalid();
     return result;
   });
 }
 
 const ringColor = (value, invalid) => {
   const color = value === undefined ? 'currentColor' : value;
-  if (color !== 'currentColor' && (typeof color !== 'string' || !(/^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(color) || isColorName(color)))) invalid();
+  if (color !== 'currentColor' && !isPaintColor(color)) invalid();
   return color;
 };
 

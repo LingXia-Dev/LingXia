@@ -4,14 +4,19 @@ use lingxia_theme::{Appearance, Prefs, ROLE_COUNT, Role};
 use std::collections::BTreeMap;
 use std::sync::{Arc, OnceLock};
 
-/// The role slots, and the app's own colours by name with `on-<name>` for each fill's label.
+/// The role slots, the app's own colours by name with `on-<name>` for each fill's label, and
+/// whether it is a dark look, which picks the side of a `light-dark(…)` colour.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Palette(pub [[u8; 4]; ROLE_COUNT], Arc<BTreeMap<String, [u8; 4]>>);
+pub struct Palette(
+    pub [[u8; 4]; ROLE_COUNT],
+    Arc<BTreeMap<String, [u8; 4]>>,
+    bool,
+);
 
 impl Palette {
     /// A palette of roles alone.
     pub fn from_roles(roles: [[u8; 4]; ROLE_COUNT]) -> Palette {
-        Palette(roles, Arc::default())
+        Palette(roles, Arc::default(), false)
     }
 
     /// `theme` as painted: its roles and its app colours.
@@ -21,7 +26,11 @@ impl Palette {
             .iter()
             .map(|(name, color)| (name.clone(), color.0))
             .collect();
-        Palette(theme.palette.map(|color| color.0), Arc::new(app))
+        Palette(
+            theme.palette.map(|color| color.0),
+            Arc::new(app),
+            theme.appearance == Appearance::Dark,
+        )
     }
 
     /// The default pack for `dark`, used until the host pushes a palette.
@@ -95,6 +104,12 @@ impl Palette {
         Ok(palette)
     }
 
+    /// This palette for a `dark` look, which a push does not carry itself.
+    pub fn for_look(mut self, dark: bool) -> Palette {
+        self.2 = dark;
+        self
+    }
+
     /// The app colour `name`, if the pushed theme has it.
     pub fn app(&self, name: &str) -> Option<[u8; 4]> {
         self.1.get(name).copied()
@@ -113,10 +128,14 @@ impl Palette {
         scoped
     }
 
-    /// A wire colour: `#rrggbb[aa]`, a role or app colour, either with `/NN` alpha percent.
+    /// A wire colour: `#rrggbb[aa]`, a role or app colour, either with `/NN` alpha percent, or
+    /// `light-dark(light, dark)` of those.
     pub fn resolve(&self, value: &str) -> Result<[u8; 4], String> {
         let ([r, g, b, a], percent) = match parse(value)? {
             WireColor::Literal(rgba) => return Ok(rgba),
+            WireColor::Look(light, dark) => {
+                return self.resolve(if self.2 { dark } else { light });
+            }
             WireColor::Role(role, percent) => (self.role(role), percent),
             WireColor::App(name, percent) => (self.app_or_neutral(name)?, percent),
         };
@@ -150,9 +169,30 @@ pub(crate) enum WireColor<'a> {
     Role(Role, u8),
     /// An app colour by name; which names exist is the pushed theme's question.
     App(&'a str, u8),
+    /// A class value that differs by appearance, lowered at paint so the switch needs no rerun.
+    Look(&'a str, &'a str),
 }
 
 pub(crate) fn parse(value: &str) -> Result<WireColor<'_>, String> {
+    if let Some(pair) = value
+        .strip_prefix("light-dark(")
+        .and_then(|rest| rest.strip_suffix(')'))
+    {
+        let (light, dark) = pair
+            .split_once(',')
+            .ok_or("UI_COLOR: light-dark() takes two colours")?;
+        let (light, dark) = (light.trim(), dark.trim());
+        for side in [light, dark] {
+            if matches!(parse(side)?, WireColor::Look(..)) {
+                return Err("UI_COLOR: light-dark() does not nest".into());
+            }
+        }
+        return Ok(WireColor::Look(light, dark));
+    }
+    parse_one(value)
+}
+
+fn parse_one(value: &str) -> Result<WireColor<'_>, String> {
     if value.starts_with('#') {
         return lingxia_theme::Rgba::parse(value)
             .map(|color| WireColor::Literal(color.0))
@@ -227,6 +267,28 @@ mod tests {
             Palette::builtin(false).resolve("shadow/10").unwrap(),
             [0, 0, 0, 26]
         );
+    }
+
+    #[test]
+    fn a_light_dark_colour_resolves_by_the_palettes_look() {
+        let value = "light-dark(shadow/5, #ff000080)";
+        assert_eq!(
+            Palette::builtin(false).resolve(value).unwrap(),
+            [0, 0, 0, 13]
+        );
+        assert_eq!(
+            Palette::builtin(true).resolve(value).unwrap(),
+            [255, 0, 0, 128]
+        );
+        let pushed = Palette::builtin(false).clone().for_look(true);
+        assert_eq!(pushed.resolve(value).unwrap(), [255, 0, 0, 128]);
+        for bad in [
+            "light-dark(text)",
+            "light-dark(text, brand)",
+            "light-dark(text, light-dark(text, text))",
+        ] {
+            assert!(Palette::builtin(false).resolve(bad).is_err(), "{bad}");
+        }
     }
 
     #[test]

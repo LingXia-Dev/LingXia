@@ -297,6 +297,13 @@
     return match && alpha(match[2]) ? match[1] : void 0;
   }
   var isColorName = (value) => isRole(value) || appColorName(value) !== void 0;
+  var hex = /^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/;
+  var look = /^light-dark\(([^,()]+),([^,()]+)\)$/;
+  function isPaintColor(value) {
+    if (typeof value !== "string") return false;
+    const pair = look.exec(value);
+    return pair ? [pair[1], pair[2]].every((side) => hex.test(side.trim()) || isColorName(side.trim())) : hex.test(value) || isColorName(value);
+  }
   var appList = (appColors) => appColors?.size ? `; this app's colours: ${[...appColors].map((name) => `app.${name}`).join(", ")}` : "";
   function colorProblem(value, where2 = "a page colour", appColors) {
     if (value === "currentColor" || value === "transparent" || /^#[0-9a-fA-F]{6}00$/.test(value) || isRole(value)) return void 0;
@@ -305,7 +312,7 @@
     return `UI_COLOR: ${JSON.stringify(value)} is not a role; ${where2} uses a role such as 'surface', 'text-muted', 'line', 'accent' or 'accent/12'${appList(appColors)}`;
   }
   function wireColorProblem(value, where2) {
-    return /^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(value) ? void 0 : colorProblem(value, where2);
+    return look.test(value) ? isPaintColor(value) ? void 0 : colorProblem(value, where2) : hex.test(value) ? void 0 : colorProblem(value, where2);
   }
   function seriesProblem(value, appColors) {
     if (isRole(value)) return void 0;
@@ -340,13 +347,13 @@
         result[key] = number;
       }
       result.color = shadow.color === void 0 ? "currentColor" : shadow.color;
-      if (result.color !== "currentColor" && (typeof result.color !== "string" || !(/^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(result.color) || isColorName(result.color)))) invalid2();
+      if (result.color !== "currentColor" && !isPaintColor(result.color)) invalid2();
       return result;
     });
   }
   var ringColor = (value, invalid2) => {
     const color = value === void 0 ? "currentColor" : value;
-    if (color !== "currentColor" && (typeof color !== "string" || !(/^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(color) || isColorName(color)))) invalid2();
+    if (color !== "currentColor" && !isPaintColor(color)) invalid2();
     return color;
   };
   function normalizeRing(value) {
@@ -428,7 +435,7 @@
   }
 
   // src/style/gradient.js
-  var hex = /^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/;
+  var hex2 = /^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/;
   var directions = ["top", "right", "bottom", "left", "top-right", "bottom-right", "bottom-left", "top-left"];
   var geometry = { linear: ["direction", "angle"], radial: ["shape", "size", "radii", "at"], conic: ["from", "at"] };
   var sizes = ["closest-side", "closest-corner", "farthest-side", "farthest-corner"];
@@ -446,7 +453,7 @@
     const [low, high] = kind === "linear" ? [-16, 16] : kind === "radial" ? [0, 16] : [0, 1];
     let previous = -Infinity;
     const stops = value.stops.map((stop) => {
-      if (!stop || typeof stop !== "object" || Array.isArray(stop) || Object.keys(stop).some((key) => key !== "offset" && key !== "color") || typeof stop.offset !== "number" || !Number.isFinite(stop.offset) || stop.offset < low || stop.offset > high || stop.offset < previous || typeof stop.color !== "string" || !(hex.test(stop.color) || isColorName(stop.color))) invalid2();
+      if (!stop || typeof stop !== "object" || Array.isArray(stop) || Object.keys(stop).some((key) => key !== "offset" && key !== "color") || typeof stop.offset !== "number" || !Number.isFinite(stop.offset) || stop.offset < low || stop.offset > high || stop.offset < previous || typeof stop.color !== "string" || !(hex2.test(stop.color) || isColorName(stop.color))) invalid2();
       previous = stop.offset;
       return { offset: stop.offset, color: stop.color };
     });

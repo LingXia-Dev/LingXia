@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { compileUtilities } from '../compiler/tailwind.mjs';
-import { configureClasses, resolveClasses } from '../src/style/classes.js';
+import { classesReadTheme, configureClasses, resolveClasses } from '../src/style/classes.js';
 import { describe, h, listTag, prepare, discard } from '../src/internal.js';
 import { rendered as renderedSteps, decode as decodeSteps, byText, points } from './support/wire.mjs';
 
@@ -618,6 +618,20 @@ test('role classes keep their role in every appearance and refuse dark: and pale
   assert.equal(classStyle('text-accent', { appearance: 'dark' }).color, 'accent');
   assert.throws(() => classStyle('dark:text-on-accent'), /UI_CLASS: dark:text-on-accent: roles follow appearance; drop dark:/);
   for (const name of ['text-white', 'bg-[#123456]']) assert.throws(() => classStyle(name), /not a role; use a role class such as bg-surface/);
+});
+
+test('a class whose colours differ by appearance lowers once, painted by look; other differences stay twins', async () => {
+  const css = `@theme inline { --shadow-sm: 0 1px 2px 0 var(--tint); --radius-card: var(--round); }
+    :root { --tint: rgb(0 0 0 / 0.05); --round: 4px; } [data-theme='dark'] { --tint: rgb(0 0 0 / 0.35); --round: 2px; }`;
+  const rules = await compileUtilities(new Set(['shadow-sm', 'rounded-card']), css);
+  const shadow = rules.filter(rule => rule.name === 'shadow-sm');
+  assert.equal(shadow.length, 1);
+  assert.equal(shadow[0].when.appearance, undefined);
+  assert.equal(shadow[0].shadow.layers[0].color, 'light-dark(shadow/5,shadow/35)');
+  assert.deepEqual(rules.filter(rule => rule.name === 'rounded-card').map(rule => rule.when.appearance), ['light', 'dark']);
+  configureClasses(rules.filter(rule => rule.name === 'shadow-sm'));
+  assert.equal(classesReadTheme(), false);
+  assert.equal(JSON.parse(node('view', { className: 'shadow-sm' }).boxShadow)[0].color, 'light-dark(shadow/5,shadow/35)');
 });
 
 test('palette rules obey source order and diagnose invalid variables in either appearance', async () => {
