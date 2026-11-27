@@ -178,6 +178,11 @@ export default definePage({
           });
         }
       },
+      // Asked the moment the View mounts: answered only once the bridge is up and the View holds
+      // Logic's first snapshot, which it echoes.
+      onConversation(): { messages: number } {
+        return { messages: page.data.messages.length };
+      },
       onClear() {
         if (page.data.isStreaming) return;
         page.update(d => { d.messages = []; });

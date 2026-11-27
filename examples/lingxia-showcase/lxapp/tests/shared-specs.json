@@ -2,7 +2,6 @@
   "$comment": "The shared page specs from @lingxia/test/showcase, run here on GPU pages. Every file runs unless skipped with a reason; `node tests/shared-specs.check.mjs` keeps this, tests/shared.test.ts and the source in step.",
   "source": "../../../../packages/lingxia-test/showcase",
   "skip": {
-    "pages/bridge.test.ts": "drives the WebView page bridge (window.LingXiaBridge); a GPU page has none",
     "pages/components.test.ts": "the GPU showcase has no components page",
     "pages/embedded-document.test.ts": "drives the React showcase's embedded-document WebView page; the GPU <webview> component has its own specs in tests/webview.test.ts",
     "pages/media-swiper-video.test.ts": "drives the WebView media swiper element (lx-media-swiper) on the React showcase's swiper page; a GPU page has no such element",

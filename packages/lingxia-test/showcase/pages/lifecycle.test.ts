@@ -17,12 +17,12 @@ test('preserve hyphenated routes through show and ready', { id: 'PAGE-LIFECYCLE-
   });
 
   await app.nav.reset({ page: 'home' });
-  await app.nav.go({ page: 'bridge-repro' });
-  await waitForCurrentPage(app, 'bridge-repro');
+  await app.nav.go({ page: 'view-text' });
+  await waitForCurrentPage(app, 'view-text');
   await app.nav.go({ page: 'feedback' });
   await waitForCurrentPage(app, 'feedback');
   await app.nav.back();
-  await waitForCurrentPage(app, 'bridge-repro');
+  await waitForCurrentPage(app, 'view-text');
 });
 
 async function surfaceLifecycleState(app: TestApp): Promise<SurfaceLifecycleState | null> {

@@ -1,7 +1,7 @@
 {
   "appId": "lingxia-showcase",
   "appName": "LingXia Showcase",
-  "version": "1.7.6",
+  "version": "1.7.8",
   "minRuntime": "0.31.0",
   "languages": [
     "en-US",
@@ -19,10 +19,6 @@
     {
       "name": "cloud",
       "path": "pages/cloud/index"
-    },
-    {
-      "name": "bridge-repro",
-      "path": "pages/bridge-repro/index"
     },
     {
       "name": "surface",

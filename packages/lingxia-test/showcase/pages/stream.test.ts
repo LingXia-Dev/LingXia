@@ -9,12 +9,22 @@ import {
   waitForElementEnabled,
 } from '../helpers/page.js';
 
+/** The stream page's `data-streamed`: length and FNV-1a checksum of the text. */
+function digest(text: string) {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) hash = Math.imul(hash ^ text.charCodeAt(i), 0x01000193);
+  return `${text.length}:${(hash >>> 0).toString(16)}`;
+}
+
 test('streams a complete response from real page input', { app: SHOWCASE_APP_ID }, async (t) => {
   const app = t.app;
   await app.nav.reset({ page: 'stream' });
   const page = await app.page<PageDefinition<{ messages: Message[] }>>({ name: 'stream' }, { timeout: 30_000 });
   const stream = page.view;
   await stream.testId('stream-page').waitFor({ timeout: 30_000 });
+  // A call made as the View mounts is answered from Logic's first snapshot.
+  const before = (await page.data()).messages.length;
+  await expect(stream.testId('stream-page')).toHaveAttribute('data-first-call', `answered:${before}`, { timeout: 15_000 });
   const message = async (role: Message['role'], until: (message: Message) => boolean) => {
     const found = await t.waitFor(async () => (await page.data()).messages.find((m) => m.role === role && until(m)),
       { timeout: 15_000 });
@@ -40,6 +50,9 @@ test('streams a complete response from real page input', { app: SHOWCASE_APP_ID 
   const reply = await message('assistant', (m) => m.content.trim().length > 10);
   const response = await t.waitFor(() => reply.textContent(), { until: (text) => text.trim().length > 10, timeout: 15_000 });
   expect(response.trim().length).toBeGreaterThan(10);
+  // Every chunk reached the View in order: what it assembled is what Logic sent.
+  const sent = (await page.data()).messages.find((m) => m.role === 'assistant' && m.content.trim().length > 10)!;
+  await expect(stream.testId('stream-page')).toHaveAttribute('data-streamed', digest(sent.content));
 });
 
 test('cancel an active response, finish Logic cleanup, and send again', {

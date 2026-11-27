@@ -1,12 +1,4 @@
 {
-  "api.bridge": {
-    "defaultMessage": "Bridge resilience",
-    "description": "API list entry (api-bridge)."
-  },
-  "api.bridgeDetail": {
-    "defaultMessage": "Startup, streaming, reconnect and teardown",
-    "description": "Under the Bridge resilience entry."
-  },
   "api.channel": {
     "defaultMessage": "Channel",
     "description": "API list entry (api-channel)."
@@ -4442,10 +4434,6 @@
   "title.api": {
     "defaultMessage": "API",
     "description": "Navigation bar title of the api page."
-  },
-  "title.bridgeRepro": {
-    "defaultMessage": "Bridge Repro",
-    "description": "Navigation bar title of the bridge-repro page."
   },
   "title.channel": {
     "defaultMessage": "Channel",

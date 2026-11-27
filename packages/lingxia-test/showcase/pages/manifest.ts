@@ -21,7 +21,6 @@ export const SHOWCASE_PAGE_EXPECTATIONS = [
   { page: 'stream', text: 'Stream Demo' },
   { page: 'channel', text: 'Recent Ticks' },
   { page: 'swiper', text: 'Media Swiper' },
-  { page: 'bridge-repro', text: 'Restart the lxapp to repeat.' },
   { page: 'spec-embedded', text: 'Host page of the embedded-document specs.' },
   { page: 'leaveGuard', text: 'Edit the draft, then go back or home' },
 ] as const;
@@ -53,7 +52,6 @@ export const SHOWCASE_PAGE_TITLES: Record<ShowcasePage, string> = {
   stream: 'Stream',
   channel: 'Channel',
   swiper: 'LxMediaSwiper',
-  'bridge-repro': 'Bridge Repro',
   'spec-embedded': 'Embedded Document',
   // Declared per language; the document <title> bakes the first entry.
   leaveGuard: 'Leave guard',

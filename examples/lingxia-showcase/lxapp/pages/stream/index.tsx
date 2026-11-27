@@ -1,4 +1,4 @@
-import { t, List, useLocal, useStream, type ReadonlyData, type Stream, type MessageKey } from '@lingxia/view';
+import { t, List, useLocal, useRequest, useStream, type ReadonlyData, type Stream, type MessageKey } from '@lingxia/view';
 import '../../theme/index.css';
 import { Chart } from '../../shared/chart';
 import type { ChartData } from '../../shared/stream-types';
@@ -34,6 +34,13 @@ function Bubble({ id, content, user, chart }: { id: string; content: string; use
   );
 }
 
+/** Length and a 32-bit checksum: what automation compares, since an attribute is short. */
+function digest(text: string) {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) hash = Math.imul(hash ^ text.charCodeAt(i), 0x01000193);
+  return `${text.length}:${(hash >>> 0).toString(16)}`;
+}
+
 export function render({ data, actions }: View) {
   const draft = useLocal('message', '');
   const tokens = useLocal('tokens', '');
@@ -46,6 +53,7 @@ export function render({ data, actions }: View) {
       tailRevision.set(tailRevision.value + 1);
     },
   });
+  const conversation = useRequest('conversation', actions.onConversation);
   const pending = stream.status === 'streaming';
   const busy = pending || !!data.isStreaming;
   const send = () => {
@@ -62,7 +70,12 @@ export function render({ data, actions }: View) {
   const anchor = { index: Math.max(0, keys.length - 1), align: 'end' as const, seq: tailRevision.value + messages.length };
   const empty = !messages.length && !pending;
   return (
-    <page data-testid="stream-page" className="bg-canvas text-text">
+    <page
+      data-testid="stream-page"
+      data-first-call={conversation.value ? `answered:${conversation.value.messages}` : conversation.error ? 'failed' : 'waiting'}
+      data-streamed={digest(tokens.value)}
+      className="bg-canvas text-text"
+    >
       {messages.length > 0 && !pending && (
         <view className="flex-row justify-end px-4 pt-3">
           <button data-testid="stream-clear" onClick={() => actions.onClear()} className="px-3 py-1 rounded-full bg-surface text-xs text-accent shadow-sm">

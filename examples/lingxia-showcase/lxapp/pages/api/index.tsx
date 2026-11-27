@@ -29,7 +29,6 @@ export const groups: Group[] = [
     entries: [
       entry('api-stream', 'api.stream', { page: 'stream' }, 'api.streamDetail'),
       entry('api-channel', 'api.channel', { page: 'channel' }, 'api.channelDetail'),
-      entry('api-bridge', 'api.bridge', { page: 'bridge-repro' }, 'api.bridgeDetail'),
       entry('api-native', 'api.native', { page: 'native' }, 'api.nativeDetail'),
     ],
   },

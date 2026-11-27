@@ -1,10 +1,4 @@
 {
-  "api.bridge": {
-    "defaultMessage": "桥接韧性"
-  },
-  "api.bridgeDetail": {
-    "defaultMessage": "启动、流式、重连与销毁"
-  },
   "api.channel": {
     "defaultMessage": "通道"
   },
@@ -3331,9 +3325,6 @@
   },
   "title.api": {
     "defaultMessage": "接口"
-  },
-  "title.bridgeRepro": {
-    "defaultMessage": "桥接复现"
   },
   "title.channel": {
     "defaultMessage": "通道"
