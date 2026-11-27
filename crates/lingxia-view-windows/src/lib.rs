@@ -68,6 +68,10 @@ pub trait Shell: Send + Sync + 'static {
     /// Restart the Logic connection after a session failure; false when it cannot.
     fn restart(&self, token: i64, connection: u64) -> bool;
     fn recovery(&self, token: i64, failure: Option<&Failure>);
+    /// A shown page owed a frame this long; see `HostEvents::frame_gap`.
+    fn frame_gap(&self, token: i64, owed_ms: u64) {
+        let _ = (token, owed_ms);
+    }
     /// Whether the recovery panel offers Back: the page has somewhere to go.
     fn can_go_back(&self, token: i64) -> bool {
         let _ = token;

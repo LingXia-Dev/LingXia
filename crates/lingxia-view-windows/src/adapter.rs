@@ -665,6 +665,9 @@ impl HostEvents for WindowsAdapter {
     fn restart(&self, connection: ConnectionTicket) -> bool {
         self.shell.restart(self.token, connection.get())
     }
+    fn frame_gap(&self, owed: std::time::Duration) {
+        self.shell.frame_gap(self.token, owed.as_millis() as u64);
+    }
     fn recovery(&self, failure: Option<&Failure>) {
         if let Some(failure) = failure {
             log(&format!("recovery token={}: {}", self.token, failure.error));

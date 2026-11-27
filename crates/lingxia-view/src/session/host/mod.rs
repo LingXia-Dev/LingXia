@@ -35,6 +35,7 @@ mod images;
 mod interest;
 mod panics;
 mod pump;
+pub use pump::FRAME_GAP;
 mod reveal;
 mod snap;
 mod telemetry;
@@ -452,6 +453,8 @@ struct Main<F> {
     display: Option<(Duration, Duration)>,
     /// When a frame was first asked for since the last request took the demand.
     demand_at: Option<Duration>,
+    /// When the page last became visible; a frame asked for while hidden is not owed before.
+    shown_at: Duration,
     /// The frame-statistics HUD is drawn over the page.
     hud: bool,
     /// The last generation [`ViewHost::set_chrome_snapshot`] handed out.
@@ -710,6 +713,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     covered_tick: false,
                     display: None,
                     demand_at: None,
+                    shown_at: Duration::ZERO,
                     hud: false,
                     chrome_generation: 0,
                     frame_measures: Vec::new(),
@@ -2471,6 +2475,7 @@ impl<A: PlatformAdapter> Inner<A> {
             let at = self.adapter.now();
             let current = self.frame_is_current();
             let mut main = self.main();
+            main.shown_at = at;
             main.telemetry.stats.reveal_started(at);
             if current {
                 main.telemetry.stats.reveal_current(at);

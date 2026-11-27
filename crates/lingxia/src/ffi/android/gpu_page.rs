@@ -311,6 +311,9 @@ impl lingxia_view_android::StateListener for States {
     fn failed(&self, owner: i64, error: &str) {
         gpu_page::failed(owner, error);
     }
+    fn frame_gap(&self, owner: i64, owed_ms: u64) {
+        gpu_page::frame_gap(owner, owed_ms);
+    }
     fn sync_webviews(
         &self,
         owner: i64,

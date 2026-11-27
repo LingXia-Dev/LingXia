@@ -60,6 +60,10 @@ pub trait StateListener: Send + Sync + 'static {
     fn failed(&self, owner: i64, error: &str) {
         let _ = (owner, error);
     }
+    /// Main thread: shown page `owner` owed a frame this long; see `HostEvents::frame_gap`.
+    fn frame_gap(&self, owner: i64, owed_ms: u64) {
+        let _ = (owner, owed_ms);
+    }
     /// The View worker thread: a line page `owner`'s `console` wrote.
     fn console(&self, owner: i64, level: log::Level, message: &str) {
         let _ = owner;
@@ -889,6 +893,11 @@ impl HostEvents for AndroidAdapter {
             )?
             .z()
         })
+    }
+    fn frame_gap(&self, owed: std::time::Duration) {
+        if let Some(listener) = STATE_LISTENER.get().filter(|_| self.owner != 0) {
+            listener.frame_gap(self.owner, owed.as_millis() as u64);
+        }
     }
     fn recovery(&self, failure: Option<&Failure>) {
         if let (Some(failure), Some(listener)) =

@@ -363,6 +363,9 @@ impl Shell for Bridge {
             gpu_page::failed(token, &failure.error);
         }
     }
+    fn frame_gap(&self, token: i64, owed_ms: u64) {
+        gpu_page::frame_gap(token, owed_ms);
+    }
     fn text(&self, key: &str, fallback: &str) -> String {
         lingxia_platform::i18n::text(key, fallback)
     }

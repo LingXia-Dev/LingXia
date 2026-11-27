@@ -160,6 +160,9 @@ impl Shell for Bridge {
             .unwrap_or_default();
         arkts(token, "recovery", &payload);
     }
+    fn frame_gap(&self, token: i64, owed_ms: u64) {
+        gpu_page::frame_gap(token, owed_ms);
+    }
     fn revealed(&self, token: i64, hold_surface: bool) {
         arkts(
             token,

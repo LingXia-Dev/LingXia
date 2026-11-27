@@ -173,6 +173,9 @@ pub trait HostEvents {
         let _ = menu;
     }
     fn warn(&self, message: &str);
+    /// Main thread: a page shown and already drawn presented a frame `owed` after it was asked
+    /// for, past [`crate::session::host::FRAME_GAP`].
+    fn frame_gap(&self, _owed: Duration) {}
     /// The View worker thread: a line the page's `console` wrote.
     fn console(&self, level: log::Level, message: &str) {
         log::log!(target: "lingxia_view::console", level, "{message}");

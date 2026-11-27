@@ -820,6 +820,18 @@ pub(crate) fn failed(token: Token, error: &str) {
     let _ = (token, error);
 }
 
+/// Page `token` was shown and owed a frame for `owed_ms`; a running test hears it.
+pub(crate) fn frame_gap(token: Token, owed_ms: u64) {
+    #[cfg(feature = "automation")]
+    if lxapp::automation::page_events::armed()
+        && let Some(page) = page_of(token)
+    {
+        page.note_frame_gap(owed_ms);
+    }
+    #[cfg(not(feature = "automation"))]
+    let _ = (token, owed_ms);
+}
+
 /// A line page `token`'s View `console` wrote, tagged as that page's console like a WebView's.
 pub(crate) fn console(token: Token, level: log::Level, message: &str) {
     let level = match level {

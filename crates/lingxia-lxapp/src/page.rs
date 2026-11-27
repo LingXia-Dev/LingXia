@@ -2874,6 +2874,42 @@ impl PageInstance {
         )
     }
 
+    /// Tell a running test that this page failed.
+    #[cfg(feature = "automation")]
+    pub fn note_page_event(
+        &self,
+        kind: crate::automation::page_events::PageEventKind,
+        error: &str,
+    ) {
+        use crate::automation::page_events;
+        if page_events::armed() {
+            page_events::record(page_events::PageEventInput::page(
+                kind,
+                self.appid(),
+                self.path(),
+                self.instance_id_string(),
+                error,
+            ));
+        }
+    }
+
+    /// Tell a running test that this shown page owed a frame for `owed_ms`.
+    #[cfg(feature = "automation")]
+    pub fn note_frame_gap(&self, owed_ms: u64) {
+        use crate::automation::page_events;
+        if page_events::armed() {
+            let mut input = page_events::PageEventInput::page(
+                page_events::PageEventKind::FrameGap,
+                self.appid(),
+                self.path(),
+                self.instance_id_string(),
+                &format!("no frame presented for {owed_ms} ms after one was asked for"),
+            );
+            input.gap_ms = Some(owed_ms);
+            page_events::record(input);
+        }
+    }
+
     /// Send a typed video playback command to this GPU page's player and wait for its reply.
     pub async fn send_gpu_video_command(&self, request: GpuVideoRequest) -> Result<(), lingxia_error::Error> {
         let pending = crate::gpu_request::call_gpu_video(self, request)?;

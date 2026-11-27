@@ -1252,6 +1252,9 @@ mod live {
                 failure.detail.as_deref().unwrap_or_default(),
             );
         }
+        fn frame_gap(&self, token: i64, owed_ms: u64) {
+            gpu_page::frame_gap(token, owed_ms);
+        }
         fn load_image(
             &self,
             token: i64,

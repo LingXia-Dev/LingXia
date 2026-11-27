@@ -565,6 +565,9 @@ impl HostEvents for AppleAdapter {
         }
         self.shell.recovery(self.token, failure);
     }
+    fn frame_gap(&self, owed: std::time::Duration) {
+        self.shell.frame_gap(self.token, owed.as_millis() as u64);
+    }
     fn copy_text(&self, text: &str) {
         self.shell.copy_text(text);
     }

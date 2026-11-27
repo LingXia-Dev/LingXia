@@ -96,6 +96,16 @@ use crate::session::FRAME_DECLINED as DECLINED;
 /// Declined frames retried at the next vsync with nothing else pending.
 const DECLINED_RETRIES: u32 = 4;
 
+/// How long a shown page may owe a frame before a running test hears of it.
+pub const FRAME_GAP: Duration = Duration::from_secs(1);
+
+/// The wait past [`FRAME_GAP`] for a frame asked for at `demand` and presented at `now`, timed
+/// from no earlier than the page was shown.
+fn frame_gap(demand: Duration, shown_at: Duration, now: Duration) -> Option<Duration> {
+    let owed = now.saturating_sub(demand.max(shown_at));
+    (owed > FRAME_GAP).then_some(owed)
+}
+
 fn micros(duration: Duration) -> u64 {
     u64::try_from(duration.as_micros()).unwrap_or(u64::MAX)
 }
@@ -1152,8 +1162,10 @@ impl<A: PlatformAdapter> Inner<A> {
         let entered = Instant::now();
         let rebuild = timing.rebuild;
         let mut revealed = Vec::new();
-        let (presented, recovered) = {
+        let (presented, recovered, drawn_before) = {
             let mut main = self.main();
+            // A first frame is the bootstrap's to time, not a gap.
+            let drawn_before = main.snapshot.is_some();
             main.snapshot = Some(snapshot.clone());
             main.presented_flight = flight;
             main.declined_retries = 0;
@@ -1185,7 +1197,7 @@ impl<A: PlatformAdapter> Inner<A> {
             for (_, id) in due {
                 revealed.extend(main.interaction.reveal_element(&id));
             }
-            (presented, recovered)
+            (presented, recovered, drawn_before)
         };
         self.deliver(revealed);
         if recovered {
@@ -1225,6 +1237,15 @@ impl<A: PlatformAdapter> Inner<A> {
         timing.main_us = micros(vsync.elapsed());
         timing.main_work_us += micros(entered.elapsed());
         let now = self.adapter.now();
+        let gap = {
+            let main = self.main();
+            (drawn_before && main.visible && main.reveal.counts_frames())
+                .then(|| frame_gap(pacing.demand, main.shown_at, now))
+                .flatten()
+        };
+        if let Some(owed) = gap {
+            self.adapter.frame_gap(owed);
+        }
         {
             let mut main = self.main();
             main.telemetry.presented(now, &snapshot, &timing);
@@ -1364,5 +1385,28 @@ impl<A: PlatformAdapter> Inner<A> {
                 }
             },
         );
+    }
+}
+
+#[cfg(test)]
+mod frame_gap_tests {
+    use super::{FRAME_GAP, frame_gap};
+    use std::time::Duration;
+
+    fn ms(ms: u64) -> Duration {
+        Duration::from_millis(ms)
+    }
+
+    #[test]
+    fn a_frame_owed_past_the_gap_while_shown_is_one() {
+        assert_eq!(frame_gap(ms(1_000), ms(0), ms(2_500)), Some(ms(1_500)));
+        assert_eq!(frame_gap(ms(1_000), ms(0), ms(1_000) + FRAME_GAP), None);
+    }
+
+    #[test]
+    fn time_hidden_is_not_owed() {
+        // Asked for while hidden, shown at 5 s, presented 200 ms later.
+        assert_eq!(frame_gap(ms(1_000), ms(5_000), ms(5_200)), None);
+        assert_eq!(frame_gap(ms(1_000), ms(5_000), ms(6_200)), Some(ms(1_200)));
     }
 }
