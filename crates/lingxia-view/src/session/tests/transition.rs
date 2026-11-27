@@ -715,3 +715,46 @@ fn a_ring_strokes_past_a_real_gap_beside_a_shadow_and_an_inset_ring_sits_inside_
         );
     }
 }
+
+#[test]
+fn a_transition_after_a_finished_one_starts_on_its_first_shown_frame() {
+    let mut page = page(
+        transition(&["opacity"], 200),
+        "backgroundColor:'#000000'",
+        "opacity:0",
+        "''",
+    );
+    let (display, _) = present(&mut page, frame_time(0));
+    press(&mut page, &display, true);
+    let mut index = 1;
+    while present(&mut page, frame_time(index)).1 != Wakeup::None {
+        index += 1;
+        assert!(index < 40, "the first transition never finished");
+    }
+    // An idle page: no frames until the next change, then one frame per vsync again.
+    for idle in [0, 30] {
+        let start = index + idle + 1;
+        press(&mut page, &display, false);
+        let first = pixel(&present(&mut page, frame_time(start)).0, 50, 20)[0];
+        let second = pixel(&present(&mut page, frame_time(start + 1)).0, 50, 20)[0];
+        // 255 -> 0 over 12 frames: the first shown frame is the start, the next one step on.
+        assert_eq!(
+            first, 255,
+            "idle {idle}: the first frame of the second transition"
+        );
+        assert!(
+            (255 - 30..255).contains(&second),
+            "idle {idle}: one frame in, not more: {second}"
+        );
+        let mut at = start + 2;
+        while present(&mut page, frame_time(at)).1 != Wakeup::None {
+            at += 1;
+        }
+        press(&mut page, &display, true);
+        let mut end = at + 1;
+        while present(&mut page, frame_time(end)).1 != Wakeup::None {
+            end += 1;
+        }
+        index = end;
+    }
+}

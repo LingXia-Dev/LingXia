@@ -63,6 +63,8 @@ struct Log {
     generations: Vec<CommitTicket>,
     /// The last prepared frame's filled rectangles: colour and bounds.
     rects: Vec<([u8; 4], [f32; 4])>,
+    /// Every prepared frame's filled rectangles, in order.
+    rect_history: Vec<Vec<([u8; 4], [f32; 4])>>,
     /// The last prepared frame's strokes: their points and width.
     strokes: Vec<(Vec<[f32; 2]>, f32)>,
     /// Generations the host reported presented (`HostEvents::presented`).
@@ -163,6 +165,8 @@ impl Presenter for Fake {
                     _ => None,
                 })
                 .collect();
+            let rects = log.rects.clone();
+            log.rect_history.push(rects);
             log.strokes = display
                 .commands
                 .iter()
@@ -8379,4 +8383,67 @@ fn an_environment_push_owes_a_frame_until_one_under_it_is_drawn() {
     host.automation_request(&serde_json::json!({"op": "environment", "appearance": "light"}))
         .unwrap();
     assert_eq!(owed(&host), false);
+}
+
+#[test]
+fn a_transition_after_a_finished_one_starts_at_its_start_through_the_host() {
+    // On time, and with frames that miss their vsync while the next is prepared ahead.
+    for costly in [false, true] {
+        let worker = ViewWorker::spawn("test-late-transition").unwrap();
+        let platform = Platform::new(&[&worker]);
+        let host = platform.host(
+            &worker,
+            &source(
+                "function render(){const on=useLocal('on',false);return h('page',{style:{backgroundColor:'#ffffff'}},h('button',{onClick:()=>on.set(!on.value),style:{position:'absolute',left:0,top:0,width:100,height:100,padding:0,borderRadius:0,backgroundColor:on.value?'#ffffff':'#000000',transition:{properties:['bg'],durationMs:200,delayMs:0,easing:'linear'}}},''))}",
+            ),
+            false,
+        );
+        host.set_visible(true);
+        platform.settle(&[&host]);
+        let run = |frames: u32| {
+            if costly {
+                run_timed(&platform, &host, frames)
+            } else {
+                run_frames(&platform, &host, frames)
+            }
+        };
+        if costly {
+            *host.adapter().costs.lock().unwrap() = Some(Costs {
+                worker: Duration::from_millis(11),
+                ui: Duration::from_millis(7),
+                worker_free: *host.adapter().clock.lock().unwrap(),
+                ..Default::default()
+            });
+            host.model_build_time(Duration::from_millis(11));
+        }
+        run(2);
+        // The button's red channel in each frame the host prepared since `from`: 0 black, 255 white.
+        let prepared = |from: usize| -> Vec<i32> {
+            host.adapter().log.lock().unwrap().rect_history[from..]
+                .iter()
+                .map(|rects| {
+                    rects
+                        .iter()
+                        .rev()
+                        .find(|(_, bounds)| bounds[2] >= 99.0 && bounds[2] <= 101.0)
+                        .map_or(-1, |(color, _)| i32::from(color[0]))
+                })
+                .collect()
+        };
+        for idle in [0u32, 40] {
+            let from = host.adapter().log.lock().unwrap().rect_history.len();
+            tap(&host, 50.0, 50.0);
+            run(20);
+            let seen = prepared(from);
+            run(idle + 1);
+            tap(&host, 50.0, 50.0);
+            run(20);
+            // Black to white over 12 frames: the first frame is the start, each next one a step on.
+            assert_eq!(seen[0], 0, "costly {costly}, idle {idle}: {seen:?}");
+            assert!(
+                (1..60).contains(&seen[1]),
+                "costly {costly}, idle {idle}: {seen:?}"
+            );
+        }
+    }
 }
