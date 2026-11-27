@@ -44,6 +44,10 @@ intended runtime connection on the forwarded dev port.
 uses, or an interactive View element kind, has no spec that drives it as a user
 does; `feature-gaps.json` lists the known gaps with a reason.
 
+`api/arguments/` holds one table per `lx` function that takes arguments, run by
+`contract.ts`; `scripts/check-argument-coverage.mjs` fails when a function that
+takes arguments has no table and no listed reason.
+
 ## What every public capability needs
 
 Use these coverage levels in order:
