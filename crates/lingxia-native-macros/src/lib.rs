@@ -145,7 +145,6 @@ fn parse_host_attr(
     };
 
     let mut mode = HostMode::Unary;
-    let mut blocking = false;
     let mut sync = false;
     let mut audience = None;
     for arg in args.iter().skip(1) {
@@ -169,13 +168,10 @@ fn parse_host_attr(
                 mode = HostMode::Channel;
             }
             Expr::Path(path) if path.path.is_ident("blocking") => {
-                if blocking {
-                    return Err(syn::Error::new_spanned(
-                        arg,
-                        format!("duplicate blocking flag in #[{macro_name}(...)]"),
-                    ));
-                }
-                blocking = true;
+                return Err(syn::Error::new_spanned(
+                    arg,
+                    "a plain `fn` route runs on a blocking thread; remove `blocking`",
+                ));
             }
             Expr::Path(path) if path.path.is_ident("sync") => {
                 if sync {
@@ -212,23 +208,17 @@ fn parse_host_attr(
                 return Err(syn::Error::new_spanned(
                     arg,
                     format!(
-                        "expected a mode flag (`sync`, `blocking`, `stream`, or `channel`) or `audience = \"…\"` in #[{macro_name}(...)]"
+                        "expected a mode flag (`sync`, `stream`, or `channel`) or `audience = \"…\"` in #[{macro_name}(...)]"
                     ),
                 ));
             }
         }
     }
 
-    if blocking && !matches!(mode, HostMode::Unary) {
+    if sync && !matches!(mode, HostMode::Unary) {
         return Err(syn::Error::new_spanned(
             route_lit,
-            format!("blocking is only supported for unary #[{macro_name}] handlers"),
-        ));
-    }
-    if sync && (!matches!(mode, HostMode::Unary) || blocking) {
-        return Err(syn::Error::new_spanned(
-            route_lit,
-            format!("sync is only supported for unary non-blocking #[{macro_name}] handlers"),
+            format!("sync is only supported for unary #[{macro_name}] handlers"),
         ));
     }
 
@@ -247,7 +237,6 @@ fn parse_host_attr(
         route_lit.clone(),
         HostOptions {
             mode,
-            blocking,
             sync,
             audience,
         },
@@ -309,7 +298,6 @@ impl RouteAudience {
 #[derive(Clone, Copy)]
 struct HostOptions {
     mode: HostMode,
-    blocking: bool,
     sync: bool,
     audience: RouteAudience,
 }
@@ -339,13 +327,6 @@ fn expand_host(
     };
 
     let is_async = input_fn.sig.asyncness.is_some();
-    if options.blocking && is_async {
-        return syn::Error::new_spanned(
-            input_fn.sig.asyncness,
-            "#[native(..., blocking)] is only supported on non-async functions",
-        )
-        .to_compile_error();
-    }
     if options.sync && is_async {
         return syn::Error::new_spanned(
             input_fn.sig.asyncness,
@@ -355,7 +336,7 @@ fn expand_host(
     }
 
     if options.sync {
-        let call_expr = call_plan.call_expr(&fn_ident, false, false);
+        let call_expr = call_plan.call_expr(&fn_ident, false);
         return quote! {
             #input_fn
 
@@ -391,7 +372,7 @@ fn expand_host(
         };
     }
 
-    let call_expr = call_plan.call_expr(&fn_ident, is_async, options.blocking);
+    let call_expr = call_plan.call_expr(&fn_ident, is_async);
     let ctor_ident = match options.mode {
         HostMode::Unary => format_ident!("new"),
         HostMode::Stream => format_ident!("stream"),
@@ -475,12 +456,8 @@ impl Plan {
         )
     }
 
-    fn call_expr(
-        &self,
-        fn_ident: &syn::Ident,
-        is_async: bool,
-        blocking: bool,
-    ) -> proc_macro2::TokenStream {
+    /// A plain `fn` runs on the blocking pool unless it is `sync` (the Logic JS thread).
+    fn call_expr(&self, fn_ident: &syn::Ident, is_async: bool) -> proc_macro2::TokenStream {
         let mut call_args = Vec::new();
         let mut prelude = Vec::new();
 
@@ -528,12 +505,12 @@ impl Plan {
 
         let invoke = if is_async {
             quote! { #fn_ident(#(#call_args),*).await }
-        } else if blocking {
-            quote! {
-                ::lingxia::host::__native::spawn_blocking(move || #fn_ident(#(#call_args),*)).await?
-            }
-        } else {
+        } else if self.shape == Shape::Sync {
             quote! { #fn_ident(#(#call_args),*) }
+        } else {
+            quote! {
+                ::lingxia::host::__native::call_blocking(move || #fn_ident(#(#call_args),*)).await
+            }
         };
 
         quote! {
@@ -565,7 +542,7 @@ fn expand_stream(
         Ok(p) => p,
         Err(err) => return err.to_compile_error(),
     };
-    let call_expr = plan.call_expr(&fn_ident, input_fn.sig.asyncness.is_some(), false);
+    let call_expr = plan.call_expr(&fn_ident, input_fn.sig.asyncness.is_some());
     let (event_ty, result_ty) = plan.stream_types();
 
     quote! {
@@ -641,7 +618,7 @@ fn expand_channel(
     };
 
     let channel_ident = format_ident!("__lingxia_channel");
-    let call_expr = plan.call_expr(&fn_ident, input_fn.sig.asyncness.is_some(), false);
+    let call_expr = plan.call_expr(&fn_ident, input_fn.sig.asyncness.is_some());
     let (inbound_ty, outbound_ty) = plan.channel_types();
 
     quote! {
@@ -815,7 +792,7 @@ mod tests {
         let call = |item: &ItemFn, shape| {
             Plan::new(item, shape)
                 .expect("plan")
-                .call_expr(&item.sig.ident, true, false)
+                .call_expr(&item.sig.ident, true)
                 .to_string()
                 .replace(' ', "")
         };
@@ -840,7 +817,6 @@ mod tests {
         };
         let options = HostOptions {
             mode: HostMode::Unary,
-            blocking: false,
             sync: false,
             audience: RouteAudience::AppSessionOnly,
         };
@@ -856,6 +832,76 @@ mod tests {
         assert!(out.contains("one payload argument"), "{out}");
     }
 
+    fn expand(args: proc_macro2::TokenStream, item: ItemFn) -> String {
+        let (route, options) =
+            parse_host_attr(parse_args(args), "native", AudienceRequirement::Optional)
+                .expect("route attribute");
+        let (namespace, method) = route
+            .value()
+            .rsplit_once('.')
+            .map(|(n, m)| (n.to_string(), m.to_string()))
+            .unwrap();
+        match options.mode {
+            HostMode::Stream => expand_stream(route, &namespace, &method, options, item),
+            HostMode::Channel => expand_channel(route, &namespace, &method, options, item),
+            HostMode::Unary => expand_host(route, &namespace, &method, options, item),
+        }
+        .to_string()
+        .replace(' ', "")
+    }
+
+    #[test]
+    fn a_plain_fn_runs_on_the_blocking_pool_and_sync_on_the_caller() {
+        let plain: ItemFn = syn::parse_quote! {
+            fn load(input: Query) -> lingxia::Result<String> { Ok(String::new()) }
+        };
+        let out = expand(quote!("demo.load"), plain.clone());
+        assert!(
+            out.contains(
+                "::lingxia::host::__native::call_blocking(move||load(__lingxia_payload)).await"
+            ),
+            "{out}"
+        );
+        assert!(out.contains("impl::lingxia::host::HostHandlerfor"), "{out}");
+
+        let out = expand(quote!("demo.load", sync), plain);
+        assert!(!out.contains("call_blocking"), "{out}");
+        assert!(
+            out.contains("impl::lingxia::host::SyncHostHandlerfor"),
+            "{out}"
+        );
+        assert!(out.contains("load(__lingxia_payload)"), "{out}");
+
+        let asynchronous: ItemFn = syn::parse_quote! {
+            async fn fetch() -> lingxia::Result<()> { Ok(()) }
+        };
+        let out = expand(quote!("demo.fetch"), asynchronous);
+        assert!(!out.contains("call_blocking"), "{out}");
+        assert!(out.contains("fetch().await"), "{out}");
+
+        let stream: ItemFn = syn::parse_quote! {
+            fn export(stream: lingxia::host::StreamContext<u32>) -> lingxia::Result<()> { Ok(()) }
+        };
+        let out = expand(quote!("demo.export", stream), stream);
+        assert!(
+            out.contains("call_blocking(move||export(__lingxia_stream))"),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn the_blocking_flag_is_rejected_with_the_fix() {
+        let error = match parse_host_attr(
+            parse_args(quote!("demo.load", blocking)),
+            "native",
+            AudienceRequirement::Optional,
+        ) {
+            Ok(_) => panic!("`blocking` is not a flag"),
+            Err(error) => error,
+        };
+        assert!(error.to_string().contains("remove `blocking`"), "{error}");
+    }
+
     #[test]
     fn sync_flag_rejects_async_and_supports_page_state() {
         let sync_fn: ItemFn = syn::parse_quote! {
@@ -864,7 +910,7 @@ mod tests {
             }
         };
         let plan = Plan::new(&sync_fn, Shape::Sync).expect("sync plan with PageState");
-        let tokens = plan.call_expr(&sync_fn.sig.ident, false, false).to_string();
+        let tokens = plan.call_expr(&sync_fn.sig.ident, false).to_string();
         assert!(tokens.contains("acquire_sync"), "{tokens}");
         assert!(tokens.contains("parse_input"), "{tokens}");
 
@@ -873,7 +919,6 @@ mod tests {
         };
         let options = HostOptions {
             mode: HostMode::Unary,
-            blocking: false,
             sync: true,
             audience: RouteAudience::AppSessionOnly,
         };

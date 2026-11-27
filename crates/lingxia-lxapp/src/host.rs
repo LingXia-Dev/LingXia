@@ -57,15 +57,30 @@ pub mod __native {
         crate::executor::spawn(future)
     }
 
-    pub async fn spawn_blocking<F, R>(f: F) -> lingxia_error::Result<R>
+    /// Runs a plain-`fn` route on the blocking pool; a panic there fails the call as `E_INTERNAL`.
+    pub async fn call_blocking<F, T, E>(f: F) -> lingxia_error::Result<T>
     where
-        F: FnOnce() -> R + Send + 'static,
-        R: Send + 'static,
+        F: FnOnce() -> Result<T, E> + Send + 'static,
+        T: Send + 'static,
+        E: Into<lingxia_error::Error>,
     {
-        rong_rt::RongExecutor::global()
-            .spawn_blocking(f)
-            .await
-            .map_err(|err| lingxia_error::Error::internal(err.to_string()))
+        // Task-locals do not follow onto a blocking thread; carry the admitting document work.
+        let work = crate::bridge::in_host_effect_work(move || f().map_err(Into::into));
+        match rong_rt::RongExecutor::global().spawn_blocking(work).await {
+            Ok(result) => result,
+            Err(err) if err.is_panic() => {
+                let payload = err.into_panic();
+                let message = payload
+                    .downcast_ref::<&str>()
+                    .map(|s| s.to_string())
+                    .or_else(|| payload.downcast_ref::<String>().cloned())
+                    .unwrap_or_else(|| "non-string panic payload".to_string());
+                Err(lingxia_error::Error::internal(format!(
+                    "native route panicked: {message}"
+                )))
+            }
+            Err(err) => Err(lingxia_error::Error::internal(err.to_string())),
+        }
     }
 }
 
@@ -1818,6 +1833,73 @@ mod tests {
         assert!(
             app.has_security_privilege(&crate::LxAppSecurityPrivilege::new("downloads").unwrap())
         );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_plain_fn_route_runs_off_the_calling_thread_and_keeps_its_error_codes() {
+        let caller = std::thread::current().id();
+        let ran_on =
+            __native::call_blocking(|| Ok::<_, lingxia_error::Error>(std::thread::current().id()))
+                .await
+                .expect("blocking result");
+        assert_ne!(ran_on, caller);
+
+        let err = __native::call_blocking(|| {
+            Err::<(), _>(lingxia_error::Error::permission_denied("no grant"))
+        })
+        .await
+        .expect_err("route error");
+        assert_eq!(
+            (err.code(), err.message()),
+            ("E_PERMISSION_DENIED", "no grant")
+        );
+
+        let err = __native::call_blocking(|| Err::<(), _>(std::io::Error::other("disk full")))
+            .await
+            .expect_err("converted error");
+        assert_eq!(
+            err.code(),
+            lingxia_error::Error::from(std::io::Error::other("x")).code()
+        );
+    }
+
+    struct ThreadRecordingSyncHandler(Arc<Mutex<Option<std::thread::ThreadId>>>);
+
+    impl SyncHostHandler for ThreadRecordingSyncHandler {
+        fn call_sync(
+            &self,
+            _invocation: HostInvocationContext,
+            _input: Option<String>,
+        ) -> lingxia_error::Result<HostOutput> {
+            *self.0.lock().unwrap() = Some(std::thread::current().id());
+            Ok(HostOutput::Json("null".to_string()))
+        }
+    }
+
+    #[test]
+    fn a_sync_route_runs_on_the_calling_thread() {
+        let (_root, standard, _control) = same_app_id_with_different_classes();
+        let ran_on = Arc::new(Mutex::new(None));
+        register_sync_host(SyncHostRegistration::new(
+            "syncthread",
+            "where",
+            RouteAudience::AppSessionOnly,
+            Arc::new(ThreadRecordingSyncHandler(Arc::clone(&ran_on))),
+        ));
+        let caller = AuthenticatedCaller::for_lxapp(&standard);
+        let invocation =
+            HostInvocationContext::for_dispatch(standard, &caller, None).expect("matching scope");
+        dispatch_host_call_sync("syncthread.where", invocation, None).expect("sync result");
+        assert_eq!(*ran_on.lock().unwrap(), Some(std::thread::current().id()));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_panicking_plain_fn_route_fails_as_internal() {
+        let err = __native::call_blocking(|| -> lingxia_error::Result<()> { panic!("boom") })
+            .await
+            .expect_err("panic is an error");
+        assert_eq!(err.code(), "E_INTERNAL");
+        assert!(err.message().contains("boom"), "{}", err.message());
     }
 
     struct TestHostHandler;

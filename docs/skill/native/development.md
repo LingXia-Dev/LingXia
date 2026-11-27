@@ -90,6 +90,10 @@ Parameters are recognized by type, in any order, all optional:
 Return `lingxia::Result<T>` with `T: serde::Serialize`; `anyhow::Result<T>`
 fails as `E_INTERNAL`.
 
+A plain `fn` runs on a blocking thread, so blocking I/O is fine there; its
+arguments and result must be `Send`, and a panic fails the call as `E_INTERNAL`.
+An `async fn` runs on the async runtime and must not block.
+
 `HostInvocationContext` comes from dispatch, never from JSON. Treat a payload
 id only as a selector and authorize it against `app_scope()`:
 
@@ -293,7 +297,7 @@ and returns `T`, not `Promise<T>`, in Logic. Keep it short and I/O-free
 
 ### Per-page Rust state (`PageState<T>`)
 
-A unary route (async, blocking or `sync`) may take
+A unary route (`async fn`, plain `fn` or `sync`) may take
 `mut state: lingxia::PageState<MyState>` (`MyState: Default + Send + 'static`):
 one value per page instance, and calls on the same page for the same `T`
 serialize; a `sync` route fails instead of waiting while an async call holds it.
@@ -387,16 +391,16 @@ desktop hosts are always foreground, an Android process started without an
 activity (push, `JobService`) reads foreground until one starts, and switching
 lxapps fires their `onShow`/`onHide`, not this.
 
-`lingxia::app::banner::show` is the Rust form of the
-desktop banner (`lx.host.banner`). It blocks until the card
-resolves: call it from a blocking worker, and never show a no-timeout prompt on
-the macOS main thread.
+`lingxia::app::banner::show` is the Rust form of the desktop banner
+(`lx.host.banner`). It blocks until the card resolves: call it from a plain
+`fn` route or a blocking worker, and never show a no-timeout prompt on the
+macOS main thread.
 
 ## Choosing the surface
 
 | Surface | Runs in | Called from | Use for |
 | --- | --- | --- | --- |
-| `#[lingxia::native]` | Rust host async runtime | Logic (`@lingxia/native`, `page.native`) & WebView View | host capabilities, I/O, streams, channels, heavy computation, `PageState<T>` |
+| `#[lingxia::native]` | async runtime (`async fn`) or a blocking thread (plain `fn`) | Logic (`@lingxia/native`, `page.native`) & WebView View | host capabilities, I/O, streams, channels, heavy computation, `PageState<T>` |
 | `#[lingxia::native(..., sync)]` | Logic JS thread | Logic (`@lingxia/native`, `page.native`) | short, non-blocking, I/O-free pure helpers (< 8 ms) |
 
 ## Pitfalls

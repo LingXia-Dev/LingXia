@@ -15,8 +15,8 @@ fn facade_echo(_app: Arc<lingxia::LxApp>, input: EchoInput) -> lingxia::Result<E
     Ok(EchoOutput { value: input.value })
 }
 
-#[lingxia::native("facade.blockingEcho", blocking)]
-fn facade_blocking_echo(input: EchoInput) -> lingxia::Result<EchoOutput> {
+#[lingxia::native("facade.syncEcho", sync)]
+fn facade_sync_echo(input: EchoInput) -> lingxia::Result<EchoOutput> {
     Ok(EchoOutput { value: input.value })
 }
 
@@ -175,7 +175,7 @@ fn native_macro_accepts_lingxia_result_handlers() {
         "Busy"
     );
     let _ = facade_echo_host();
-    let _ = facade_blocking_echo_host();
+    let _ = facade_sync_echo_host();
     let _ = facade_scope_host();
     let _ = facade_stream_host();
     let _ = facade_scope_stream_host();

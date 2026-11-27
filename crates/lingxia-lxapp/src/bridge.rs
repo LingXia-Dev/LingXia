@@ -507,6 +507,15 @@ tokio::task_local! {
     static HOST_EFFECT_WORK: CapturedSessionWork;
 }
 
+/// Wraps `f` to run inside the current handler's document work on another thread.
+pub(crate) fn in_host_effect_work<R>(f: impl FnOnce() -> R) -> impl FnOnce() -> R {
+    let work = HOST_EFFECT_WORK.try_with(Clone::clone).ok();
+    move || match work {
+        Some(work) => HOST_EFFECT_WORK.sync_scope(work, f),
+        None => f(),
+    }
+}
+
 struct DecodedIncoming {
     message: IncomingMessage,
     work: CapturedSessionWork,
@@ -2804,6 +2813,25 @@ impl PageBridge {
 mod tests {
     use super::*;
     use std::cell::RefCell;
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_plain_fn_route_keeps_its_document_work_on_the_blocking_thread() {
+        let work = CapturedSessionWork {
+            work_id: None,
+            outbound: None,
+            caller: None,
+        };
+        let inherited = HOST_EFFECT_WORK
+            .scope(
+                work,
+                host::__native::call_blocking(|| {
+                    Ok::<_, lingxia_error::Error>(HOST_EFFECT_WORK.try_with(|_| ()).is_ok())
+                }),
+            )
+            .await
+            .expect("blocking result");
+        assert!(inherited);
+    }
 
     #[test]
     fn gpu_outbound_keeps_its_endpoint_and_generation_without_document_fallback() {
