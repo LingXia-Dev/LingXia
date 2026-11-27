@@ -1304,7 +1304,7 @@ dependencies = [
 [[package]]
 name = "rong"
 version = "0.8.0"
-source = "git+https://github.com/LingXia-Dev/Rong.git?rev=6355dec551302a33226e99d3b787cf148f45485e#6355dec551302a33226e99d3b787cf148f45485e"
+source = "git+https://github.com/LingXia-Dev/Rong.git?rev=5cbf569552a229324fd3f50533ce6360c32b4d65#5cbf569552a229324fd3f50533ce6360c32b4d65"
 dependencies = [
  "futures",
  "rong_core",
@@ -1317,7 +1317,7 @@ dependencies = [
 [[package]]
 name = "rong_core"
 version = "0.8.0"
-source = "git+https://github.com/LingXia-Dev/Rong.git?rev=6355dec551302a33226e99d3b787cf148f45485e#6355dec551302a33226e99d3b787cf148f45485e"
+source = "git+https://github.com/LingXia-Dev/Rong.git?rev=5cbf569552a229324fd3f50533ce6360c32b4d65#5cbf569552a229324fd3f50533ce6360c32b4d65"
 dependencies = [
  "bytes",
  "futures",
@@ -1331,7 +1331,7 @@ dependencies = [
 [[package]]
 name = "rong_macro"
 version = "0.7.0"
-source = "git+https://github.com/LingXia-Dev/Rong.git?rev=6355dec551302a33226e99d3b787cf148f45485e#6355dec551302a33226e99d3b787cf148f45485e"
+source = "git+https://github.com/LingXia-Dev/Rong.git?rev=5cbf569552a229324fd3f50533ce6360c32b4d65#5cbf569552a229324fd3f50533ce6360c32b4d65"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1342,7 +1342,7 @@ dependencies = [
 [[package]]
 name = "rong_quickjs"
 version = "0.8.0"
-source = "git+https://github.com/LingXia-Dev/Rong.git?rev=6355dec551302a33226e99d3b787cf148f45485e#6355dec551302a33226e99d3b787cf148f45485e"
+source = "git+https://github.com/LingXia-Dev/Rong.git?rev=5cbf569552a229324fd3f50533ce6360c32b4d65#5cbf569552a229324fd3f50533ce6360c32b4d65"
 dependencies = [
  "libc",
  "rong_core",
@@ -1353,7 +1353,7 @@ dependencies = [
 [[package]]
 name = "rong_quickjs_sys"
 version = "0.7.0"
-source = "git+https://github.com/LingXia-Dev/Rong.git?rev=6355dec551302a33226e99d3b787cf148f45485e#6355dec551302a33226e99d3b787cf148f45485e"
+source = "git+https://github.com/LingXia-Dev/Rong.git?rev=5cbf569552a229324fd3f50533ce6360c32b4d65#5cbf569552a229324fd3f50533ce6360c32b4d65"
 dependencies = [
  "bindgen",
  "cc",
@@ -1362,7 +1362,7 @@ dependencies = [
 [[package]]
 name = "rong_rt"
 version = "0.6.4"
-source = "git+https://github.com/LingXia-Dev/Rong.git?rev=6355dec551302a33226e99d3b787cf148f45485e#6355dec551302a33226e99d3b787cf148f45485e"
+source = "git+https://github.com/LingXia-Dev/Rong.git?rev=5cbf569552a229324fd3f50533ce6360c32b4d65#5cbf569552a229324fd3f50533ce6360c32b4d65"
 dependencies = [
  "bytes",
  "futures",
@@ -1386,7 +1386,7 @@ dependencies = [
 [[package]]
 name = "rong_typegen"
 version = "0.7.0"
-source = "git+https://github.com/LingXia-Dev/Rong.git?rev=6355dec551302a33226e99d3b787cf148f45485e#6355dec551302a33226e99d3b787cf148f45485e"
+source = "git+https://github.com/LingXia-Dev/Rong.git?rev=5cbf569552a229324fd3f50533ce6360c32b4d65#5cbf569552a229324fd3f50533ce6360c32b4d65"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2173,129 +2173,129 @@ dependencies = [
 [[patch.unused]]
 name = "rong_abort"
 version = "0.8.0"
-source = "git+https://github.com/LingXia-Dev/Rong.git?rev=6355dec551302a33226e99d3b787cf148f45485e#6355dec551302a33226e99d3b787cf148f45485e"
+source = "git+https://github.com/LingXia-Dev/Rong.git?rev=5cbf569552a229324fd3f50533ce6360c32b4d65#5cbf569552a229324fd3f50533ce6360c32b4d65"
 
 [[patch.unused]]
 name = "rong_arkjs"
 version = "0.8.0"
-source = "git+https://github.com/LingXia-Dev/Rong.git?rev=6355dec551302a33226e99d3b787cf148f45485e#6355dec551302a33226e99d3b787cf148f45485e"
+source = "git+https://github.com/LingXia-Dev/Rong.git?rev=5cbf569552a229324fd3f50533ce6360c32b4d65#5cbf569552a229324fd3f50533ce6360c32b4d65"
 
 [[patch.unused]]
 name = "rong_arkjs_sys"
 version = "0.6.1"
-source = "git+https://github.com/LingXia-Dev/Rong.git?rev=6355dec551302a33226e99d3b787cf148f45485e#6355dec551302a33226e99d3b787cf148f45485e"
+source = "git+https://github.com/LingXia-Dev/Rong.git?rev=5cbf569552a229324fd3f50533ce6360c32b4d65#5cbf569552a229324fd3f50533ce6360c32b4d65"
 
 [[patch.unused]]
 name = "rong_assert"
 version = "0.8.0"
-source = "git+https://github.com/LingXia-Dev/Rong.git?rev=6355dec551302a33226e99d3b787cf148f45485e#6355dec551302a33226e99d3b787cf148f45485e"
+source = "git+https://github.com/LingXia-Dev/Rong.git?rev=5cbf569552a229324fd3f50533ce6360c32b4d65#5cbf569552a229324fd3f50533ce6360c32b4d65"
 
 [[patch.unused]]
 name = "rong_buffer"
 version = "0.8.0"
-source = "git+https://github.com/LingXia-Dev/Rong.git?rev=6355dec551302a33226e99d3b787cf148f45485e#6355dec551302a33226e99d3b787cf148f45485e"
+source = "git+https://github.com/LingXia-Dev/Rong.git?rev=5cbf569552a229324fd3f50533ce6360c32b4d65#5cbf569552a229324fd3f50533ce6360c32b4d65"
 
 [[patch.unused]]
 name = "rong_command"
 version = "0.8.0"
-source = "git+https://github.com/LingXia-Dev/Rong.git?rev=6355dec551302a33226e99d3b787cf148f45485e#6355dec551302a33226e99d3b787cf148f45485e"
+source = "git+https://github.com/LingXia-Dev/Rong.git?rev=5cbf569552a229324fd3f50533ce6360c32b4d65#5cbf569552a229324fd3f50533ce6360c32b4d65"
 
 [[patch.unused]]
 name = "rong_compression"
 version = "0.8.0"
-source = "git+https://github.com/LingXia-Dev/Rong.git?rev=6355dec551302a33226e99d3b787cf148f45485e#6355dec551302a33226e99d3b787cf148f45485e"
+source = "git+https://github.com/LingXia-Dev/Rong.git?rev=5cbf569552a229324fd3f50533ce6360c32b4d65#5cbf569552a229324fd3f50533ce6360c32b4d65"
 
 [[patch.unused]]
 name = "rong_console"
 version = "0.8.0"
-source = "git+https://github.com/LingXia-Dev/Rong.git?rev=6355dec551302a33226e99d3b787cf148f45485e#6355dec551302a33226e99d3b787cf148f45485e"
+source = "git+https://github.com/LingXia-Dev/Rong.git?rev=5cbf569552a229324fd3f50533ce6360c32b4d65#5cbf569552a229324fd3f50533ce6360c32b4d65"
 
 [[patch.unused]]
 name = "rong_cron"
 version = "0.8.0"
-source = "git+https://github.com/LingXia-Dev/Rong.git?rev=6355dec551302a33226e99d3b787cf148f45485e#6355dec551302a33226e99d3b787cf148f45485e"
+source = "git+https://github.com/LingXia-Dev/Rong.git?rev=5cbf569552a229324fd3f50533ce6360c32b4d65#5cbf569552a229324fd3f50533ce6360c32b4d65"
 
 [[patch.unused]]
 name = "rong_crypto"
 version = "0.8.0"
-source = "git+https://github.com/LingXia-Dev/Rong.git?rev=6355dec551302a33226e99d3b787cf148f45485e#6355dec551302a33226e99d3b787cf148f45485e"
+source = "git+https://github.com/LingXia-Dev/Rong.git?rev=5cbf569552a229324fd3f50533ce6360c32b4d65#5cbf569552a229324fd3f50533ce6360c32b4d65"
 
 [[patch.unused]]
 name = "rong_encoding"
 version = "0.8.0"
-source = "git+https://github.com/LingXia-Dev/Rong.git?rev=6355dec551302a33226e99d3b787cf148f45485e#6355dec551302a33226e99d3b787cf148f45485e"
+source = "git+https://github.com/LingXia-Dev/Rong.git?rev=5cbf569552a229324fd3f50533ce6360c32b4d65#5cbf569552a229324fd3f50533ce6360c32b4d65"
 
 [[patch.unused]]
 name = "rong_event"
 version = "0.8.0"
-source = "git+https://github.com/LingXia-Dev/Rong.git?rev=6355dec551302a33226e99d3b787cf148f45485e#6355dec551302a33226e99d3b787cf148f45485e"
+source = "git+https://github.com/LingXia-Dev/Rong.git?rev=5cbf569552a229324fd3f50533ce6360c32b4d65#5cbf569552a229324fd3f50533ce6360c32b4d65"
 
 [[patch.unused]]
 name = "rong_exception"
 version = "0.8.0"
-source = "git+https://github.com/LingXia-Dev/Rong.git?rev=6355dec551302a33226e99d3b787cf148f45485e#6355dec551302a33226e99d3b787cf148f45485e"
+source = "git+https://github.com/LingXia-Dev/Rong.git?rev=5cbf569552a229324fd3f50533ce6360c32b4d65#5cbf569552a229324fd3f50533ce6360c32b4d65"
 
 [[patch.unused]]
 name = "rong_fs"
 version = "0.8.0"
-source = "git+https://github.com/LingXia-Dev/Rong.git?rev=6355dec551302a33226e99d3b787cf148f45485e#6355dec551302a33226e99d3b787cf148f45485e"
+source = "git+https://github.com/LingXia-Dev/Rong.git?rev=5cbf569552a229324fd3f50533ce6360c32b4d65#5cbf569552a229324fd3f50533ce6360c32b4d65"
 
 [[patch.unused]]
 name = "rong_http"
 version = "0.8.0"
-source = "git+https://github.com/LingXia-Dev/Rong.git?rev=6355dec551302a33226e99d3b787cf148f45485e#6355dec551302a33226e99d3b787cf148f45485e"
+source = "git+https://github.com/LingXia-Dev/Rong.git?rev=5cbf569552a229324fd3f50533ce6360c32b4d65#5cbf569552a229324fd3f50533ce6360c32b4d65"
 
 [[patch.unused]]
 name = "rong_jscore"
 version = "0.8.0"
-source = "git+https://github.com/LingXia-Dev/Rong.git?rev=6355dec551302a33226e99d3b787cf148f45485e#6355dec551302a33226e99d3b787cf148f45485e"
+source = "git+https://github.com/LingXia-Dev/Rong.git?rev=5cbf569552a229324fd3f50533ce6360c32b4d65#5cbf569552a229324fd3f50533ce6360c32b4d65"
 
 [[patch.unused]]
 name = "rong_jscore_sys"
 version = "0.6.1"
-source = "git+https://github.com/LingXia-Dev/Rong.git?rev=6355dec551302a33226e99d3b787cf148f45485e#6355dec551302a33226e99d3b787cf148f45485e"
+source = "git+https://github.com/LingXia-Dev/Rong.git?rev=5cbf569552a229324fd3f50533ce6360c32b4d65#5cbf569552a229324fd3f50533ce6360c32b4d65"
 
 [[patch.unused]]
 name = "rong_modules"
 version = "0.8.0"
-source = "git+https://github.com/LingXia-Dev/Rong.git?rev=6355dec551302a33226e99d3b787cf148f45485e#6355dec551302a33226e99d3b787cf148f45485e"
+source = "git+https://github.com/LingXia-Dev/Rong.git?rev=5cbf569552a229324fd3f50533ce6360c32b4d65#5cbf569552a229324fd3f50533ce6360c32b4d65"
 
 [[patch.unused]]
 name = "rong_redis"
 version = "0.8.0"
-source = "git+https://github.com/LingXia-Dev/Rong.git?rev=6355dec551302a33226e99d3b787cf148f45485e#6355dec551302a33226e99d3b787cf148f45485e"
+source = "git+https://github.com/LingXia-Dev/Rong.git?rev=5cbf569552a229324fd3f50533ce6360c32b4d65#5cbf569552a229324fd3f50533ce6360c32b4d65"
 
 [[patch.unused]]
 name = "rong_s3"
 version = "0.8.0"
-source = "git+https://github.com/LingXia-Dev/Rong.git?rev=6355dec551302a33226e99d3b787cf148f45485e#6355dec551302a33226e99d3b787cf148f45485e"
+source = "git+https://github.com/LingXia-Dev/Rong.git?rev=5cbf569552a229324fd3f50533ce6360c32b4d65#5cbf569552a229324fd3f50533ce6360c32b4d65"
 
 [[patch.unused]]
 name = "rong_sqlite"
 version = "0.8.0"
-source = "git+https://github.com/LingXia-Dev/Rong.git?rev=6355dec551302a33226e99d3b787cf148f45485e#6355dec551302a33226e99d3b787cf148f45485e"
+source = "git+https://github.com/LingXia-Dev/Rong.git?rev=5cbf569552a229324fd3f50533ce6360c32b4d65#5cbf569552a229324fd3f50533ce6360c32b4d65"
 
 [[patch.unused]]
 name = "rong_storage"
 version = "0.8.0"
-source = "git+https://github.com/LingXia-Dev/Rong.git?rev=6355dec551302a33226e99d3b787cf148f45485e#6355dec551302a33226e99d3b787cf148f45485e"
+source = "git+https://github.com/LingXia-Dev/Rong.git?rev=5cbf569552a229324fd3f50533ce6360c32b4d65#5cbf569552a229324fd3f50533ce6360c32b4d65"
 
 [[patch.unused]]
 name = "rong_stream"
 version = "0.8.0"
-source = "git+https://github.com/LingXia-Dev/Rong.git?rev=6355dec551302a33226e99d3b787cf148f45485e#6355dec551302a33226e99d3b787cf148f45485e"
+source = "git+https://github.com/LingXia-Dev/Rong.git?rev=5cbf569552a229324fd3f50533ce6360c32b4d65#5cbf569552a229324fd3f50533ce6360c32b4d65"
 
 [[patch.unused]]
 name = "rong_timer"
 version = "0.8.0"
-source = "git+https://github.com/LingXia-Dev/Rong.git?rev=6355dec551302a33226e99d3b787cf148f45485e#6355dec551302a33226e99d3b787cf148f45485e"
+source = "git+https://github.com/LingXia-Dev/Rong.git?rev=5cbf569552a229324fd3f50533ce6360c32b4d65#5cbf569552a229324fd3f50533ce6360c32b4d65"
 
 [[patch.unused]]
 name = "rong_url"
 version = "0.8.0"
-source = "git+https://github.com/LingXia-Dev/Rong.git?rev=6355dec551302a33226e99d3b787cf148f45485e#6355dec551302a33226e99d3b787cf148f45485e"
+source = "git+https://github.com/LingXia-Dev/Rong.git?rev=5cbf569552a229324fd3f50533ce6360c32b4d65#5cbf569552a229324fd3f50533ce6360c32b4d65"
 
 [[patch.unused]]
 name = "rong_worker"
 version = "0.8.0"
-source = "git+https://github.com/LingXia-Dev/Rong.git?rev=6355dec551302a33226e99d3b787cf148f45485e#6355dec551302a33226e99d3b787cf148f45485e"
+source = "git+https://github.com/LingXia-Dev/Rong.git?rev=5cbf569552a229324fd3f50533ce6360c32b4d65#5cbf569552a229324fd3f50533ce6360c32b4d65"
