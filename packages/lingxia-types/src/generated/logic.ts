@@ -572,7 +572,7 @@ declare global {
 
   interface UiApi {
     /**
-     * Show a short message, or a caught failure in its `lx.app.errorText` words. A failure is
+     * Show a short message, or a caught failure in the words the View's `errorText` gives its code. A failure is
      * `danger` unless `options.tone` says otherwise; a cancel (`E_ABORT`) shows nothing and returns
      * a handle that does nothing.
      *
@@ -581,12 +581,10 @@ declare global {
      * try { await save(); } catch (e) { lx.ui.toast(e); }
      * ```
      */
-    toast(error: unknown, options?: ToastOptions & ErrorTextOptions): ToastHandle;
-    /** An acknowledgement dialog, or one titled with a failure's `lx.app.errorText` words; a cancel (`E_ABORT`) resolves with no dialog. */
-    alert(error: Error | {
-      /** What went wrong, as an `lx` failure names it. */
-      readonly code: string;
-    }, options?: ErrorTextOptions): Promise<void>;
+    toast(error: unknown, options?: ToastOptions & {
+      /** The words when the failure's code has none of its own, such as "Couldn't save the note". */
+      fallback?: string;
+    }): ToastHandle;
   }
 
   interface Lx {
@@ -774,15 +772,25 @@ export type ActivateTarget = {
 
 /** An acknowledgement dialog has no cancel button. */
 export type AlertOptions = {
-    /** The question or statement. */
-    title: string;
     /** Detail below the title. */
     message?: string;
     /** Label of the only button. */
     confirmText?: string;
     /** Aborting it closes the dialog, and the call rejects. When its page unloads, it closes as if the person dismissed it. */
     signal?: AbortSignal;
-};
+} & ({
+    /** The question or statement. */
+    title: string;
+    /** Only with a failure. */
+    error?: undefined;
+} | {
+    /** A caught failure: the words the View's `errorText` gives its code are the title, and a cancel (`E_ABORT`) shows no dialog. */
+    error: unknown;
+    /** The title instead of the failure's words. */
+    title?: string;
+    /** The words when the failure's code has none of its own, such as "Couldn't save the note". */
+    fallback?: string;
+});
 
 /** Every surface handle, narrowable by `kind`. */
 export type AnySurface = PageSurface | DeclaredSurface | AppSurface | TabSurface;
@@ -1485,12 +1493,6 @@ export type DownloadsDownloadResult = {
     type?: string;
     /** File size in bytes. */
     size: number;
-};
-
-/** What `lx.app.errorText` says when no code-specific word applies. */
-export type ErrorTextOptions = {
-    /** The caller's own words for this failure, such as the page's "Couldn't save the note." */
-    fallback?: string;
 };
 
 /**
@@ -4157,12 +4159,6 @@ declare global {
      * tags keep their text. Read it when the text is shown: a later language switch does not change it.
      */
     t(...message: LxAppMessageCall): string;
-    /**
-     * A failure as text for the person, by its `code`, in the lxapp's language: what a View's
-     * `errorText` says for it. `fallback` when no code-specific word applies; `null` for a cancel.
-     * The error's `message` is English for the log and is never returned.
-     */
-    errorText(error: unknown, options?: ErrorTextOptions): string | null;
     readonly moreActions: MoreActionsApi;
     readonly tabBar: TabBarApi;
     readonly update: LxAppUpdateApi;
@@ -4564,8 +4560,17 @@ declare global {
      */
     actionSheet(options: ActionSheetOptions): Promise<ActionSheetResult>;
     /**
-     * Acknowledgement-only dialog. Resolves when the user dismisses it.
-     * @throws {E_INVALID_ARG} A missing or empty `title`.
+     * Acknowledgement-only dialog. Resolves when the user dismisses it. With `error`, the failure's
+     * words (what the View's `errorText` says) are the title unless `title` is given, and a cancel shows no dialog.
+     * @example
+     * ```ts
+     * try {
+     * await lx.clipboard.writeText('https://example.com');
+     * } catch (e) {
+     * await lx.ui.alert({ error: e, fallback: "Couldn't copy the link" });
+     * }
+     * ```
+     * @throws {E_INVALID_ARG} A missing or empty `title`, without `error`.
      * @throws {E_ABORT} `signal` aborted; the dialog is closed.
      * @throws {E_INVALID_STATE} No page can show a dialog now; `reason` is `'appClosed'` when the app is not open.
      * @throws {E_INTERNAL} The dialog could not be shown.

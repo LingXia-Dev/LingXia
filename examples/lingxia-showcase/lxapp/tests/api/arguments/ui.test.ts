@@ -14,7 +14,14 @@ const dialogRows: readonly Row[] = [
 ];
 
 argumentContracts({
-  'ui.alert': { refuseOnly: true, rows: dialogRows },
+  'ui.alert': {
+    refuseOnly: true,
+    rows: [
+      ...dialogRows,
+      ['empty title over a failure', [{ title: '', error: { code: 'E_NETWORK' } }], 'E_INVALID_ARG'],
+      ['number fallback', [{ error: { code: 'E_INTERNAL' }, fallback: 1 }], 'E_INVALID_ARG'],
+    ],
+  },
   'ui.confirm': { refuseOnly: true, rows: dialogRows },
   'ui.actionSheet': {
     refuseOnly: true,

@@ -949,7 +949,7 @@ fn generate_view_words(dir: &Path, out: &Path) -> Result<()> {
     )
 }
 
-/// `view_error_word`: the View's `@view.error.*` words for Logic's `lx.app.errorText`, so both
+/// `view_error_word`: the View's `@view.error.*` words for Logic's `lx.ui.toast(e)` and `lx.ui.alert({ error })`, so both
 /// layers say a failure the same way from one catalogue.
 fn view_error_words_rust(dir: &Path) -> Result<String> {
     let languages = package_catalogues(dir, "@view.")?;

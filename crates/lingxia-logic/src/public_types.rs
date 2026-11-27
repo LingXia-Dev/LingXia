@@ -1558,12 +1558,6 @@ rong::js_api! {
         /// The kind of network the device is on.
         type NetworkType = r###"'none' | 'unknown' | 'wifi' | '2g' | '3g' | '4g' | '5g' | 'ethernet'"###;
 
-        /// What `lx.app.errorText` says when no code-specific word applies.
-        type ErrorTextOptions = r###"{
-    /** The caller's own words for this failure, such as the page's "Couldn't save the note." */
-    fallback?: string;
-}"###;
-
         /// How `lx.openFile` shows the file.
         type OpenFileOptions = r###"{
     /**
@@ -1966,15 +1960,25 @@ true
 
         /// An acknowledgement dialog has no cancel button.
         type AlertOptions = r###"{
-    /** The question or statement. */
-    title: string;
     /** Detail below the title. */
     message?: string;
     /** Label of the only button. */
     confirmText?: string;
     /** Aborting it closes the dialog, and the call rejects. When its page unloads, it closes as if the person dismissed it. */
     signal?: AbortSignal;
-}"###;
+} & ({
+    /** The question or statement. */
+    title: string;
+    /** Only with a failure. */
+    error?: undefined;
+} | {
+    /** A caught failure: the words the View's `errorText` gives its code are the title, and a cancel (`E_ABORT`) shows no dialog. */
+    error: unknown;
+    /** The title instead of the failure's words. */
+    title?: string;
+    /** The words when the failure's code has none of its own, such as "Couldn't save the note". */
+    fallback?: string;
+})"###;
         /// A confirmation dialog always permits declining.
         type ConfirmOptions = r###"{
     /** The question. */

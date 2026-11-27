@@ -126,8 +126,8 @@ try {
 }
 ```
 
-A View's toaster takes the same: `useToast().show(e, { fallback })` (Liuli). `lx.ui.alert(e)` titles a
-dialog with the same words. Branch on `code` (and `reason`) only to act differently:
+A View's toaster takes the same: `useToast().show(e, { fallback })` (Liuli). `lx.ui.alert({ error: e })` titles
+a dialog with the same words. Branch on `code` (and `reason`) only to act differently:
 
 ```ts
 import { LxError, lx } from '@lingxia/logic'

@@ -569,7 +569,7 @@ declare global {
 
   interface UiApi {
     /**
-     * Show a short message, or a caught failure in its `lx.app.errorText` words. A failure is
+     * Show a short message, or a caught failure in the words the View's `errorText` gives its code. A failure is
      * `danger` unless `options.tone` says otherwise; a cancel (`E_ABORT`) shows nothing and returns
      * a handle that does nothing.
      *
@@ -578,12 +578,10 @@ declare global {
      * try { await save(); } catch (e) { lx.ui.toast(e); }
      * ```
      */
-    toast(error: unknown, options?: ToastOptions & ErrorTextOptions): ToastHandle;
-    /** An acknowledgement dialog, or one titled with a failure's `lx.app.errorText` words; a cancel (`E_ABORT`) resolves with no dialog. */
-    alert(error: Error | {
-      /** What went wrong, as an `lx` failure names it. */
-      readonly code: string;
-    }, options?: ErrorTextOptions): Promise<void>;
+    toast(error: unknown, options?: ToastOptions & {
+      /** The words when the failure's code has none of its own, such as "Couldn't save the note". */
+      fallback?: string;
+    }): ToastHandle;
   }
 
   interface Lx {

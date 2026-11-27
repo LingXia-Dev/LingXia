@@ -102,15 +102,11 @@ rong::js_api! {
         fn t(
             ts_params = "...message: LxAppMessageCall"
         ) = message;
-        fn errorText(
-            ts_params = "error: unknown, options?: ErrorTextOptions",
-            ts_return = "string | null"
-        ) = error_text;
     }
 }
 
 /// Codes a person can act on get their own word; the rest read as a plain failure. The same table
-/// as the View's `errorText`.
+/// as the View's `errorText`, for `lx.ui.toast(e)` and `lx.ui.alert({ error })`.
 fn error_word(code: &str) -> Option<&'static str> {
     Some(match code {
         "E_NETWORK" | "VIDEO_NETWORK" | "WEBVIEW_NETWORK" => "network",
@@ -128,33 +124,9 @@ fn error_word(code: &str) -> Option<&'static str> {
     })
 }
 
-#[derive(rong::FromJSObject, Default)]
-#[ts_skip]
-pub(crate) struct ErrorTextOptions {
-    pub(crate) fallback: Option<String>,
-}
-
-/// A thrown `Error`, or an object carrying a string `code` such as an event's failure.
-pub(crate) fn is_failure(value: &rong::JSValue) -> bool {
-    value.is_error()
-        || value
-            .clone()
-            .into_object()
-            .is_some_and(|object| object.get_opt::<_, String>("code").ok().flatten().is_some())
-}
-
-/// A failure as text for the person, by its `code`, in the lxapp's language: what a View's
-/// `errorText` says for it. `fallback` when no code-specific word applies; `null` for a cancel.
+/// A failure's words for the person, by its `code`, in the lxapp's language: what a View's
+/// `errorText` says for it; `fallback` when no code-specific word applies; `None` for a cancel.
 /// The error's `message` is English for the log and is never returned.
-fn error_text(
-    ctx: JSContext,
-    error: rong::JSValue,
-    options: rong::function::Optional<ErrorTextOptions>,
-) -> JSResult<Option<String>> {
-    error_words(&ctx, error, options.0.and_then(|options| options.fallback))
-}
-
-/// `errorText`'s words for `error`; `None` for a cancel.
 pub(crate) fn error_words(
     ctx: &JSContext,
     error: rong::JSValue,
@@ -189,19 +161,6 @@ pub(crate) fn error_words(
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn a_failure_is_an_error_or_carries_a_code() {
-        use rong::{JSEngine, Source};
-        let runtime = <rong::RongJS as JSEngine>::runtime();
-        let ctx = runtime.context();
-        let failure = |js: &str| super::is_failure(&ctx.eval(Source::from_bytes(js)).unwrap());
-        assert!(failure("new Error('x')"));
-        assert!(failure("({ code: 'E_NETWORK' })"));
-        assert!(!failure("({ title: 'Saved' })"));
-        assert!(!failure("'Saved'"));
-        assert!(!failure("({ code: 1 })"));
-    }
-
     #[test]
     fn error_words_match_the_view() {
         let view = include_str!("../../../packages/lingxia-view/src/runtime/words.js");
