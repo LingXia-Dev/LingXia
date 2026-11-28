@@ -660,7 +660,7 @@ export const LX_RUNTIME_SURFACES = [
     layer: 'automation',
     expression: 'lx.automation().lxapp()',
     members: LXAPP_DRIVER_API,
-    properties: ['clock', 'dialogs', 'mock', 'nav', 'network', 'page', 'profile'],
+    properties: ['clock', 'dialogs', 'feedback', 'mock', 'nav', 'network', 'page', 'profile'],
   },
   { name: 'MockDriver', layer: 'automation', expression: 'lx.automation().lxapp().mock', members: MOCK_DRIVER_API },
   {
