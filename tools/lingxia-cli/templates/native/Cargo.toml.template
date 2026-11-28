@@ -12,6 +12,8 @@ name = "lingxia"
 # the type the current platform links; `cargo build` of this crate as root
 # would rustc it once per crate-type.
 crate-type = ["cdylib", "staticlib", "rlib"]
+# Doctests would see two `lingxia` crates: this lib and the SDK it depends on.
+doctest = false
 
 [features]
 default = {{HOST_DEFAULT_FEATURES}}
@@ -54,6 +56,12 @@ serde = { version = "1", features = ["derive"] }
 
 [build-dependencies]
 lingxia-native-codegen = { workspace = true }
+
+# `lingxia::test_host!` for `cargo test`; never part of the app build.
+[dev-dependencies]
+lingxia = { workspace = true, features = ["testing"] }
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 
 # `lingxia::host!` exports Harmony's entrypoint through napi.
 {{HARMONY_DEPS_BLOCK}}

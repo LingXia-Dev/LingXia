@@ -53,6 +53,7 @@ where
     );
     crate::pin::overrides::apply(&mut cmd, working_dir)?;
     configure(&mut cmd);
+    refuse_test_features(&cmd)?;
 
     let status = cmd.status().context("Failed to execute cargo rustc")?;
     if !status.success() {
@@ -83,6 +84,50 @@ where
         profile,
         configure,
     )
+}
+
+/// Fails when the build `cmd` describes resolves `lingxia/testing`. Any dependency can turn it
+/// on, so the resolved graph decides: its test sessions and link stubs belong in test binaries.
+pub fn refuse_test_features(cmd: &Command) -> Result<()> {
+    const FORWARDED: [&str; 5] = ["--target", "--manifest-path", "--features", "--config", "-p"];
+    const FLAGS: [&str; 2] = ["--no-default-features", "--all-features"];
+    let mut tree = Command::new("cargo");
+    tree.args(["tree", "-e", "normal", "-i", "lingxia", "--depth", "0", "-f", "{f}"]);
+    let mut args = cmd.get_args().map(|arg| arg.to_string_lossy().into_owned());
+    while let Some(arg) = args.next() {
+        if FORWARDED.contains(&arg.as_str()) {
+            if let Some(value) = args.next() {
+                tree.arg(arg).arg(value);
+            }
+        } else if FLAGS.contains(&arg.as_str()) {
+            tree.arg(arg);
+        }
+    }
+    if let Some(dir) = cmd.get_current_dir() {
+        tree.current_dir(dir);
+    }
+    for (key, value) in cmd.get_envs() {
+        match value {
+            Some(value) => tree.env(key, value),
+            None => tree.env_remove(key),
+        };
+    }
+    let output = tree.output().context("run cargo tree")?;
+    // A graph without `lingxia`, or one cargo cannot read, fails in the build itself.
+    if !output.status.success() {
+        return Ok(());
+    }
+    let resolved = String::from_utf8_lossy(&output.stdout);
+    if resolved
+        .lines()
+        .any(|line| line.trim().split(',').any(|feature| feature == "testing"))
+    {
+        return Err(anyhow!(
+            "this build resolves `lingxia/testing`, which is for `cargo test` only; \
+             keep it under [dev-dependencies] (`cargo tree -e features -i lingxia` shows what enables it)"
+        ));
+    }
+    Ok(())
 }
 
 fn cargo_rustc_command(
@@ -116,6 +161,39 @@ fn cargo_rustc_command(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_build_that_resolves_lingxia_testing_is_refused() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        let write = |path: &str, text: &str| {
+            let path = root.join(path);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, text).unwrap();
+        };
+        write(
+            "lingxia/Cargo.toml",
+            "[package]\nname = \"lingxia\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[features]\ntesting = []\n",
+        );
+        write("lingxia/src/lib.rs", "");
+        write("host/src/lib.rs", "");
+        let host = |deps: &str| {
+            write(
+                "host/Cargo.toml",
+                &format!("[package]\nname = \"host\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n{deps}"),
+            );
+            let mut cmd = Command::new("cargo");
+            cmd.arg("rustc")
+                .arg("--manifest-path")
+                .arg(root.join("host/Cargo.toml"));
+            refuse_test_features(&cmd)
+        };
+        let dev_only = "[dependencies]\nlingxia = { path = \"../lingxia\" }\n\n[dev-dependencies]\nlingxia = { path = \"../lingxia\", features = [\"testing\"] }\n";
+        host(dev_only).unwrap();
+        let normal = "[dependencies]\nlingxia = { path = \"../lingxia\", features = [\"testing\"] }\n";
+        let err = host(normal).unwrap_err().to_string();
+        assert!(err.contains("lingxia/testing"), "{err}");
+    }
 
     fn command_args(cmd: &Command) -> Vec<String> {
         cmd.get_args()

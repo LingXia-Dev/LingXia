@@ -416,6 +416,27 @@ fails with `E_NOT_FOUND` where it is compiled out.
 </script>
 ```
 
+## Testing routes
+
+With `lingxia = { features = ["testing"] }` under `[dev-dependencies]`, plain
+`cargo test` calls routes as an lxapp would (no platform, no WebView):
+
+```rust
+#[tokio::test(flavor = "multi_thread")]
+async fn adds_a_note() {
+    let host = lingxia::test_host!(); // `test_host!(my_lib)` from tests/ or a library crate
+    let note: Note = host.call("notes.add", serde_json::json!({ "title": "a" })).await.unwrap();
+    let mut export = host.stream::<Progress, Summary>("notes.export", ());
+    while let Some(step) = export.next().await { step.unwrap(); }
+    let summary = export.result().await.unwrap();
+}
+```
+
+Each `test_host!()` is a fresh session: new `LxAppState<T>` values. `.with_addon(a)`
+supplies `Host<A>`; `.as_class(AppSessionClass::ControlApp)` applies that class's
+audiences. Dropping a stream cancels it. `lingxia build` fails if `testing` reaches
+the app's own dependency graph.
+
 ## Facades
 
 Reach SDK services through `lingxia::*` facades (such as `lingxia::app`,

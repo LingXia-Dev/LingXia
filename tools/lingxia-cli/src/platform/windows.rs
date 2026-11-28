@@ -108,6 +108,7 @@ impl Platform for WindowsPlatform {
                 .arg(config.native_features.join(","));
         }
 
+        crate::commands::rust::refuse_test_features(&command)?;
         let status = command
             .status()
             .context("Failed to execute cargo build for Windows host app")?;

@@ -56,6 +56,10 @@ creation and sealed before that session's Logic starts.
 | `ControlSurface` | control-surface constructor | Host-bundled bundle source, **not** the home id, and the live native control authority. |
 | `StandardApp` | default constructor | Default. |
 
+`lingxia/testing` (`lingxia::test_host!`) builds a session of any class from Rust for
+`cargo test`. Rust in the binary is already trusted, so it grants a route nothing new;
+`lingxia build` refuses a build whose resolved features include it.
+
 **The class follows the identity, not the live map.** Session-class lookup
 derives `ControlApp` from the sealed home app id rather than from whatever session
 happens to be in the live lxapp map. This matters because the home session *is* removed

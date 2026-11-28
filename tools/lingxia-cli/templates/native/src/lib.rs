@@ -30,3 +30,16 @@ struct Greeting {
 fn greet(input: Greeting) -> String {
     format!("Hello, {}! Greeting number {}.", input.name, input.count)
 }
+
+#[cfg(test)]
+mod tests {
+    #[tokio::test(flavor = "multi_thread")]
+    async fn greets_by_name() {
+        let host = lingxia::test_host!();
+        let text: String = host
+            .call("hello.greet", serde_json::json!({ "name": "Ada", "count": 2 }))
+            .await
+            .unwrap();
+        assert_eq!(text, "Hello, Ada! Greeting number 2.");
+    }
+}
