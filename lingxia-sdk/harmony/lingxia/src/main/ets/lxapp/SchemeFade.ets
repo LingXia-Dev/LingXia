@@ -64,7 +64,7 @@ export function animationsReduced(): boolean {
 }
 
 function framePixels(token: number): image.PixelMap | null {
-  const bytes = gpuPageFrame(token);
+  const bytes: Uint8Array | null = gpuPageFrame(token);
   if (!bytes || bytes.byteLength <= 8) {
     return null;
   }
@@ -74,7 +74,7 @@ function framePixels(token: number): image.PixelMap | null {
   if (width === 0 || height === 0 || bytes.byteLength !== 8 + width * height * 4) {
     return null;
   }
-  const rows = bytes.buffer.slice(bytes.byteOffset + 8, bytes.byteOffset + bytes.byteLength);
+  const rows: ArrayBuffer = bytes.buffer.slice(bytes.byteOffset + 8, bytes.byteOffset + bytes.byteLength);
   const options: image.InitializationOptions = {
     size: { width: width, height: height },
     srcPixelFormat: image.PixelMapFormat.RGBA_8888,
