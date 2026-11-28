@@ -878,12 +878,25 @@ pub fn take_pending_campaign() -> Option<(String, u32)> {
         .take_and_close()
 }
 
-/// The configured page floor for one appearance, as `#RRGGBB`.
-///
-/// `None` means the host did not declare one and the platform should keep
-/// using its own system background.
+/// A host theme a dev session saved, replacing the one the config shipped.
+static DEV_HOST_PACK: std::sync::RwLock<Option<&'static str>> = std::sync::RwLock::new(None);
+
+/// Dev sessions: replace the host theme pack (JSON, completed and checked by the CLI) for the rest
+/// of the process. Each save leaks its text, which only a developer's saves produce.
+pub fn set_dev_host_theme_pack(pack: String) {
+    *DEV_HOST_PACK
+        .write()
+        .unwrap_or_else(|error| error.into_inner()) = Some(Box::leak(pack.into_boxed_str()));
+}
+
 /// The host theme pack as JSON, if the product ships one.
 pub fn host_theme_pack() -> Option<&'static str> {
+    if let Some(pack) = *DEV_HOST_PACK
+        .read()
+        .unwrap_or_else(|error| error.into_inner())
+    {
+        return Some(pack);
+    }
     static PACK: OnceLock<Option<String>> = OnceLock::new();
     // The config is set once, so the pack is serialised once it exists.
     let config = APP_CONFIG.get()?;

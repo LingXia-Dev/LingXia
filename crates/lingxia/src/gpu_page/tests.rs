@@ -505,3 +505,25 @@ fn a_screenshot_waits_for_a_revealed_pages_first_frame_and_gives_up_with_the_sam
     assert_eq!(error, "page is not active");
     assert!(started.elapsed() < std::time::Duration::from_millis(500));
 }
+
+#[test]
+fn a_saved_theme_reaches_the_view_as_a_theme_update() {
+    let factory = Arc::new(Factory::default());
+    let (endpoint, shell, _) = endpoint(&factory, "theme-push");
+    endpoint
+        .update_environment(PageViewEnvironment::Theme {
+            pack: r#"{"name":"brand","version":1}"#.into(),
+            revision: 2,
+        })
+        .unwrap();
+    assert!(
+        endpoint
+            .update_environment(PageViewEnvironment::Theme {
+                pack: "{".into(),
+                revision: 3,
+            })
+            .is_err(),
+        "a pack that is not JSON never reaches the View"
+    );
+    assert_eq!(shell.calls(), [r#"environment "theme""#]);
+}

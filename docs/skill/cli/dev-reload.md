@@ -21,6 +21,11 @@ the run ends. Keep files a test generates outside the watched tree.
 Saves under `mocks/` reload that lxapp's mocks only.
 [Mocks](../lxapp/mock.md).
 
+A saved `theme.json` (the lxapp's) or `themes/<id>.json` (the host's) reaches
+the open pages and bars without a rebuild; page state stays. A theme that fails
+its contrast check keeps the last good one, and the terminal lists each failing
+pair.
+
 ## What a save does
 
 An edit that touches only GPU page View code recompiles those pages and swaps

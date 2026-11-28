@@ -1,7 +1,7 @@
 //! Theme roles for native chrome and WebView pages, from the same resolver View pages use.
 
 use lingxia_theme::{ROLE_COUNT, Rgba, Role, ThemeLooks, looks};
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 
 /// Whether the product is in high contrast as far as the runtime knows: the user's `more`.
 pub fn high_contrast() -> bool {
@@ -14,11 +14,9 @@ pub fn host_role(role: Role, dark: bool) -> Option<Rgba> {
     Some(host_looks()?.role(role, dark, high_contrast()))
 }
 
-/// The host theme's looks; the pack never changes once the config is set.
+/// The host theme's looks, cached by the pack's text, which a dev session may replace.
 pub fn host_looks() -> Option<Arc<ThemeLooks>> {
-    static LOOKS: OnceLock<Arc<ThemeLooks>> = OnceLock::new();
-    let pack = lingxia_host_config::host_theme_pack()?;
-    Some(LOOKS.get_or_init(|| looks(Some(pack))).clone())
+    Some(looks(Some(lingxia_host_config::host_theme_pack()?)))
 }
 
 /// A role of the theme `appid` renders with (its own, else the host's, else the default).
@@ -62,6 +60,46 @@ pub fn role_stylesheet(looks: &ThemeLooks, dark: bool, high_contrast: bool) -> S
         ":root{{{}}}",
         declarations(looks.palette(dark, high_contrast))
     )
+}
+
+/// Dev sessions: a saved theme (JSON, completed and checked by the CLI) replaces `appid`'s own
+/// theme, or with `None` the host's, in every open page and its chrome without a rebuild.
+/// Returns how many pages took it. The lxapp's bundle must already carry the new `theme.json`,
+/// so pages opened later read it too.
+pub fn apply_dev_theme(appid: Option<&str>, pack: &str) -> usize {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    // Past every seeded pack (revision 0), and rising so a View drops an older push.
+    static REVISION: AtomicU64 = AtomicU64::new(0);
+    let revision = REVISION.fetch_add(1, Ordering::AcqRel) + 1;
+    let apps: Vec<Arc<super::LxApp>> = match appid {
+        Some(appid) => super::try_get(appid).into_iter().collect(),
+        None => {
+            lingxia_host_config::set_dev_host_theme_pack(pack.to_owned());
+            super::get_lxapps_manager()
+                .map(|manager| {
+                    manager
+                        .lxapps
+                        .iter()
+                        .map(|entry| entry.value().clone())
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default()
+                .into_iter()
+                // An lxapp's own theme is completed from the default, never from the host's.
+                .filter(|app: &Arc<super::LxApp>| app.read_theme_pack().is_none())
+                .collect()
+        }
+    };
+    let mut pages = 0;
+    for app in apps {
+        app.state.lock().unwrap().theme_looks = None;
+        app.sync_host_ui();
+        for page in app.live_page_instances() {
+            page.push_theme(pack, revision);
+            pages += 1;
+        }
+    }
+    pages
 }
 
 /// The id of the `<style>` element holding [`role_stylesheet`].

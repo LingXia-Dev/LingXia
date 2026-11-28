@@ -1618,6 +1618,19 @@ impl PageInstance {
         }
     }
 
+    /// Dev sessions: hand the View a saved theme pack and repaint a WebView page's roles.
+    pub(crate) fn push_theme(&self, pack: &str, revision: u64) {
+        self.push_view_environment(PageViewEnvironment::Theme {
+            pack: pack.to_owned(),
+            revision,
+        });
+        if let Some(webview) = self.webview() {
+            let app = self.owning_lxapp();
+            let dark = app.appearance_state().resolved.is_dark();
+            let _ = webview.exec_js(&app.role_style_script(dark));
+        }
+    }
+
     pub(crate) fn push_view_environment(&self, update: PageViewEnvironment) {
         if let Some(view) = self.page_view()
             && let Err(error) = view.update_environment(update)

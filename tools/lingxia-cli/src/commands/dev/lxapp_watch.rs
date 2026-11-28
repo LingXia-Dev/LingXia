@@ -367,6 +367,15 @@ fn run_watch(
     for root in &roots {
         watch_root(&mut watcher, &mut subtrees, &root.path)?;
     }
+    // The host's `themes/` beside `lingxia.yaml`: a save there pushes the product's theme.
+    let host_themes = state.project_root.join(crate::theme::HOST_THEMES_DIR);
+    let host_themes = dunce::canonicalize(&host_themes).unwrap_or(host_themes);
+    if state.project_root.join("lingxia.yaml").is_file() && host_themes.is_dir() {
+        if let Err(err) = watcher.watch(&host_themes, RecursiveMode::NonRecursive) {
+            eprintln!("⚠ lxapp watch: {}: {err}", host_themes.display());
+        }
+    }
+    let mut host_theme_dirty = false;
 
     let outputs: Vec<PathBuf> = roots
         .iter()
@@ -408,6 +417,8 @@ fn run_watch(
     let mut native_dirty: BTreeSet<String> = BTreeSet::new();
     // Saves under `mocks/` reload the mocks only: no rebuild, no restart.
     let mut mocks_dirty: BTreeSet<String> = BTreeSet::new();
+    // Saves of an lxapp's `theme.json` push the theme only: no rebuild, no restart.
+    let mut themes_dirty: BTreeSet<String> = BTreeSet::new();
     let mut deferred = false;
     let mut was_paused = false;
     // The session's builds skip the type-check; it runs here, after each edit, beside the app.
@@ -440,6 +451,8 @@ fn run_watch(
             );
         }
         let swaps_only = mocks_dirty.is_empty()
+            && themes_dirty.is_empty()
+            && !host_theme_dirty
             && dirty.iter().all(|app_id| {
                 roots
                     .iter()
@@ -449,7 +462,12 @@ fn run_watch(
                         super::gpu_swap::plan(&root.path, &record(root), paths).is_some()
                     })
             });
-        let timeout = if dirty.is_empty() && mocks_dirty.is_empty() && native_dirty.is_empty() {
+        let timeout = if dirty.is_empty()
+            && mocks_dirty.is_empty()
+            && themes_dirty.is_empty()
+            && !host_theme_dirty
+            && native_dirty.is_empty()
+        {
             IDLE_POLL
         } else if swaps_only {
             SWAP_DEBOUNCE
@@ -475,6 +493,10 @@ fn run_watch(
                 }
                 for path in paths {
                     if is_output(strip_verbatim_prefix(&path), &outputs) {
+                        continue;
+                    }
+                    if is_host_theme(strip_verbatim_prefix(&path), &host_themes) {
+                        host_theme_dirty = true;
                         continue;
                     }
                     if let Some(app_ids) = native_srcs.callers(&path) {
@@ -511,6 +533,8 @@ fn run_watch(
                         let path = strip_verbatim_prefix(&path);
                         if super::mocks::is_mocks_path(strip_verbatim_prefix(&root.path), path) {
                             mocks_dirty.insert(root.app_id.clone());
+                        } else if is_lxapp_theme(strip_verbatim_prefix(&root.path), path) {
+                            themes_dirty.insert(root.app_id.clone());
                         } else {
                             dirty.insert(root.app_id.clone());
                             first_seen
@@ -536,7 +560,11 @@ fn run_watch(
                         regenerate_native(&app_id, &root.path, &mut type_checks);
                     }
                 }
-                if (dirty.is_empty() && mocks_dirty.is_empty()) || stop_flag.load(Ordering::Acquire)
+                if (dirty.is_empty()
+                    && mocks_dirty.is_empty()
+                    && themes_dirty.is_empty()
+                    && !host_theme_dirty)
+                    || stop_flag.load(Ordering::Acquire)
                 {
                     continue;
                 }
@@ -562,6 +590,18 @@ fn run_watch(
                     if let Some(root) = roots.iter().find(|root| root.app_id == app_id) {
                         state.reload_mocks(&app_id, &root.path);
                     }
+                }
+                // A theme that also needs a rebuild ships with it; otherwise it is pushed alone.
+                for app_id in std::mem::take(&mut themes_dirty) {
+                    if dirty.contains(&app_id) {
+                        continue;
+                    }
+                    if let Some(root) = roots.iter().find(|root| root.app_id == app_id) {
+                        state.reload_theme(&app_id, &root.path);
+                    }
+                }
+                if std::mem::take(&mut host_theme_dirty) {
+                    state.reload_host_theme();
                 }
                 let app_ids: Vec<String> = dirty.iter().cloned().collect();
                 dirty.clear();
@@ -1019,6 +1059,16 @@ fn regenerate_native(app_id: &str, dir: &Path, type_checks: &mut TypeChecks) {
     }
 }
 
+/// The lxapp's own `theme.json`, at its root.
+fn is_lxapp_theme(root: &Path, path: &Path) -> bool {
+    path == root.join(crate::theme::THEME_PATH)
+}
+
+/// A host theme: a `.json` file directly in the project's `themes/`.
+fn is_host_theme(path: &Path, host_themes: &Path) -> bool {
+    path.parent() == Some(host_themes) && path.extension().is_some_and(|ext| ext == "json")
+}
+
 fn is_reload_event(kind: EventKind) -> bool {
     !matches!(kind, EventKind::Access(_) | EventKind::Other)
 }
@@ -1053,6 +1103,20 @@ mod tests {
             fs::create_dir_all(parent).unwrap();
         }
         fs::write(path, contents).unwrap();
+    }
+
+    #[test]
+    fn a_theme_save_is_told_apart_from_other_edits() {
+        let root = Path::new("/p/lxapp");
+        assert!(is_lxapp_theme(root, &root.join("theme.json")));
+        assert!(!is_lxapp_theme(root, &root.join("pages/theme.json")));
+        let themes = Path::new("/p/themes");
+        assert!(is_host_theme(&themes.join("brand.json"), themes));
+        assert!(!is_host_theme(&themes.join("notes.md"), themes));
+        assert!(!is_host_theme(
+            Path::new("/p/lxapp/themes/brand.json"),
+            themes
+        ));
     }
 
     #[test]

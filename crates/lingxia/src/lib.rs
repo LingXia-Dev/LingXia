@@ -172,9 +172,9 @@ pub mod dev {
     pub use crate::devtool::prepare_dev_bundles;
     pub use crate::devtool::{
         Appearance, Contrast, DeviceChange, DeviceController, DeviceEntry, DevicePostureEntry,
-        DeviceState, LxAppDevConfig, LxAppDevIdentity, adaptive_device_target, connect_dev_server,
-        dev_session_connected, device_get, device_list, device_set, hot_swap_gpu_pages,
-        install_lxapp_dev_config, install_lxapp_dev_config_from_env,
+        DeviceState, LxAppDevConfig, LxAppDevIdentity, adaptive_device_target, apply_dev_theme,
+        connect_dev_server, dev_session_connected, device_get, device_list, device_set,
+        hot_swap_gpu_pages, install_lxapp_dev_config, install_lxapp_dev_config_from_env,
         lxapp_dev_page_input_supported, register_device_controller, sync_dev_bundle, view_wire,
     };
     pub use lxapp::device::{request_device_change, request_device_set};

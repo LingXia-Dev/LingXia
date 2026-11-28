@@ -326,6 +326,12 @@ impl GpuPageView for Endpoint {
             PageViewEnvironment::Contrast { more, revision } => {
                 serde_json::json!({"kind": "contrast", "revision": revision, "more": more})
             }
+            PageViewEnvironment::Theme { pack, revision } => {
+                let pack: serde_json::Value = serde_json::from_str(&pack).map_err(|error| {
+                    lingxia_error::Error::internal(format!("theme pack: {error}"))
+                })?;
+                serde_json::json!({"kind": "theme", "revision": revision, "pack": pack})
+            }
         };
         self.native.update_environment(&update)
     }

@@ -268,6 +268,14 @@ fn handle_lxapp_page_command_impl(
             let args: HotSwapArgs = parse_args(handler, args)?;
             Ok(Some(hot_swap_response(&args)?))
         }
+        methods::lxapp::THEME => {
+            let args: ThemeArgs = parse_args(handler, args)?;
+            let pack = serde_json::to_string(&args.pack).map_err(|error| error.to_string())?;
+            let pages = lingxia::dev::apply_dev_theme(args.appid.as_deref(), &pack)?;
+            Ok(Some(
+                json!({ "ok": true, "action": "theme", "pages": pages }),
+            ))
+        }
         _ => Err(format!("unknown lxapp page handler: {}", handler)),
     }
 }
@@ -474,6 +482,27 @@ mod tests {
         assert!(response.get("pages").is_some());
         assert!(response.get("surfaces").is_none());
     }
+
+    #[test]
+    fn a_theme_push_names_its_lxapp_or_the_host() {
+        let app: super::ThemeArgs =
+            serde_json::from_value(serde_json::json!({"appid": "a", "pack": {"name": "x"}}))
+                .unwrap();
+        assert_eq!(app.appid.as_deref(), Some("a"));
+        let host: super::ThemeArgs =
+            serde_json::from_value(serde_json::json!({"pack": {"name": "x"}})).unwrap();
+        assert!(host.appid.is_none() && host.pack["name"] == "x");
+        assert!(serde_json::from_value::<super::ThemeArgs>(serde_json::json!({})).is_err());
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct ThemeArgs {
+    /// The lxapp whose `theme.json` was saved; without it, the host's `themes/` file.
+    #[serde(default)]
+    appid: Option<String>,
+    /// The completed, checked pack.
+    pack: Value,
 }
 
 #[derive(serde::Deserialize)]

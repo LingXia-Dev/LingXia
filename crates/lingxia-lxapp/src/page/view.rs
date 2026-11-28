@@ -59,6 +59,8 @@ pub enum PageViewEnvironment {
     TextScaleLimit { max: f64 },
     /// The product asks for more contrast than the system's.
     Contrast { more: bool, revision: u64 },
+    /// Dev sessions: a saved theme pack (JSON) replaces the one the page was seeded with.
+    Theme { pack: String, revision: u64 },
 }
 
 /// Runtime-issued connection identity; the native worker must preserve it through queues.
@@ -312,6 +314,8 @@ impl PageView {
                     PageViewEnvironment::TextScaleLimit { .. } => return Ok(()),
                     // Web pages follow the system's contrast.
                     PageViewEnvironment::Contrast { .. } => return Ok(()),
+                    // A web page's roles are its role stylesheet, replaced by the app.
+                    PageViewEnvironment::Theme { .. } => return Ok(()),
                 };
                 view.exec_js(&script).map_err(lingxia_error::Error::from)
             }

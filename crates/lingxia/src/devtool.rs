@@ -513,6 +513,16 @@ pub fn hot_swap_gpu_pages(
     Ok(paths.iter().map(|path| swap_one(appid, path)).collect())
 }
 
+/// Dev sessions: a saved theme reaches the open pages and chrome of `appid`, or with `None` of
+/// every lxapp that takes the host's theme, without a rebuild. Returns how many pages took it.
+pub fn apply_dev_theme(appid: Option<&str>, pack: &str) -> Result<usize, String> {
+    // Pages opened later read `theme.json` from the bundle, which carries the saved one.
+    if let Some(appid) = appid {
+        sync_dev_bundle(appid)?;
+    }
+    Ok(lxapp::theme::apply_dev_theme(appid, pack))
+}
+
 fn swap_one(appid: &str, path: &str) -> Result<usize, String> {
     #[cfg(any(
         target_os = "android",

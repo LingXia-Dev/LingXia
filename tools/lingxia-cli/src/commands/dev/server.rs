@@ -605,6 +605,75 @@ impl DevServerState {
     /// A save under an lxapp's `mocks/`: bundle it again and push it. An
     /// invalid save keeps the last valid mocks answering. Never rebuilds
     /// or restarts the app.
+    /// A saved lxapp `theme.json`: checked, shipped in the build so pages opened later read it,
+    /// then pushed to the open pages and chrome. A failing theme keeps the last good one.
+    pub(crate) fn reload_theme(&self, app_id: &str, root: &Path) {
+        let pack = match crate::theme::load(Some(&root.join(crate::theme::THEME_PATH))) {
+            Ok(pack) => pack,
+            Err(error) => {
+                eprintln!("  ✗ theme of {app_id}: {error:#}; the last good theme stays");
+                return;
+            }
+        };
+        let output = self.build_dir(app_id).join(crate::theme::THEME_PATH);
+        let shipped = serde_json::to_string(&pack)
+            .map_err(anyhow::Error::from)
+            .and_then(|text| {
+                std::fs::write(&output, text).with_context(|| format!("write {}", output.display()))
+            })
+            .and_then(|()| self.refresh_manifests(app_id));
+        if let Err(error) = shipped {
+            eprintln!("  ✗ theme of {app_id} not shipped: {error:#}");
+            return;
+        }
+        self.push_theme(Some(app_id), &pack, &format!("theme of {app_id}"));
+    }
+
+    /// A saved host `themes/<id>.json`: the product's theme, checked, pushed to every open page
+    /// of an lxapp without its own theme and to the chrome. A failing theme keeps the last good one.
+    pub(crate) fn reload_host_theme(&self) {
+        let id = crate::config::LingXiaConfig::load(&self.project_root)
+            .ok()
+            .and_then(|config| {
+                config
+                    .theme
+                    .as_ref()
+                    .and_then(|theme| theme.id())
+                    .map(str::to_owned)
+            });
+        let pack = match crate::theme::host_theme(&self.project_root, id.as_deref()) {
+            Ok(Some(pack)) => pack,
+            Ok(None) => return,
+            Err(error) => {
+                eprintln!("  ✗ host theme: {error:#}; the last good theme stays");
+                return;
+            }
+        };
+        self.push_theme(None, &pack, "host theme");
+    }
+
+    fn push_theme(&self, app_id: Option<&str>, pack: &lingxia_theme::Pack, what: &str) {
+        if self.runtime_sender().is_none() {
+            println!("  ✓ {what} checked (runtime not connected yet)");
+            return;
+        }
+        let params = serde_json::json!({ "appid": app_id, "pack": pack });
+        match self.runtime_request(
+            lingxia_control_protocol::methods::lxapp::THEME,
+            params,
+            Duration::from_secs(10),
+        ) {
+            Ok(result) => {
+                let pages = result["pages"].as_u64().unwrap_or(0);
+                println!(
+                    "  ✓ {what} applied to {pages} open page{}, no rebuild",
+                    if pages == 1 { "" } else { "s" }
+                );
+            }
+            Err(error) => eprintln!("  ✗ {what} not applied: {error:#}"),
+        }
+    }
+
     pub(crate) fn reload_mocks(&self, app_id: &str, root: &Path) {
         let previous = self
             .lock_mocks()
