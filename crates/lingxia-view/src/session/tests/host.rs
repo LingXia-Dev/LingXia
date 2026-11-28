@@ -2070,6 +2070,54 @@ fn connections_report_connected_and_an_overdue_bootstrap() {
 }
 
 #[test]
+fn the_bootstrap_clock_times_logic_not_the_views_own_startup() {
+    if !bounded_jobs() {
+        return;
+    }
+    let worker = ViewWorker::spawn("test-view-slow-start").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &(source("function render({data}){return h('text',{},`count ${data.count}`)}")
+            + "\nglobalThis.__lingxiaActionCatalog={__names:[],__modes:{}};"),
+        true,
+    );
+    host.set_visible(true);
+    let connection = ConnectionTicket::new(1);
+    host.connect(connection);
+    // The View is still evaluating its module: six seconds pass before it connects.
+    platform.advance(Duration::from_secs(6));
+    platform.settle(&[&host]);
+    assert!(
+        host.failure().is_none(),
+        "the View's own startup is not Logic's"
+    );
+    // Logic answers at once.
+    deliver(
+        &host,
+        connection,
+        serde_json::json!({"v":2,"kind":"state.snapshot","rev":0,"state":{"count":1}}),
+    );
+    platform.settle(&[&host]);
+    platform.advance(Duration::from_secs(5));
+    assert!(host.failure().is_none());
+    assert_eq!(last(&host), ["count 1"]);
+    // A Logic that never answers is still timed, from the View's `Connected`.
+    let silent = ConnectionTicket::new(2);
+    host.connect(silent);
+    platform.settle(&[&host]);
+    platform.advance(Duration::from_secs(4));
+    assert!(host.failure().is_none());
+    platform.advance(Duration::from_secs(1));
+    let failure = host.failure().expect("a silent Logic still times out");
+    assert!(
+        failure.error.starts_with("UI_BOOTSTRAP_TIMEOUT:"),
+        "{}",
+        failure.error
+    );
+}
+
+#[test]
 fn a_state_write_is_acknowledged_once_a_frame_showing_it_is_built() {
     if !bounded_jobs() {
         return;

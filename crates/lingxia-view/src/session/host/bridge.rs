@@ -211,7 +211,6 @@ impl<A: PlatformAdapter> Inner<A> {
         self.main().failure = None;
         log::info!(target: "lingxia_view", "recovery cleared: the logic connected");
         self.adapter.recovery(None);
-        self.watch_bootstrap(connection);
         self.work(
             Guard::Connection(connection),
             // Logic loads the page only after this, so its first write finds the View connected.
@@ -228,6 +227,11 @@ impl<A: PlatformAdapter> Inner<A> {
                 Ok(())
             },
             move |inner, result| match result {
+                // The clock times Logic: it starts once the View has evaluated its module and
+                // sent `Connected`, however long that took.
+                Some(Ok(())) if inner.lifecycle.is_current_connection(connection) => {
+                    inner.watch_bootstrap(connection);
+                }
                 Some(Err(error)) if inner.lifecycle.is_current_connection(connection) => {
                     inner.fail(error);
                 }
