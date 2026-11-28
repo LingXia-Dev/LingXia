@@ -173,6 +173,8 @@ native host, and `desktop` for other OS chrome.
 A script is an expression or a function body using `return` / `await`; return
 a serializable value. Navigate with `lxapp nav`, and trigger user behaviour
 with `lxapp page click`.
+`lxapp eval` names the lxapp it ran in on stderr and warns when several are
+live; pass `--app` then.
 
 ## Output
 

@@ -592,6 +592,23 @@ pub fn execute(project_root: &Path, info: &SessionInfo, options: LxAppOptions) -
             timeout_ms,
             pretty,
         } => {
+            let app = if app.trim().eq_ignore_ascii_case("current") {
+                let live = client::execute_command(
+                    ws_url,
+                    methods::lxapp::LIST,
+                    Some(json!({ "all": false })),
+                )?
+                .unwrap_or_else(|| json!([]));
+                let target = current_eval_target(&live)?;
+                if let Some(warning) = &target.warning {
+                    eprintln!("warning: {warning}");
+                }
+                target.appid
+            } else {
+                app
+            };
+            // stderr keeps stdout the bare result for scripts.
+            eprintln!("lxapp: {app}");
             let data = client::execute_command(
                 ws_url,
                 methods::lxapp::EVAL,
@@ -1229,6 +1246,34 @@ fn print_json(value: &Value, pretty: bool) -> Result<()> {
     Ok(())
 }
 
+struct EvalTarget {
+    appid: String,
+    warning: Option<String>,
+}
+
+/// Pins `current` to one appid before the eval, so the printed app is the one it ran in.
+fn current_eval_target(live: &Value) -> Result<EvalTarget> {
+    let apps = live.as_array().map(Vec::as_slice).unwrap_or_default();
+    let appid = |app: &Value| app["appid"].as_str().unwrap_or_default().to_string();
+    let current = apps
+        .iter()
+        .find(|app| app["current"] == true)
+        .map(appid)
+        .context("no current lxapp; pass --app <appid>")?;
+    let warning = (apps.len() > 1).then(|| {
+        let ids: Vec<String> = apps.iter().map(appid).collect();
+        format!(
+            "{} lxapps are live ({}); ran in the current one, {current}. Pass --app to choose",
+            apps.len(),
+            ids.join(", ")
+        )
+    });
+    Ok(EvalTarget {
+        appid: current,
+        warning,
+    })
+}
+
 fn print_eval_result(data: &Value, pretty: bool) -> Result<()> {
     let Some(value) = data.get("value") else {
         return print_json(data, pretty);
@@ -1261,6 +1306,27 @@ fn find_in_tree(tree: &Value, role: &str, name: Option<&str>) -> Vec<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn eval_names_the_current_app_and_warns_when_several_are_live() {
+        let one = json!([{ "appid": "showcase", "current": true }]);
+        let target = current_eval_target(&one).unwrap();
+        assert_eq!(target.appid, "showcase");
+        assert!(target.warning.is_none());
+
+        let two = json!([
+            { "appid": "gallery", "current": true },
+            { "appid": "showcase", "current": false },
+        ]);
+        let target = current_eval_target(&two).unwrap();
+        assert_eq!(target.appid, "gallery");
+        let warning = target.warning.unwrap();
+        assert!(warning.contains("gallery, showcase"), "{warning}");
+        assert!(warning.contains("--app"), "{warning}");
+
+        let none = json!([{ "appid": "showcase", "current": false }]);
+        assert!(current_eval_target(&none).is_err());
+    }
 
     fn args(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| value.to_string()).collect()
