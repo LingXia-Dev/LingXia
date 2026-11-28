@@ -101,20 +101,21 @@ public class GpuRecoveryTest {
             public void onFrame() { }
             public void onError(Throwable error) { errors.incrementAndGet(); }
         });
-        android.view.View surface = view.getChildAt(0), feedback = view.getChildAt(1);
+        // Embedded web pages lie under the surface; the feedback layer is above it.
+        android.view.View surface = view.getChildAt(1), feedback = view.getChildAt(2);
         GpuNative.settleUntil(() -> errors.get() > 0);
         assertEquals(1, errors.get());
-        assertEquals("the recovery panel sits above surface and feedback", 3, view.getChildCount());
-        LinearLayout panel = (LinearLayout)view.getChildAt(2);
+        assertEquals("the recovery panel sits above surface and feedback", 4, view.getChildCount());
+        LinearLayout panel = (LinearLayout)view.getChildAt(3);
         assertEquals(RuntimeEnvironment.getApplication().getString(com.lingxia.lxapp.R.string.lx_gpu_display_failed),
             ((android.widget.TextView)panel.getChildAt(0)).getText().toString());
         assertEquals("nothing loaded, so no retry is offered", 1, panel.getChildCount());
         view.reload(GpuNative.module("function render(){return h('text',{},'ok')}"));
-        assertEquals(2, view.getChildCount());
-        assertSame(surface, view.getChildAt(0)); assertSame(feedback, view.getChildAt(1));
+        assertEquals(3, view.getChildCount());
+        assertSame(surface, view.getChildAt(1)); assertSame(feedback, view.getChildAt(2));
         GpuNative.settleUntil(() -> loads.get() > 0);
         assertEquals(1, loads.get());
-        assertEquals(2, view.getChildCount());
+        assertEquals(3, view.getChildCount());
         view.dispose();
     }
 

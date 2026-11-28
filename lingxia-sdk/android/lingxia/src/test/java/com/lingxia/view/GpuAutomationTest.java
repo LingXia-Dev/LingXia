@@ -57,9 +57,9 @@ public class GpuAutomationTest {
             assertEquals(JSONObject.NULL, act(host, fake, "{\"op\":\"act\",\"css\":\"[data-testid=\\\"add\\\"]\",\"action\":{\"kind\":\"click\"}}").get("value"));
             JSONObject fill = act(host, fake, "{\"op\":\"act\",\"css\":\"[data-testid=\\\"name\\\"]\",\"action\":{\"kind\":\"fill\",\"text\":\"Ada\"}}");
             assertEquals(JSONObject.NULL, fill.get("value"));
-            // Fill goes through the platform's text-edit path, as assistive input does.
-            assertTrue(fake.events.toString(), fake.events.contains("edit:Ada"));
-            fake.pump(host, () -> { try { return "Count 1 ".equals(text(fake, "count")); } catch (Exception e) { throw new AssertionError(e); } });
+            // Fill sets the text in the core: no focus, so no keyboard and no platform edit.
+            assertTrue(fake.events.toString(), fake.events.stream().noneMatch(e -> e.startsWith("edit:")));
+            fake.pump(host, () -> { try { return "Count 1 Ada".equals(text(fake, "count")); } catch (Exception e) { throw new AssertionError(e); } });
             JSONObject press = act(host, fake, "{\"op\":\"act\",\"css\":\"[data-testid=\\\"add\\\"]\",\"action\":{\"kind\":\"press\",\"key\":\"Tab\"}}");
             assertTrue(press.toString(), press.has("value"));
             String disabled = automate(host, "{\"op\":\"act\",\"css\":\"[data-testid=\\\"off\\\"]\",\"action\":{\"kind\":\"click\"}}").getString("error");

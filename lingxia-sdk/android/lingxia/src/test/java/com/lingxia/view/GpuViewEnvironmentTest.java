@@ -56,7 +56,7 @@ public class GpuViewEnvironmentTest {
         for (int interruption = 0; interruption < 3; interruption++) {
             GpuView view = new GpuView(RuntimeEnvironment.getApplication(), "", "test:environment", null);
             view.resume();
-            android.view.View surface = view.getChildAt(0);
+            android.view.View surface = view.getChildAt(1);
             java.util.ArrayList<Integer> events = new java.util.ArrayList<>();
             view.setPullToRefresh(event -> {
                 events.add(event.getActionMasked());
@@ -78,7 +78,7 @@ public class GpuViewEnvironmentTest {
         android.widget.FrameLayout parent = new android.widget.FrameLayout(activity);
         GpuView view = new GpuView(activity, "", "test:environment", null);
         parent.addView(view); activity.setContentView(parent);
-        android.view.View surface = view.getChildAt(0);
+        android.view.View surface = view.getChildAt(1);
         view.resume(); assertEquals(android.view.View.VISIBLE, surface.getVisibility());
         parent.setVisibility(android.view.View.GONE);
         assertEquals(android.view.View.INVISIBLE, surface.getVisibility());
@@ -119,7 +119,7 @@ public class GpuViewEnvironmentTest {
         parent.addView(view); activity.setContentView(parent);
         view.resume(); assertTrue("current: shown", view.layerShown);
         view.pause(); assertFalse("kept: hidden, not only moved", view.layerShown);
-        assertEquals("kept: the surface survives", android.view.View.VISIBLE, view.getChildAt(0).getVisibility());
+        assertEquals("kept: the surface survives", android.view.View.VISIBLE, view.getChildAt(1).getVisibility());
         view.resume(); assertTrue("current again: shown", view.layerShown);
         parent.setVisibility(android.view.View.GONE); assertFalse("not shown: hidden", view.layerShown);
         parent.setVisibility(android.view.View.VISIBLE); assertTrue(view.layerShown);
@@ -131,7 +131,7 @@ public class GpuViewEnvironmentTest {
         android.widget.FrameLayout parent = new android.widget.FrameLayout(activity);
         GpuView view = new GpuView(activity, "", "test:environment", null);
         parent.addView(view); activity.setContentView(parent);
-        android.view.View surface = view.getChildAt(0);
+        android.view.View surface = view.getChildAt(1);
         view.resume();
         assertEquals(0f, surface.getTranslationX(), 0f);
         String shownInsets = sample(view).getJSONArray("system_insets").toString();
@@ -170,7 +170,7 @@ public class GpuViewEnvironmentTest {
 
     @Test public void touchesWithoutAPresentedFrameReachTheHostAndTheFeedbackLayerStaysInert() throws Exception {
         GpuView view = new GpuView(RuntimeEnvironment.getApplication(), "", "test:environment", null);
-        android.view.View surface = view.getChildAt(0), feedback = view.getChildAt(1);
+        android.view.View surface = view.getChildAt(1), feedback = view.getChildAt(2);
         assertFalse(feedback.isClickable());
         assertFalse(feedback.isFocusable());
         assertEquals(android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO, feedback.getImportantForAccessibility());
