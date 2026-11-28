@@ -410,7 +410,7 @@ session per project and target: starting another takes over the old one.
 Runs the project type-check (`tsc -b` at the lxapp root, after the generated
 types), the tsconfig wiring check, and the build's own refusals (View authoring
 problems, Logic page rules), and prints all of them; exits non-zero on any.
-In a host project, it checks `lxapp/`.")]
+In a host project, it checks `lxapp/` and the host's platform wiring.")]
     Check {
         /// The lxapp directory (default: the current one)
         dir: Option<std::path::PathBuf>,
@@ -1152,13 +1152,17 @@ fn run() -> Result<()> {
                 Some(dir) => dir,
                 None => std::env::current_dir()?,
             };
+            let host_problems = match config::LingXiaConfig::load(&dir) {
+                Ok(host) => platform::ios::check_host(&dir, &host),
+                Err(_) => Vec::new(),
+            };
             let hosted = dir.join("lxapp");
             let dir = if !dir.join("lxapp.json").is_file() && hosted.join("lxapp.json").is_file() {
                 hosted
             } else {
                 dir
             };
-            lxapp::check_in_dir(&dir)?;
+            lxapp::check_in_dir(&dir, host_problems)?;
         }
         Commands::I18n {
             command: I18nCommand::Add { tag, dir },

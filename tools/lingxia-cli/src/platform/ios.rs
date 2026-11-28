@@ -674,6 +674,61 @@ pub(crate) fn resolve_ios_dir(
     spm::resolve_apple_swift_package_dir(project_root, "ios", None, "iOS")
 }
 
+/// The line an iOS host carries so the runtime sees a launch link before the first view.
+pub(crate) const APP_DELEGATE_LINE: &str =
+    "@UIApplicationDelegateAdaptor(LingxiaAppDelegate.self) private var appDelegate";
+
+/// `lingxia check`: iOS host wiring that otherwise only shows at run time.
+pub(crate) fn check_host(project_root: &Path, config: &LingXiaConfig) -> Vec<String> {
+    let links = config
+        .app_links
+        .as_ref()
+        .is_some_and(|links| !links.hosts.is_empty());
+    if !links {
+        return Vec::new();
+    }
+    let Ok(ios_dir) = resolve_ios_dir(project_root, config.ios.as_ref()) else {
+        return Vec::new();
+    };
+    let mut sources = Vec::new();
+    swift_sources(&ios_dir.join("Sources"), &mut sources);
+    let texts: Vec<(PathBuf, String)> = sources
+        .into_iter()
+        .filter_map(|path| fs::read_to_string(&path).ok().map(|text| (path, text)))
+        .collect();
+    if texts.is_empty()
+        || texts
+            .iter()
+            .any(|(_, text)| text.contains("LingxiaAppDelegate"))
+    {
+        return Vec::new();
+    }
+    let app = texts
+        .iter()
+        .find(|(_, text)| text.contains("@main"))
+        .map_or_else(|| ios_dir.join("Sources"), |(path, _)| path.clone());
+    let shown = app.strip_prefix(project_root).unwrap_or(&app);
+    vec![format!(
+        "{}: appLinks are configured but the iOS app does not install LingxiaAppDelegate, so a \
+         cold link opens over the home page. Add to the App struct:\n    {APP_DELEGATE_LINE}",
+        shown.display()
+    )]
+}
+
+fn swift_sources(dir: &Path, out: &mut Vec<PathBuf>) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            swift_sources(&path, out);
+        } else if path.extension().is_some_and(|ext| ext == "swift") {
+            out.push(path);
+        }
+    }
+}
+
 /// Get the iOS SDK path using xcrun
 fn get_ios_sdk_path() -> Result<String> {
     let output = Command::new("xcrun")
@@ -861,6 +916,38 @@ pub fn get_resources_dir(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn check_flags_an_ios_app_without_the_launch_link_delegate() {
+        use crate::config::{AppLinkHosts, AppLinksConfig};
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        let app = root.join("ios/Sources/App/App.swift");
+        fs::create_dir_all(app.parent().unwrap()).unwrap();
+        fs::write(root.join("ios/Package.swift"), "").unwrap();
+        fs::write(&app, "@main\npublic struct LxAppApp: App {}\n").unwrap();
+        let mut config = LingXiaConfig::new_android("demo", "com.example.demo", "demo");
+
+        assert!(
+            check_host(root, &config).is_empty(),
+            "no app links, no rule"
+        );
+
+        config.app_links = Some(AppLinksConfig {
+            hosts: AppLinkHosts::Single(vec!["app.example.com".to_string()]),
+        });
+        let problems = check_host(root, &config);
+        assert_eq!(problems.len(), 1);
+        assert!(problems[0].starts_with("ios/Sources/App/App.swift: "));
+        assert!(problems[0].contains(APP_DELEGATE_LINE));
+
+        fs::write(
+            &app,
+            format!("@main\npublic struct LxAppApp: App {{\n    {APP_DELEGATE_LINE}\n}}\n"),
+        )
+        .unwrap();
+        assert!(check_host(root, &config).is_empty());
+    }
 
     fn write_app(dir: &Path, name: &str) -> PathBuf {
         let app = dir.join(name);

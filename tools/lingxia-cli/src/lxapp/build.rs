@@ -97,7 +97,8 @@ fn run_with_context(
 
 /// `lingxia check`: everything a build refuses and every type error, in one report; the
 /// output is built aside and thrown away.
-pub fn check(cwd: &Path) -> Result<()> {
+/// `host_problems` come from the host project around the lxapp, reported with its own.
+pub fn check(cwd: &Path, host_problems: Vec<String>) -> Result<()> {
     let _preparation = crate::build_prepare::Scope::enter();
     let _ts_session = super::ts_worker::keep_alive();
     let project = Project::discover(cwd)?;
@@ -129,10 +130,14 @@ pub fn check(cwd: &Path) -> Result<()> {
     };
     let built = build_output(&checked, &options, &Reporter::new(ProgressMode::Plain));
     let _ = fs::remove_dir_all(&staging);
-    let failures: Vec<String> = [wiring.err(), built.err()]
+    let failures: Vec<String> = host_problems
         .into_iter()
-        .flatten()
-        .map(|error| format!("{error:#}"))
+        .chain(
+            [wiring.err(), built.err()]
+                .into_iter()
+                .flatten()
+                .map(|error| format!("{error:#}")),
+        )
         .collect();
     if !failures.is_empty() {
         return Err(anyhow!(failures.join("\n\n")));

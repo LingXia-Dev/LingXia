@@ -164,7 +164,8 @@ Lists every problem in an lxapp in one run without building it: type errors, Vie
 problems such as `UI_LX`, Logic page rules and the tsconfig wiring, as `file:line:col: CODE: message`.
 It drives the project's own TypeScript and needs the version `lingxia new` puts in `package.json`;
 with another it stops and prints the `npm i -D typescript@…` to run. Each catalogue's untranslated keys
-show as a count and the first few.
+show as a count and the first few. In a host project it also flags an iOS app without
+`LingxiaAppDelegate` when `appLinks` is set.
 
 ## `lingxia i18n add <tag>`
 

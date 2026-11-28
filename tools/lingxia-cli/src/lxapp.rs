@@ -58,8 +58,8 @@ pub(crate) fn skip_typecheck() {
     typecheck::skip();
 }
 
-pub fn check_in_dir(cwd: &Path) -> Result<()> {
-    build::check(cwd)
+pub fn check_in_dir(cwd: &Path, host_problems: Vec<String>) -> Result<()> {
+    build::check(cwd, host_problems)
 }
 
 /// `lingxia i18n add`: declare `tag` and start its empty catalogue.
