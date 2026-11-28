@@ -61,6 +61,8 @@ export type CalendarProps = CalendarSelection & {
   isDateDisabled?: (date: CalendarDate) => boolean;
   /** The day marked as today, and the month shown when nothing is chosen. A View takes the time from its page, not from a clock. */
   today: CalendarDate;
+  /** Which month buttons it shows; paired months show previous on the first and next on the second, and both still page by keyboard. @default 'both' */
+  monthButtons?: 'both' | 'previous' | 'next';
   /** The week's first day, 1 is Monday to 7 is Sunday, for a week that is the app's own (a school timetable). @default the user's first weekday */
   firstWeekday?: CalendarWeekday;
   className?: string;
@@ -78,7 +80,7 @@ export function calendarWeekday(date: CalendarDate): CalendarWeekday {
  * language and its weeks start on the user's first weekday.
  */
 export function Calendar(props: CalendarProps) {
-  const { label, min, max, isDateDisabled, className, 'data-testid': testId } = props;
+  const { label, min, max, isDateDisabled, className, monthButtons: buttons = 'both', 'data-testid': testId } = props;
   const userFirst = useView().env.firstWeekday;
   // `weekdayOf` counts 0 = Sunday.
   const firstDay = (props.firstWeekday ?? userFirst ?? 7) % 7;
@@ -176,27 +178,34 @@ export function Calendar(props: CalendarProps) {
       </view>
     );
   }
+  const previousButton = (
+    <IconButton
+      label={liuliText('@liuli.calendar.previousMonth')}
+      icon="chevron-start"
+      size="sm"
+      isDisabled={!hasPrevious}
+      onClick={() => go(-1)}
+      data-testid={testId && `${testId}-previous`}
+    />
+  );
   return (
     <view role="group" aria-label={label} data-testid={testId} {...dataOf(props)} className={cx(r.root.base, className)}>
       <view className={r.header.base}>
+        {/* The first of a pair pages back from its start edge, so the pair's two buttons sit at its outer edges. */}
+        {buttons === 'previous' && previousButton}
         {titleButton}
         <view className={r.spacer.base} />
-        <IconButton
-          label={liuliText('@liuli.calendar.previousMonth')}
-          icon="chevron-start"
-          size="sm"
-          isDisabled={!hasPrevious}
-          onClick={() => go(-1)}
-          data-testid={testId && `${testId}-previous`}
-        />
-        <IconButton
-          label={liuliText('@liuli.calendar.nextMonth')}
-          icon="chevron-end"
-          size="sm"
-          isDisabled={!hasNext}
-          onClick={() => go(1)}
-          data-testid={testId && `${testId}-next`}
-        />
+        {buttons === 'both' && previousButton}
+        {buttons !== 'previous' && (
+          <IconButton
+            label={liuliText('@liuli.calendar.nextMonth')}
+            icon="chevron-end"
+            size="sm"
+            isDisabled={!hasNext}
+            onClick={() => go(1)}
+            data-testid={testId && `${testId}-next`}
+          />
+        )}
       </view>
       <view role="grid" aria-label={title} onPage={direction => { if (direction === 'next' ? hasNext : hasPrevious) go(direction === 'next' ? 1 : -1); }} className={r.grid.base}>
         <view aria-hidden className={r.week.base}>

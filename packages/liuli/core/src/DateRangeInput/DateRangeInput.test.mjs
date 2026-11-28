@@ -58,6 +58,8 @@ test('Stay, with a mouse and room: two months side by side, paged together, and 
   assert.equal(popover.props.width, 648);
   const title = id => textOf(screen.getByTestId(`${id}-title`));
   assert.deepEqual([title('stay-calendar'), title('stay-calendar-next')], ['November 2026', 'December 2026']);
+  const pagers = screen.queryAll(node => node.tag === 'button' && /^stay-calendar(-next)?-(previous|next)$/.test(node.testId ?? '')).map(node => node.testId);
+  assert.deepEqual(pagers, ['stay-calendar-previous', 'stay-calendar-next-next'], 'the pair has one previous, on the first month, and one next, on the second');
   screen.press(screen.getByTestId('stay-calendar-next-next'));
   assert.deepEqual([title('stay-calendar'), title('stay-calendar-next')], ['December 2026', 'January 2027'], 'either month pages both');
   screen.press(screen.getByTestId('stay-calendar-previous'));

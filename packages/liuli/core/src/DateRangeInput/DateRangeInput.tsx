@@ -122,6 +122,7 @@ export function DateRangeInput(props: DateRangeInputProps) {
                 max={max}
                 isDateDisabled={isDateDisabled}
                 firstWeekday={firstWeekday}
+                monthButtons={offset ? 'next' : 'previous'}
                 {...month(after(first.value, offset), offset)}
                 className={r.month.base}
                 data-testid={testId && `${testId}-calendar${offset ? '-next' : ''}`}

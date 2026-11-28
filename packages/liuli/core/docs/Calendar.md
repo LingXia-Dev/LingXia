@@ -93,6 +93,7 @@ export function MondayFirst() {
 | `max` | `string` |  |  |
 | `isDateDisabled` | `((date: string) => boolean)` |  | Days that cannot be chosen: closed days, taken days. |
 | `today` (required) | `string` |  | The day marked as today, and the month shown when nothing is chosen. A View takes the time from its page, not from a clock. |
+| `monthButtons` | `"both" \| "next" \| "previous"` | `'both'` | Which month buttons it shows; paired months show previous on the first and next on the second, and both still page by keyboard. |
 | `firstWeekday` | `Weekday` | `the user's first weekday` | The week's first day, 1 is Monday to 7 is Sunday, for a week that is the app's own (a school timetable). |
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the calendar; a day is `<id>-<YYYY-MM-DD>`, the month buttons `<id>-previous` and `<id>-next`, the title `<id>-title`; choosing a month, a month is `<id>-<YYYY-MM>`. |

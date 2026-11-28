@@ -2759,6 +2759,18 @@
           "description": "The day marked as today, and the month shown when nothing is chosen. A View takes the time from its page, not from a clock."
         },
         {
+          "name": "monthButtons",
+          "type": "\"both\" | \"next\" | \"previous\"",
+          "required": false,
+          "description": "Which month buttons it shows; paired months show previous on the first and next on the second, and both still page by keyboard.",
+          "values": [
+            "both",
+            "previous",
+            "next"
+          ],
+          "default": "'both'"
+        },
+        {
           "name": "firstWeekday",
           "type": "Weekday",
           "required": false,

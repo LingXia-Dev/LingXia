@@ -1036,6 +1036,16 @@ export const playgroundEntries: PlaygroundEntry[] = [
         "name": "today",
         "required": true,
         "kind": "text"
+      },
+      {
+        "name": "monthButtons",
+        "required": false,
+        "kind": "choice",
+        "options": [
+          "both",
+          "next",
+          "previous"
+        ]
       }
     ],
     "fixed": [],
