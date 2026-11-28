@@ -252,10 +252,10 @@ pub fn build() {
     if let Err(err) = generate_rust_registry(&src, &out) {
         panic!("LingXia native routes: {err:#}");
     }
-    // The Swift host is linked into the app, never into `cargo test`'s binaries or the macOS
-    // cdylib nothing loads; leave its symbols to load time so those link.
+    // Apple apps link the staticlib with the Swift host; the macOS cdylib `cargo test` also
+    // builds is never loaded, so only it may leave the host's symbols unresolved.
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
-        println!("cargo:rustc-link-arg=-Wl,-undefined,dynamic_lookup");
+        println!("cargo:rustc-link-arg-cdylib=-Wl,-undefined,dynamic_lookup");
     }
 }
 

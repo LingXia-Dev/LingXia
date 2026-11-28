@@ -5,7 +5,10 @@
 //! let note: Note = host.call("notes.add", json!({ "title": "a" })).await?;
 //! ```
 
-use crate::host::{self, HostOutput, HostStream, HostStreamItem};
+use crate::host::{
+    self, ChannelContext, HostOutput, HostStream, HostStreamItem, JsonValue, LogicChannelInbound,
+    LogicChannelOutbound,
+};
 use crate::{AppSessionClass, HostAddon, LxApp};
 use lxapp::host::testing::TestSession;
 use serde::Serialize;
@@ -16,7 +19,7 @@ use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
-use tokio::sync::oneshot;
+use tokio::sync::{mpsc, oneshot};
 
 /// A [`TestHost`] with the calling crate's routes installed: `lingxia::test_host!()` in a
 /// crate's own tests, `lingxia::test_host!(my_lib)` from an integration test or for a
@@ -108,6 +111,45 @@ impl TestHost {
         }
     }
 
+    /// Like [`call`](Self::call), with the route's own error enum (which also derives
+    /// `Deserialize`) told apart from framework errors.
+    pub async fn call_as<T: DeserializeOwned, E: DeserializeOwned>(
+        &self,
+        route: &str,
+        input: impl Serialize,
+    ) -> Result<T, RouteError<E>> {
+        self.call(route, input)
+            .await
+            .map_err(RouteError::from_error)
+    }
+
+    /// Opens a channel route: [`TestChannel::send`] is what the page sends. Dropping the
+    /// channel closes it, as leaving a page does.
+    pub fn channel<S: Serialize, R: DeserializeOwned>(
+        &self,
+        route: &str,
+        input: impl Serialize,
+    ) -> crate::Result<TestChannel<S, R>> {
+        let payload = encode(&input)?;
+        let invocation = self.session.invocation();
+        let handler =
+            host::lookup_channel_for_caller(route, invocation.caller()).ok_or_else(|| {
+                crate::Error::not_found(format!(
+                    "native channel route '{route}' is not registered or not authorized"
+                ))
+            })?;
+        let (ctx, inbound, outbound) =
+            ChannelContext::<JsonValue, JsonValue>::for_logic(format!("test-{route}"));
+        handler.on_open(invocation, ctx, payload);
+        Ok(TestChannel {
+            route: route.to_string(),
+            inbound,
+            outbound,
+            closed: false,
+            _types: PhantomData,
+        })
+    }
+
     /// Opens a stream route. Dropping the stream cancels it, as leaving a page does.
     pub fn stream<E: DeserializeOwned, R: DeserializeOwned>(
         &self,
@@ -144,6 +186,78 @@ impl TestHost {
             _keep: keep,
             _types: PhantomData,
         }
+    }
+}
+
+/// A route's error as [`TestHost::call_as`] reports it.
+#[derive(Debug)]
+pub enum RouteError<E> {
+    /// The route's own error enum.
+    Route(E),
+    /// A framework error: an unknown or unauthorized route, bad input, `E_INTERNAL`.
+    Framework(crate::Error),
+}
+
+impl<E: DeserializeOwned> RouteError<E> {
+    /// The enum's `code` tag and `data` fields, as `#[derive(NativeError)]` sent them.
+    fn from_error(error: crate::Error) -> Self {
+        let mut fields = match error.data() {
+            None => serde_json::Map::new(),
+            Some(serde_json::Value::Object(fields)) => fields.clone(),
+            Some(_) => return Self::Framework(error),
+        };
+        fields.insert("code".into(), error.code().into());
+        match serde_json::from_value(serde_json::Value::Object(fields)) {
+            Ok(route) => Self::Route(route),
+            Err(_) => Self::Framework(error),
+        }
+    }
+}
+
+/// A channel route seen from the page.
+pub struct TestChannel<S, R> {
+    route: String,
+    inbound: LogicChannelInbound,
+    outbound: mpsc::UnboundedReceiver<LogicChannelOutbound>,
+    closed: bool,
+    _types: PhantomData<fn(S) -> R>,
+}
+
+impl<S: Serialize, R: DeserializeOwned> TestChannel<S, R> {
+    /// Sends a message to the route.
+    pub fn send(&self, message: S) -> crate::Result<()> {
+        let json = serde_json::to_string(&message)
+            .map_err(|err| crate::Error::invalid_arg(format!("channel message: {err}")))?;
+        self.inbound.send_data(json);
+        Ok(())
+    }
+
+    /// The route's next message; `None` once it closed the channel. A route that failed
+    /// reports its error once, then `None`.
+    pub async fn recv(&mut self) -> Option<crate::Result<R>> {
+        if self.closed {
+            return None;
+        }
+        match self.outbound.recv().await {
+            Some(LogicChannelOutbound::Data(json)) => Some(decode(&self.route, &json)),
+            Some(LogicChannelOutbound::Close { error }) => {
+                self.closed = true;
+                error.map(Err)
+            }
+            None => {
+                self.closed = true;
+                None
+            }
+        }
+    }
+
+    /// Closes the channel from the page; the route's `recv` sees the close.
+    pub fn close(self) {}
+}
+
+impl<S, R> Drop for TestChannel<S, R> {
+    fn drop(&mut self) {
+        self.inbound.send_close(None);
     }
 }
 

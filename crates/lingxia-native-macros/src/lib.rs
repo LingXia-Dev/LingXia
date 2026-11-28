@@ -40,7 +40,7 @@ pub fn route_defaults(input: TokenStream) -> TokenStream {
 
 /// `lingxia::routes!()` at a library crate's root: includes the registry its `build.rs`
 /// writes and exports the `__lingxia_install_routes` that `host!(…, routes = [..])` and
-/// `lingxia::test_host!` call.
+/// `lingxia::test_host!` call. Its routes' `Host<A>` resolve from whichever host links them.
 #[proc_macro]
 pub fn routes(input: TokenStream) -> TokenStream {
     if !input.is_empty() {
@@ -53,6 +53,10 @@ pub fn routes(input: TokenStream) -> TokenStream {
     }
     quote! {
         include!(concat!(env!("OUT_DIR"), "/lingxia_native_handlers.rs"));
+
+        #[doc(hidden)]
+        #[allow(dead_code)]
+        pub(crate) type __LingxiaHostAddon = dyn ::core::any::Any;
 
         #[doc(hidden)]
         pub fn __lingxia_install_routes() {
@@ -392,7 +396,10 @@ impl Plan {
     fn host_checks(&self) -> proc_macro2::TokenStream {
         let checks = self.params.0.iter().filter_map(|param| match param {
             Param::Host(addon_ty) => Some(quote_spanned! {addon_ty.span()=>
-                const _: fn(&crate::__LingxiaHostAddon) -> &#addon_ty = |addon| addon;
+                const _: () = {
+                    fn check<H: ?Sized + ::lingxia::__HostAddonIs<#addon_ty>>() {}
+                    let _ = check::<crate::__LingxiaHostAddon>;
+                };
             }),
             _ => None,
         });
@@ -715,7 +722,7 @@ mod tests {
             "{out}"
         );
         assert!(
-            out.contains("const_:fn(&crate::__LingxiaHostAddon)->&App=|addon|addon;"),
+            out.contains("fncheck<H:?Sized+::lingxia::__HostAddonIs<App>>(){}"),
             "{out}"
         );
         assert!(

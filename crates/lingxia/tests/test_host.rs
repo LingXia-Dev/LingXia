@@ -66,8 +66,8 @@ struct App {
 
 impl lingxia::HostAddon for App {}
 
-// What `lingxia::host!(App)` declares; a route's `Host<A>` is checked against it.
-type __LingxiaHostAddon = App;
+// What `lingxia::routes!()` declares: a library crate's `Host<A>` resolves when called.
+type __LingxiaHostAddon = dyn std::any::Any;
 
 #[lingxia::native("t.addon")]
 async fn addon(host: lingxia::Host<App>) -> String {
@@ -84,6 +84,45 @@ async fn fail() -> lingxia::Result<()> {
     Err(lingxia::Error::not_found("no such note"))
 }
 
+#[derive(Debug, PartialEq, serde::Serialize, serde::Deserialize, lingxia::NativeError)]
+#[serde(tag = "code", rename_all = "SCREAMING_SNAKE_CASE")]
+enum NoteError {
+    EmptyTitle,
+    NotFound { id: u32 },
+}
+
+impl std::fmt::Display for NoteError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::EmptyTitle => f.write_str("a note needs a title"),
+            Self::NotFound { id } => write!(f, "note {id} not found"),
+        }
+    }
+}
+
+#[lingxia::native("t.find")]
+async fn find(id: u32) -> Result<String, NoteError> {
+    match id {
+        0 => Err(NoteError::EmptyTitle),
+        1 => Ok("one".into()),
+        _ => Err(NoteError::NotFound { id }),
+    }
+}
+
+#[lingxia::native("t.shout", channel)]
+async fn shout(
+    mut channel: lingxia::host::ChannelContext<String>,
+    suffix: String,
+) -> lingxia::Result<()> {
+    while let Some(lingxia::host::ChannelMessage::Data(text)) = channel.recv().await? {
+        if text.is_empty() {
+            return Err(lingxia::Error::invalid_arg("nothing to shout"));
+        }
+        channel.send(format!("{}{suffix}", text.to_uppercase()))?;
+    }
+    Ok(())
+}
+
 fn __lingxia_install_routes() {
     use lingxia::host::{RouteAudience::*, register_host_entry};
     static ONCE: std::sync::Once = std::sync::Once::new();
@@ -96,6 +135,8 @@ fn __lingxia_install_routes() {
         register_host_entry(__lingxia_route_addon("t", "addon", AppSessionOnly));
         register_host_entry(__lingxia_route_home("t", "home", ControlAppOnly));
         register_host_entry(__lingxia_route_fail("t", "fail", AppSessionOnly));
+        register_host_entry(__lingxia_route_find("t", "find", AppSessionOnly));
+        register_host_entry(__lingxia_route_shout("t", "shout", AppSessionOnly));
     });
 }
 
@@ -159,4 +200,44 @@ async fn addons_and_session_classes_apply_per_test_host() {
     let home = host.as_class(lingxia::AppSessionClass::ControlApp);
     assert_eq!(home.call::<String>("t.home", ()).await.unwrap(), "home");
     assert_eq!(home.call::<String>("t.addon", ()).await.unwrap(), "notes");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn call_as_tells_route_errors_from_framework_ones() {
+    use lingxia::testing::RouteError;
+    let host = lingxia::test_host!();
+    let one: String = host.call_as::<_, NoteError>("t.find", 1).await.unwrap();
+    assert_eq!(one, "one");
+    match host.call_as::<String, NoteError>("t.find", 7).await {
+        Err(RouteError::Route(err)) => assert_eq!(err, NoteError::NotFound { id: 7 }),
+        other => panic!("{other:?}"),
+    }
+    match host.call_as::<String, NoteError>("t.find", 0).await {
+        Err(RouteError::Route(err)) => assert_eq!(err, NoteError::EmptyTitle),
+        other => panic!("{other:?}"),
+    }
+    match host.call_as::<String, NoteError>("t.missing", ()).await {
+        Err(RouteError::Framework(err)) => assert!(err.to_string().contains("not registered")),
+        other => panic!("{other:?}"),
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn channels_exchange_messages_and_report_a_failed_close() {
+    let host = lingxia::test_host!();
+    let mut channel = host.channel::<String, String>("t.shout", "!").unwrap();
+    channel.send("hi".into()).unwrap();
+    assert_eq!(channel.recv().await.unwrap().unwrap(), "HI!");
+    channel.send(String::new()).unwrap();
+    let err = channel.recv().await.unwrap().unwrap_err();
+    assert!(err.to_string().contains("nothing to shout"), "{err}");
+    assert!(channel.recv().await.is_none());
+
+    let mut channel = host.channel::<String, String>("t.shout", "?").unwrap();
+    channel.send("ok".into()).unwrap();
+    assert_eq!(channel.recv().await.unwrap().unwrap(), "OK?");
+    channel.close();
+
+    let err = host.channel::<String, String>("t.nope", ()).err().unwrap();
+    assert!(err.to_string().contains("not registered"), "{err}");
 }

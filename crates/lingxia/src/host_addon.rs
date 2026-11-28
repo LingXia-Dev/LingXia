@@ -157,6 +157,20 @@ impl<A: HostAddon + 'static> std::ops::Deref for Host<A> {
     }
 }
 
+/// Checks a route's `Host<A>` against the addon `lingxia::host!` names.
+#[doc(hidden)]
+#[diagnostic::on_unimplemented(
+    message = "`Host<{A}>` does not name the addon passed to `lingxia::host!`",
+    label = "`lingxia::host!` names `{Self}`"
+)]
+pub trait __HostAddonIs<A> {}
+
+impl<A: HostAddon> __HostAddonIs<A> for A {}
+
+/// What `lingxia::routes!()` names: a library crate's routes serve whichever host links
+/// them, so their `Host<A>` resolves when called.
+impl<A> __HostAddonIs<A> for dyn Any {}
+
 /// A host crate's whole registration, written once in its `lib.rs`:
 /// `lingxia::host!(AppHostAddon);`, or with its value, `lingxia::host!(AppHostAddon::new())`
 /// or `lingxia::host!(AppHostAddon { .. })`.

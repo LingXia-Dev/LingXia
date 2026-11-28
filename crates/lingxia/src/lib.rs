@@ -20,7 +20,7 @@
 extern crate self as lingxia;
 
 pub use host_addon::Host;
-pub use host_addon::{__register_host, HostAddon, register_host_addon};
+pub use host_addon::{__HostAddonIs, __register_host, HostAddon, register_host_addon};
 pub use lingxia_native_macros::FromLxApp;
 pub use lingxia_native_macros::NativeError;
 #[doc(hidden)]
