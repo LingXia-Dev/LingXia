@@ -12,6 +12,17 @@ export const mathRecipe = {
   row: {
     baseline: 'flex-row items-baseline',
   },
+  // A plus laid out unseen holds the width; the face's U+2212 is drawn centred over it.
+  minus: {
+    base: 'justify-center',
+    ghost: 'opacity-0',
+    glyph: 'absolute inset-0 text-center',
+  },
+  // TeX's thick (5/18 em) and medium (4/18 em) spaces at each size.
+  space: {
+    rel: { base: 'mx-1.25', compact: 'mx-1' },
+    bin: { base: 'mx-1', compact: 'mx-0.75' },
+  },
   bracket: {
     squareOpen: 'w-1.5 self-stretch border-y border-s border-text my-0.5',
     squareClose: 'w-1.5 self-stretch border-y border-e border-text my-0.5',

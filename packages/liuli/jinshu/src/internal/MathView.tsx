@@ -358,8 +358,7 @@ class LatexParser {
 
     if ('+-=<>(),[]|/:!'.includes(ch)) {
       this.pos += 1;
-      const padded = '+-=<>'.includes(ch) ? ` ${ch === '-' ? '−' : ch} ` : ch;
-      return { kind: 'op', value: padded };
+      return { kind: 'op', value: ch === '-' ? '−' : ch };
     }
 
     if (/[0-9.]/.test(ch)) {
@@ -373,13 +372,36 @@ class LatexParser {
   }
 }
 
+// TeX's atom classes for spacing: a relation takes a thick space each side, a binary operator a medium one.
+const RELATIONS = new Set('=<>≤≥≠≈≡≅∼≃∝≪≫→←↔⇒⇐⇔↦↑↓⇌∈∉∋⊂⊃⊆⊇⊥∥:'.split(''));
+const BINARIES = new Set('+−±∓×÷·∗⋆∘•⊕⊗⊖∪∩∖∧∨'.split(''));
+type Spacing = 'rel' | 'bin' | null;
+
+/** The space around each atom of a row: a binary with nothing to its left, or after a relation or operator, is a sign. */
+function spacingOf(nodes: readonly MathNode[]): Spacing[] {
+  const out: Spacing[] = [];
+  nodes.forEach((n, i) => {
+    const value = n.kind === 'op' ? n.value : '';
+    if (RELATIONS.has(value)) out.push('rel');
+    else if (BINARIES.has(value)) {
+      const prev = i > 0 ? nodes[i - 1] : undefined;
+      const isSign = prev === undefined || out[i - 1] !== null || (prev.kind === 'op' && '(,[|'.includes(prev.value)) || i === nodes.length - 1;
+      out.push(isSign ? null : 'bin');
+    } else out.push(null);
+  });
+  return out;
+}
+
 function nodesToInlineString(nodes: readonly MathNode[]): string {
   let out = '';
-  for (const n of nodes) {
+  const spacing = spacingOf(nodes);
+  for (const [i, n] of nodes.entries()) {
     switch (n.kind) {
       case 'text':
-      case 'op':
         out += n.value;
+        break;
+      case 'op':
+        out += spacing[i] ? ` ${n.value} ` : n.value;
         break;
       case 'frac':
         out += n.noBar
@@ -458,9 +480,11 @@ function BracketEdge({ kind }: { readonly kind: '(' | ')' | '[' | ']' | '{' | '}
   return <text aria-hidden className={m.bracket.glyph}>{kind}</text>;
 }
 
-function renderMathNodes(nodes: readonly MathNode[], keyPrefix: string, compact = false): Child[] {
+// `compact`: a fraction's or a script's smaller type; `tight`: script style, where TeX sets relations and operators without space.
+function renderMathNodes(nodes: readonly MathNode[], keyPrefix: string, compact = false, tight = false): Child[] {
   const textCls = compact ? m.text.compact : m.text.base;
   const scriptCls = m.script.text;
+  const spacing = tight ? [] : spacingOf(nodes);
 
   return nodes.map((node, idx) => {
     const key = `${keyPrefix}-${idx}`;
@@ -471,12 +495,23 @@ function renderMathNodes(nodes: readonly MathNode[], keyPrefix: string, compact 
             {node.value}
           </text>
         );
-      case 'op':
+      case 'op': {
+        const space = spacing[idx];
+        // A face's U+2212 can be narrower than its plus; it takes the plus's width so a sum stays even.
+        if (node.value === '−') {
+          return (
+            <view key={key} className={cx(m.minus.base, space && m.space[space][compact ? 'compact' : 'base'])}>
+              <text aria-hidden className={cx(textCls, m.minus.ghost)}>+</text>
+              <text className={cx(textCls, m.minus.glyph)}>−</text>
+            </view>
+          );
+        }
         return (
-          <text key={key} className={textCls}>
+          <text key={key} className={cx(textCls, space && m.space[space][compact ? 'compact' : 'base'])}>
             {node.value}
           </text>
         );
+      }
       case 'frac': {
         const inner = (
           <view className={m.frac.base}>
@@ -510,32 +545,32 @@ function renderMathNodes(nodes: readonly MathNode[], keyPrefix: string, compact 
             )}
             <text className={cx(textCls, m.sqrt.sign)}>√</text>
             <view className={m.sqrt.body}>
-              {renderMathNodes(node.body, `${key}-sq`, compact)}
+              {renderMathNodes(node.body, `${key}-sq`, compact, tight)}
             </view>
           </view>
         );
       case 'overline':
         return (
           <view key={key} className={m.overline.base}>
-            {renderMathNodes(node.body, `${key}-ov`, compact)}
+            {renderMathNodes(node.body, `${key}-ov`, compact, tight)}
           </view>
         );
       case 'underline':
         return (
           <view key={key} className={m.underline.base}>
-            {renderMathNodes(node.body, `${key}-un`, compact)}
+            {renderMathNodes(node.body, `${key}-un`, compact, tight)}
           </view>
         );
       case 'xarrow':
         return (
           <view key={key} className={m.xarrow.base}>
             <view className={m.row.baseline}>
-              {renderMathNodes(node.above, `${key}-xa`, true)}
+              {renderMathNodes(node.above, `${key}-xa`, true, true)}
             </view>
             <text className={textCls}>{node.dir === 'right' ? '───→' : '←───'}</text>
             {node.below && (
               <view className={m.row.baseline}>
-                {renderMathNodes(node.below, `${key}-xb`, true)}
+                {renderMathNodes(node.below, `${key}-xb`, true, true)}
               </view>
             )}
           </view>
@@ -547,7 +582,7 @@ function renderMathNodes(nodes: readonly MathNode[], keyPrefix: string, compact 
               <text className={textCls}>{node.symbol}</text>
               {node.sub && (
                 <view className={m.row.baseline}>
-                  {renderMathNodes(node.sub, `${key}-lsub`, true)}
+                  {renderMathNodes(node.sub, `${key}-lsub`, true, true)}
                 </view>
               )}
             </view>
@@ -559,10 +594,10 @@ function renderMathNodes(nodes: readonly MathNode[], keyPrefix: string, compact 
             {(node.sup || node.sub) && (
               <view className={m.bigop.limits}>
                 <view className={m.row.baseline}>
-                  {node.sup ? renderMathNodes(node.sup, `${key}-sup`, true) : <text className={scriptCls}> </text>}
+                  {node.sup ? renderMathNodes(node.sup, `${key}-sup`, true, true) : <text className={scriptCls}> </text>}
                 </view>
                 <view className={m.row.baseline}>
-                  {node.sub ? renderMathNodes(node.sub, `${key}-sub`, true) : <text className={scriptCls}> </text>}
+                  {node.sub ? renderMathNodes(node.sub, `${key}-sub`, true, true) : <text className={scriptCls}> </text>}
                 </view>
               </view>
             )}
@@ -592,11 +627,11 @@ function renderMathNodes(nodes: readonly MathNode[], keyPrefix: string, compact 
               (n.kind === 'script' && isFlat([n.base]) && (!n.sup || isFlat(n.sup)) && (!n.sub || isFlat(n.sub))),
           );
         const scriptPart = (ns: readonly MathNode[], suffix: string) =>
-          isFlat(ns) ? <text className={scriptCls}>{toPlainScript(ns)}</text> : renderMathNodes(ns, `${key}-${suffix}`, true);
+          isFlat(ns) ? <text className={scriptCls}>{toPlainScript(ns)}</text> : renderMathNodes(ns, `${key}-${suffix}`, true, true);
         const rowAlign = node.sup && !node.sub ? m.script.raised : node.sub && !node.sup ? m.script.lowered : m.script.centred;
         return (
           <view key={key} className={cx(m.script.base, rowAlign)}>
-            {renderMathNodes([node.base], `${key}-b`, compact)}
+            {renderMathNodes([node.base], `${key}-b`, compact, tight)}
             <view className={node.sup && node.sub ? m.script.both : undefined}>
               {node.sup && <view className={cx(m.row.baseline, !node.sub && m.script.supOnly)}>{scriptPart(node.sup, 'sup')}</view>}
               {node.sub && <view className={cx(m.row.baseline, !node.sup && m.script.subOnly)}>{scriptPart(node.sub, 'sub')}</view>}
@@ -619,7 +654,7 @@ function renderMathNodes(nodes: readonly MathNode[], keyPrefix: string, compact 
                       key={`${key}-c-${rIdx}-${cIdx}`}
                       className={cx(m.env.cell, isCases || isAligned ? m.env.cellAligned : m.env.cellMatrix)}
                     >
-                      {renderMathNodes(cell, `${key}-cell-${rIdx}-${cIdx}`, compact)}
+                      {renderMathNodes(cell, `${key}-cell-${rIdx}-${cIdx}`, compact, tight)}
                     </view>
                   ))}
                 </view>
