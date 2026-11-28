@@ -18,13 +18,13 @@ export function Content() {
       </PageSection>
       <PageSection title={"States"} note={"Each state is set by its props so you can see it. Nothing here is waiting, missing or broken."}>
         <StageGrid stack>
-          <Stage caption={"Continue where the reader stopped"} bare>
+          <Stage caption={"State: Continue where the reader stopped"}>
             <Resume />
           </Stage>
-          <Stage caption={"Loading"} bare>
+          <Stage caption={"State: Loading"}>
             <Loading />
           </Stage>
-          <Stage caption={"Unavailable"} bare>
+          <Stage caption={"State: Unavailable"}>
             <Unavailable />
           </Stage>
         </StageGrid>

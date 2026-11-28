@@ -355,6 +355,8 @@ function galleryContent(doc) {
   ];
   const bare = page?.stage === 'bare' ? ' bare' : '';
   const stage = (ref, indent) => [`${indent}<Stage caption=${jsx(ref.title)}${bare}>`, `${indent}  <${ref.name} />`, `${indent}</Stage>`];
+  // A state is always framed and named as one, so a loading or empty specimen never reads as the page failing.
+  const state = (ref, indent) => [`${indent}<Stage caption=${jsx(`State: ${ref.title}`)}>`, `${indent}  <${ref.name} />`, `${indent}</Stage>`];
   if (!page) {
     for (const example of doc.examples)
       lines.push(`      <PageSection title=${jsx(example.title)}>`, '        <Stage>', `          <${example.name} />`, '        </Stage>', '      </PageSection>');
@@ -369,7 +371,7 @@ function galleryContent(doc) {
       // A staged state can pass for a fault, so its section says first that it is staged.
       const note = key === 'states' ? page.statesNote ?? 'Each state is set by its props so you can see it. Nothing here is waiting, missing or broken.' : undefined;
       lines.push(`      <PageSection title=${jsx(key === 'states' ? page.statesTitle ?? title : title)}${note ? ` note=${jsx(note)}` : ''}>`);
-      if (key === 'states') lines.push(page.statesLayout === 'stack' ? '        <StageGrid stack>' : '        <StageGrid>', ...refs.flatMap(ref => stage(ref, '          ')), '        </StageGrid>');
+      if (key === 'states') lines.push(page.statesLayout === 'stack' ? '        <StageGrid stack>' : '        <StageGrid>', ...refs.flatMap(ref => state(ref, '          ')), '        </StageGrid>');
       else lines.push(...refs.flatMap(ref => stage(ref, '        ')));
       lines.push('      </PageSection>');
     }

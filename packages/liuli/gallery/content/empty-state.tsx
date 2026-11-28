@@ -20,13 +20,13 @@ export function Content() {
       </PageSection>
       <PageSection title={"States"} note={"Each state is set by its props so you can see it. Nothing here is waiting, missing or broken."}>
         <StageGrid>
-          <Stage caption={"A title only"}>
+          <Stage caption={"State: A title only"}>
             <StateTitleOnly />
           </Stage>
-          <Stage caption={"With a picture"}>
+          <Stage caption={"State: With a picture"}>
             <StateWithPicture />
           </Stage>
-          <Stage caption={"With an action"}>
+          <Stage caption={"State: With an action"}>
             <StateWithAction />
           </Stage>
         </StageGrid>

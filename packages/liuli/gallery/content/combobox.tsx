@@ -29,16 +29,16 @@ export function Content() {
       </PageSection>
       <PageSection title={"States"} note={"Each state is set by its props so you can see it. Nothing here is waiting, missing or broken."}>
         <StageGrid stack>
-          <Stage caption={"Nothing chosen"}>
+          <Stage caption={"State: Nothing chosen"}>
             <StateEmpty />
           </Stage>
-          <Stage caption={"Chosen"}>
+          <Stage caption={"State: Chosen"}>
             <StateChosen />
           </Stage>
-          <Stage caption={"Invalid"}>
+          <Stage caption={"State: Invalid"}>
             <StateInvalid />
           </Stage>
-          <Stage caption={"Disabled"}>
+          <Stage caption={"State: Disabled"}>
             <StateDisabled />
           </Stage>
         </StageGrid>

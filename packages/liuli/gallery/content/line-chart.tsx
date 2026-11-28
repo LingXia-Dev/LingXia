@@ -32,16 +32,16 @@ export function Content() {
       </PageSection>
       <PageSection title={"Selected, loading, empty and error"} note={"What the chart shows in each state. These are staged examples: nothing here is waiting or broken."}>
         <StageGrid stack>
-          <Stage caption={"With one value: a dot, since one point makes no line"}>
+          <Stage caption={"State: With one value: a dot, since one point makes no line"}>
             <StateSingle />
           </Stage>
-          <Stage caption={"While loading"}>
+          <Stage caption={"State: While loading"}>
             <StateLoading />
           </Stage>
-          <Stage caption={"With no data"}>
+          <Stage caption={"State: With no data"}>
             <StateEmpty />
           </Stage>
-          <Stage caption={"After a failure"}>
+          <Stage caption={"State: After a failure"}>
             <StateError />
           </Stage>
         </StageGrid>

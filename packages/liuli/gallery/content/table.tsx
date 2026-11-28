@@ -45,7 +45,7 @@ export function Content() {
       </PageSection>
       <PageSection title={"States"} note={"Each state is set by its props so you can see it. Nothing here is waiting, missing or broken."}>
         <StageGrid>
-          <Stage caption={"With no rows"} bare>
+          <Stage caption={"State: With no rows"}>
             <StateEmpty />
           </Stage>
         </StageGrid>

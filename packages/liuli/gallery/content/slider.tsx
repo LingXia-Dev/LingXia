@@ -32,13 +32,13 @@ export function Content() {
       </PageSection>
       <PageSection title={"States"} note={"Each state is set by its props so you can see it. Nothing here is waiting, missing or broken."}>
         <StageGrid>
-          <Stage caption={"Default"}>
+          <Stage caption={"State: Default"}>
             <StateDefault />
           </Stage>
-          <Stage caption={"Disabled"}>
+          <Stage caption={"State: Disabled"}>
             <StateDisabled />
           </Stage>
-          <Stage caption={"Disabled, with the reason in place of the help text"}>
+          <Stage caption={"State: Disabled, with the reason in place of the help text"}>
             <DisabledWithReason />
           </Stage>
         </StageGrid>
