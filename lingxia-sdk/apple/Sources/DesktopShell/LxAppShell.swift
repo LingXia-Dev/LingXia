@@ -224,6 +224,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     private var deviceCompactProjectionEnabled = false
     private var isApplyingSurfaceSizeClass = false
     private var sidebarExpandedByUser = false
+    private var lastSidebarBudgetRequiresRail = false
     private var panelFramePreservationGeneration: UInt = 0
     /// Our own `setFrame` also moves the window. That must not look like a drag.
     private var suppressFrameRestorationMove = false
@@ -614,6 +615,14 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         scheduleWindowFrameSave()
         syncSidebarHeaderButtonAlignment()
         workspaceManager.relayoutPanels()
+        // The budget is the window's, so crossing it changes no core plan with one main;
+        // re-project here, dropping a reveal made on the other side.
+        let requiresRail = sidebarBudgetRequiresRail
+        if requiresRail != lastSidebarBudgetRequiresRail {
+            lastSidebarBudgetRequiresRail = requiresRail
+            sidebarExpandedByUser = false
+            applyEffectiveSidebarProjection()
+        }
         reportSurfaceWidth()
     }
 
@@ -1333,8 +1342,8 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             ?? LxAppLayoutReconciler.lxappAsideChildId() else { return false }
         switch toggleAsideSlotCollapsed(appId, "panel") {
         case 1:
-            if let webView = Self.firstWebView(in: workspaceManager.rootView) {
-                window?.makeFirstResponder(webView)
+            if let target = Self.mainFocusTarget(in: workspaceManager.rootView) {
+                window?.makeFirstResponder(target)
             }
         case 2:
             // The reconciler shows the panel on this pass; focus once it is in.
@@ -1364,9 +1373,26 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             } else {
                 target = self.currentViewController?.view ?? self.workspaceManager.contentContainer
             }
-            guard let target, let webView = Self.firstWebView(in: target) else { return }
-            self.window?.makeFirstResponder(webView)
+            let responder: NSView? = maximized
+                ? target.flatMap { Self.firstWebView(in: $0) }
+                : target.flatMap { Self.mainFocusTarget(in: $0) }
+            guard let responder else { return }
+            self.window?.makeFirstResponder(responder)
         }
+    }
+
+    /// The main's page: its web view, or a GPU page, which draws without one.
+    private static func mainFocusTarget(in view: NSView) -> NSView? {
+        if let webView = firstWebView(in: view) { return webView }
+        return firstGpuPage(in: view)
+    }
+
+    private static func firstGpuPage(in view: NSView) -> NSView? {
+        if view is GpuPageView, !view.isHidden { return view }
+        for subview in view.subviews where !subview.isHidden {
+            if let page = firstGpuPage(in: subview) { return page }
+        }
+        return nil
     }
 
     private static func firstWebView(in view: NSView) -> WKWebView? {
