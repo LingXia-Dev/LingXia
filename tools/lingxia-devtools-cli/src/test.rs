@@ -116,7 +116,7 @@ pub struct TestOptions {
     pub grep: Option<String>,
 
     /// Select an exact stable test id (repeatable: runs each one)
-    #[arg(long = "id", value_name = "ID", help_heading = "Selection")]
+    #[arg(long = "id", value_name = "ID", value_parser = crate::test_select::parse_test_id, help_heading = "Selection")]
     id: Vec<String>,
 
     /// Run only tests whose tags match (repeatable: every --tag must hold).

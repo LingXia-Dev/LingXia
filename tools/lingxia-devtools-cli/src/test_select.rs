@@ -26,9 +26,17 @@ pub struct TestPath {
 
 /// `PATH` or `PATH:LINE`. Only the last colon counts, and only before
 /// digits, so `C:\x\a.test.ts:42` is `C:\x\a.test.ts` line 42.
+/// An empty selector would otherwise select nothing and run the whole suite.
+pub fn parse_test_id(raw: &str) -> Result<String, String> {
+    if raw.trim().is_empty() {
+        return Err("no specs selected: --id is empty".into());
+    }
+    Ok(raw.to_string())
+}
+
 pub fn parse_test_path(raw: &str) -> Result<TestPath, String> {
-    if raw.is_empty() {
-        return Err("a test path cannot be empty".into());
+    if raw.trim().is_empty() {
+        return Err("no specs selected: a test path is empty".into());
     }
     let (path, line) = match raw.rsplit_once(':') {
         Some((path, digits))
@@ -579,6 +587,23 @@ impl<'a> Visit<'a> for SpecFinder {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_empty_selector_is_refused_rather_than_running_everything() {
+        for raw in ["", " ", "\n"] {
+            assert!(
+                parse_test_id(raw)
+                    .unwrap_err()
+                    .starts_with("no specs selected")
+            );
+            assert!(
+                parse_test_path(raw)
+                    .unwrap_err()
+                    .starts_with("no specs selected")
+            );
+        }
+        assert_eq!(parse_test_id("UI-1").unwrap(), "UI-1");
+    }
 
     #[test]
     fn a_listing_is_one_aligned_line_per_spec() {
