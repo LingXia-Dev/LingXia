@@ -71,6 +71,10 @@ Four architectural principles follow from this split:
   every test by appid (never querying "current" again). Before each test and at run end, a missing
   or closed app is reopened and relaunched to its home page, emitting a `recovery` diagnostic
   (`recovery_failed` flags `app_not_live`).
+- **Run language**: `control.locale` (`lxdev test --locale`, default `en-US`) opens the host's
+  in-memory test-run language layer; while it is open, `lx.host.languagePreference` reads and
+  writes that layer, so specs still switch languages. Every terminal transition closes it, and it
+  dies with the process, so no run, even one cut off, writes the user's saved preference.
 
 ### Interrupted runs and reconnects
 

@@ -181,7 +181,8 @@ pub enum DisplayLanguageEffectiveSource {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DisplayLanguageState {
-    /// Persisted preference, even while a Runner override shadows it.
+    /// Persisted preference, even while a Runner override shadows it; a test run's
+    /// own preference while one is open.
     pub preference: DisplayLanguagePreference,
     /// Resolved canonical language tag rendered by every host surface.
     pub effective: LanguageTag,
@@ -189,7 +190,7 @@ pub struct DisplayLanguageState {
     pub effective_source: DisplayLanguageEffectiveSource,
 }
 
-/// Opaque owner of a Runner session-only override.
+/// Opaque owner of a session-only layer: a Runner override or a test run's preference.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct DisplayLanguageSessionOwner(u64);
 
@@ -232,6 +233,8 @@ struct ServiceInner {
     /// Empty: no narrowing.
     languages: Vec<String>,
     session_override: Option<SessionOverride>,
+    /// A test run's preference, read and written in place of the saved one.
+    test_run: Option<SessionOverride>,
     state: DisplayLanguageState,
     revision: u64,
     effective_revision: u64,
@@ -250,6 +253,12 @@ impl ServiceInner {
             .unwrap_or_else(|| tag.clone())
     }
 
+    fn preference(&self) -> &DisplayLanguagePreference {
+        self.test_run
+            .as_ref()
+            .map_or(&self.preference, |run| &run.preference)
+    }
+
     fn resolve(&self) -> DisplayLanguageState {
         let (effective, effective_source) = match &self.session_override {
             Some(SessionOverride {
@@ -264,7 +273,7 @@ impl ServiceInner {
                 DisplayLanguageEffectiveSource::SessionOverride,
             ),
             // A session override is a test's or a runner's pin and shows as asked.
-            None => match &self.preference {
+            None => match self.preference() {
                 DisplayLanguagePreference::LanguageTag(tag) => {
                     (self.narrow(tag), DisplayLanguageEffectiveSource::Preference)
                 }
@@ -275,7 +284,7 @@ impl ServiceInner {
             },
         };
         DisplayLanguageState {
-            preference: self.preference.clone(),
+            preference: self.preference().clone(),
             effective,
             effective_source,
         }
@@ -306,6 +315,7 @@ impl DisplayLanguageService {
             system,
             languages: Vec::new(),
             session_override: None,
+            test_run: None,
             state: initial,
             revision: 0,
             effective_revision: 0,
@@ -439,10 +449,38 @@ impl DisplayLanguageService {
         // Keep persistence and publication serialized. A failed write never
         // mutates memory or emits either event.
         let mut inner = self.inner.lock().unwrap_or_else(|error| error.into_inner());
-        persist(&preference)?;
         let previous = inner.state.clone();
-        inner.preference = preference;
+        match inner.test_run.as_mut() {
+            Some(run) => run.preference = preference,
+            None => {
+                persist(&preference)?;
+                inner.preference = preference;
+            }
+        }
         Ok(Self::enqueue_locked(&mut inner, previous))
+    }
+
+    fn begin_test_run(
+        &self,
+        preference: DisplayLanguagePreference,
+    ) -> (DisplayLanguageSessionOwner, bool) {
+        let owner = DisplayLanguageSessionOwner::next();
+        let transition = self.update(|inner| {
+            inner.test_run = Some(SessionOverride { owner, preference });
+        });
+        (owner, transition)
+    }
+
+    fn end_test_run(&self, owner: DisplayLanguageSessionOwner) -> bool {
+        self.update(|inner| {
+            if inner
+                .test_run
+                .as_ref()
+                .is_some_and(|run| run.owner == owner)
+            {
+                inner.test_run = None;
+            }
+        })
     }
 
     fn install_session_override(
@@ -700,6 +738,22 @@ pub fn install_display_language_session_override(
     let (owner, transition) = service().install_session_override(preference);
     dispatch(transition);
     owner
+}
+
+/// Open a test run's language layer: until it ends, the preference reads and
+/// writes stay in memory, starting at `preference`, and the saved preference is
+/// never written. It lives only in this process, so a crash cannot leave it behind.
+pub fn begin_display_language_test_run(
+    preference: DisplayLanguagePreference,
+) -> DisplayLanguageSessionOwner {
+    let (owner, transition) = service().begin_test_run(preference);
+    dispatch(transition);
+    owner
+}
+
+/// Close the test run's layer `owner` opened; the saved preference shows again.
+pub fn end_display_language_test_run(owner: DisplayLanguageSessionOwner) {
+    dispatch(service().end_test_run(owner));
 }
 
 /// Clear an override only when `owner` is still the active Runner session.
@@ -1060,6 +1114,46 @@ mod tests {
         assert_eq!(service.state().effective.as_str(), "zh-CN");
         assert_eq!(states.load(Ordering::Relaxed), 3);
         assert_eq!(effective.load(Ordering::Relaxed), 2);
+    }
+
+    #[test]
+    fn a_test_run_reads_and_writes_its_own_preference_and_never_the_saved_one() {
+        let service = service_with("zh-CN", "de-DE");
+        let (owner, transition) = service.begin_test_run("en-US".parse().unwrap());
+        deliver(&service, transition);
+        assert_eq!(service.state().preference.as_str(), "en-US");
+        assert_eq!(service.state().effective.as_str(), "en-US");
+
+        // A spec's own switch moves the run's layer; nothing is written.
+        let transition = service
+            .set_preference_persisted("ja-JP".parse().unwrap(), |_| {
+                panic!("a test run must not write the saved preference")
+            })
+            .unwrap();
+        deliver(&service, transition);
+        assert_eq!(service.state().preference.as_str(), "ja-JP");
+        assert_eq!(service.state().effective.as_str(), "ja-JP");
+
+        // A stale owner cannot end a later run's layer.
+        let (later, transition) = service.begin_test_run("en-US".parse().unwrap());
+        deliver(&service, transition);
+        deliver(&service, service.end_test_run(owner));
+        assert_eq!(service.state().effective.as_str(), "en-US");
+
+        deliver(&service, service.end_test_run(later));
+        assert_eq!(service.state().preference.as_str(), "zh-CN");
+        assert_eq!(service.state().effective.as_str(), "zh-CN");
+    }
+
+    #[test]
+    fn a_runner_override_still_wins_over_a_test_run() {
+        let service = service_with("zh-CN", "de-DE");
+        let (_, transition) = service.install_session_override("ja-JP".parse().unwrap());
+        deliver(&service, transition);
+        let (_, transition) = service.begin_test_run("en-US".parse().unwrap());
+        deliver(&service, transition);
+        assert_eq!(service.state().effective.as_str(), "ja-JP");
+        assert_eq!(service.state().preference.as_str(), "en-US");
     }
 
     #[test]

@@ -29,6 +29,8 @@ mod host;
 mod info;
 mod input;
 mod js_payload;
+#[cfg(feature = "runtime")]
+mod language;
 mod nav;
 // Test network routes need a host run to own them; without the runtime the
 // driver exists but every call rejects.

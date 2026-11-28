@@ -139,6 +139,11 @@ impl AutomationRuntime {
             .quarantine
             .admit(self.inner.teardown, self.inner.spawn)?;
 
+        let locale = args
+            .control
+            .get("locale")
+            .map(|locale| crate::language::parse(locale))
+            .transpose()?;
         let profile = match args.profile.take() {
             Some(profile) => Some(profile),
             None => prepare()?,
@@ -165,7 +170,11 @@ impl AutomationRuntime {
             args: args.args,
             control: args.control,
         };
+        if let Some(locale) = locale {
+            crate::language::begin_run(&shared.run_id, locale);
+        }
         if self.inner.sender.send(request).is_err() {
+            crate::language::clear_run(&shared.run_id);
             if let Some(profile) = profile {
                 rollback(profile);
             }
@@ -1320,6 +1329,42 @@ mod tests {
         let swept = response.result.expect("result").output.expect("output");
         assert_eq!(swept["environments"], 1, "{swept}");
         assert_eq!(sent(&page), vec![Some(DARK), None]);
+    }
+
+    #[test]
+    fn a_run_shows_its_locale_and_a_cancelled_run_puts_the_saved_preference_back() {
+        let runtime = AutomationRuntime::new().expect("automation runtime");
+        let saved = lxapp::display_language_state().preference;
+        let mut args = AutomationStartArgs {
+            source: SLOW_PROGRAM.to_string(),
+            source_name: Some("fixture.ts".to_string()),
+            timeout_ms: Some(30_000),
+            args: HashMap::new(),
+            control: HashMap::from([("locale".to_string(), "not a tag!".to_string())]),
+            profile: None,
+        };
+        let refused = runtime
+            .start(args.clone())
+            .expect_err("a bad locale is refused");
+        assert!(refused.starts_with("E_INVALID_ARG: locale"), "{refused}");
+
+        args.control
+            .insert("locale".to_string(), "ja-JP".to_string());
+        let started = runtime.start(args).expect("start automation run");
+        let during = lxapp::display_language_state();
+        assert_eq!(during.preference.as_str(), "ja-JP");
+        assert_eq!(during.effective.as_str(), "ja-JP");
+        runtime
+            .cancel(AutomationCancelArgs {
+                run_id: started.run_id.clone(),
+                reason: Some("interrupted by test".to_string()),
+            })
+            .expect("cancel run");
+        assert_eq!(
+            wait_for_terminal(&runtime, &started.run_id).state,
+            AutomationRunState::Cancelled
+        );
+        assert_eq!(lxapp::display_language_state().preference, saved);
     }
 
     #[test]

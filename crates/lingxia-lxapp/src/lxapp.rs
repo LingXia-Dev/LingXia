@@ -84,9 +84,10 @@ pub(crate) use display_language::view_display_language_snapshot;
 pub use display_language::{
     DisplayLanguageEffectiveSource, DisplayLanguageEffectiveUpdate, DisplayLanguagePreference,
     DisplayLanguageSessionOwner, DisplayLanguageState, DisplayLanguageStateUpdate, LanguageTag,
-    add_display_language_effective_listener, clear_active_display_language_session_override,
+    add_display_language_effective_listener, begin_display_language_test_run,
+    clear_active_display_language_session_override,
     clear_display_language_session_override, display_language, display_language_state,
-    display_language_state_update, initialize_display_language,
+    display_language_state_update, end_display_language_test_run, initialize_display_language,
     install_display_language_session_override, observe_display_language_state,
     refresh_display_language_system, set_display_language_preference,
     set_display_language_preference_in, subscribe_display_language_effective,

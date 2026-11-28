@@ -86,6 +86,7 @@ everything once before pushing; CI runs it again.
   id or tag, or a test registered in a loop, which a run may list differently.
 - `--retries N` needs `test.reset`; `--shard 1/3` needs separate sessions.
   `--repeat-each N` and `--shuffle[=SEED]` find flaky and order-dependent tests.
+- The app runs in `en-US` unless `--locale TAG|auto` says otherwise; `lx.host.languagePreference.set` in a spec switches it for that run only, and the user's saved preference is never written.
 - `test.only` narrows a file while iterating; `--forbid-only` fails a run that has one (use it in CI).
 - A run pauses [auto-reload](../cli/dev-reload.md). Keep files that setup
   generates outside the watched project.

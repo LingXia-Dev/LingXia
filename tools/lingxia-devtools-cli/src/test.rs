@@ -179,6 +179,12 @@ pub struct TestOptions {
     #[arg(long, help_heading = "Execution")]
     pass_with_no_tests: bool,
 
+    /// The app's display language for the run: a tag such as zh-CN, or
+    /// `auto`. The user's own preference is never changed, even by a run cut
+    /// off mid-way; a spec can still switch for itself
+    #[arg(long, value_name = "TAG", default_value = DEFAULT_LOCALE, help_heading = "Execution")]
+    locale: String,
+
     /// Cancel an automation run left by a dead client, then start this one.
     /// `lxdev test cancel` releases the run and does not start another
     #[arg(long, help_heading = "Execution")]
@@ -622,6 +628,7 @@ impl ListOptions {
             timeout_secs: None,
             forbid_only: self.forbid_only,
             pass_with_no_tests: false,
+            locale: DEFAULT_LOCALE.to_string(),
             cancel_active: self.cancel_active,
             args: self.args,
             secret_args: self.secret_args,
@@ -1593,6 +1600,9 @@ fn read_latest(root: &Path) -> Option<PathBuf> {
     path.is_dir().then_some(path)
 }
 
+/// Specs find controls by their English names unless they pick a language.
+const DEFAULT_LOCALE: &str = "en-US";
+
 /// lxdev's run controls, sent apart from the test's args so a user `--arg`
 /// can never steer the run.
 fn run_control(
@@ -1603,6 +1613,7 @@ fn run_control(
     let mut control = HashMap::new();
     control.insert("platform".to_string(), target.to_string());
     control.insert("retries".to_string(), options.retries.to_string());
+    control.insert("locale".to_string(), options.locale.clone());
     match options.timeout_secs {
         Some(secs) => {
             control.insert("budgetMs".to_string(), (secs * 1000).to_string());
@@ -5247,6 +5258,20 @@ mod lifecycle_tests {
         let control = run_control(&fixed, "macos", &secrets).unwrap();
         assert_eq!(control["budgetMs"], "90000");
         assert!(!control.contains_key("budgetPerSpecMs"));
+    }
+
+    #[test]
+    fn a_run_shows_the_app_in_english_unless_it_names_a_locale() {
+        let secrets = RunSecrets::new(&[], &[]);
+        let plain = run_control(&options(&["tests/"]), "macos", &secrets).unwrap();
+        assert_eq!(plain["locale"], "en-US");
+        let chosen = run_control(
+            &options(&["tests/", "--locale", "zh-CN"]),
+            "macos",
+            &secrets,
+        )
+        .unwrap();
+        assert_eq!(chosen["locale"], "zh-CN");
     }
 
     #[test]
