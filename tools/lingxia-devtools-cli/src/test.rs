@@ -115,9 +115,9 @@ pub struct TestOptions {
     #[arg(long, value_name = "PATTERN", help_heading = "Selection")]
     pub grep: Option<String>,
 
-    /// Select one exact stable test id
-    #[arg(long, help_heading = "Selection")]
-    id: Option<String>,
+    /// Select an exact stable test id (repeatable: runs each one)
+    #[arg(long = "id", value_name = "ID", help_heading = "Selection")]
+    id: Vec<String>,
 
     /// Run only tests whose tags match (repeatable: every --tag must hold).
     /// `a,b` is a or b; `!a` is without a. An untagged test fails `--tag a`
@@ -290,9 +290,9 @@ pub struct ListOptions {
     #[arg(long, value_name = "PATTERN")]
     pub grep: Option<String>,
 
-    /// Select one exact stable test id
-    #[arg(long)]
-    pub id: Option<String>,
+    /// Select an exact stable test id (repeatable: lists each one)
+    #[arg(long = "id", value_name = "ID")]
+    pub id: Vec<String>,
 
     /// List only tests whose tags match (repeatable: every --tag must hold).
     /// `a,b` is a or b; `!a` is without a
@@ -1217,6 +1217,16 @@ pub fn list_offline(options: &TestOptions, selection: &Selection, asked: bool) -
         .transpose()?
         .map(|report| failed_ids(&report))
         .transpose()?;
+    let ids = match (ids, options.id.len() > 1) {
+        (Some(failed), true) => Some(
+            failed
+                .into_iter()
+                .filter(|id| options.id.contains(id))
+                .collect(),
+        ),
+        (None, true) => Some(options.id.clone()),
+        (ids, false) => ids,
+    };
     // Specs register from every module the entries import, not only the entries.
     let bundle = bundle_test_files(
         &options.bundle_entries(selection)?,
@@ -1225,7 +1235,10 @@ pub fn list_offline(options: &TestOptions, selection: &Selection, asked: bool) -
     )?;
     let filters = crate::test_offline::Filters::new(
         options.grep.as_deref(),
-        options.id.as_deref(),
+        match options.id.as_slice() {
+            [id] => Some(id.as_str()),
+            _ => None,
+        },
         ids,
         &options.tags,
         options.shard.as_deref(),
@@ -1633,8 +1646,14 @@ fn run_control(
     if options.pass_with_no_tests {
         control.insert("passWithNoTests".to_string(), "1".to_string());
     }
-    if let Some(id) = &options.id {
-        control.insert("id".to_string(), id.clone());
+    match options.id.as_slice() {
+        [] => {}
+        [id] => {
+            control.insert("id".to_string(), id.clone());
+        }
+        ids => {
+            control.insert("ids".to_string(), serde_json::to_string(ids)?);
+        }
     }
     if options.forbid_only {
         control.insert("forbidOnly".to_string(), "1".to_string());
@@ -1656,10 +1675,13 @@ fn selection_controls(
         control.insert("locations".to_string(), serde_json::to_string(locations)?);
     }
     if let Some(report) = last_failed {
-        control.insert(
-            "ids".to_string(),
-            serde_json::to_string(&failed_ids(report)?)?,
-        );
+        let mut ids = failed_ids(report)?;
+        // Repeated `--id` narrows the rerun to those of them that failed.
+        if let Some(wanted) = control.get("ids") {
+            let wanted: Vec<String> = serde_json::from_str(wanted)?;
+            ids.retain(|id| wanted.contains(id));
+        }
+        control.insert("ids".to_string(), serde_json::to_string(&ids)?);
     }
     Ok(())
 }
@@ -5244,6 +5266,46 @@ mod lifecycle_tests {
         assert!(!plain.contains_key("shuffle"));
         assert!(Harness::try_parse_from(["test", "tests/", "--shuffle=x"]).is_err());
         assert!(Harness::try_parse_from(["test", "tests/", "--repeat-each", "0"]).is_err());
+    }
+
+    #[test]
+    fn a_repeated_id_runs_each_one() {
+        let secrets = RunSecrets::new(&[], &[]);
+        let one = run_control(&options(&["tests/", "--id", "A-1"]), "macos", &secrets).unwrap();
+        assert_eq!(
+            (one.get("id"), one.get("ids")),
+            (Some(&"A-1".to_string()), None)
+        );
+        let mut many = run_control(
+            &options(&["tests/", "--id", "A-1", "--id", "B-2"]),
+            "macos",
+            &secrets,
+        )
+        .unwrap();
+        assert_eq!(many.get("id"), None);
+        assert_eq!(many["ids"], r#"["A-1","B-2"]"#);
+        // With --last-failed, only the named ids that failed rerun.
+        let dir = tempfile::tempdir().unwrap();
+        let report = dir.path().join("report.json");
+        std::fs::write(
+            &report,
+            serde_json::json!({"cases": [
+                {"id": "A-1", "status": "failed"},
+                {"id": "C-3", "status": "failed"},
+                {"id": "B-2", "status": "passed"}
+            ]})
+            .to_string(),
+        )
+        .unwrap();
+        let selection = Selection {
+            files: vec![],
+            identity: PathBuf::from("tests"),
+            root: PathBuf::from("."),
+            locations: None,
+            shown: vec![],
+        };
+        selection_controls(&mut many, &selection, Some(&report)).unwrap();
+        assert_eq!(many["ids"], r#"["A-1"]"#);
     }
 
     #[test]
