@@ -43,6 +43,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     static native void nativeSetVisible(long host, boolean visible);
     static native void nativeSetSeeThrough(long host);
     static native void nativeReveal(long host, boolean surfaceHoldsFrame);
+    static native void nativeCover(long host);
     static native void nativeTransition(long host, int kind, float x);
     static native long nativeChromeSnapshot(long host, int edge, java.nio.ByteBuffer rows, int width, int height, float x, float y, float w, float h);
     static native void nativeDeclineChromeSnapshot(long host);
@@ -595,6 +596,22 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         nextPresentation.clear();
         for (java.util.function.Consumer<Boolean> waiter : waiters) waiter.accept(success);
     }
+    private final java.util.ArrayList<Runnable> coverWaiters = new java.util.ArrayList<>();
+    /**
+     * The host holds a picture over this page: {@code shown} runs once a frame in the current
+     * size and appearance reaches the screen, or at once when the page shows nothing to wait for.
+     */
+    public void coverUntilShown(Runnable shown) {
+        if (destroyed || !active || !hasFrame()) { shown.run(); return; }
+        coverWaiters.add(shown);
+        nativeCover(host);
+    }
+    private void runCoverWaiters() {
+        if (coverWaiters.isEmpty()) return;
+        java.util.ArrayList<Runnable> waiters = new java.util.ArrayList<>(coverWaiters);
+        coverWaiters.clear();
+        for (Runnable waiter : waiters) waiter.run();
+    }
     public void captureFrame(java.util.function.Consumer<Bitmap> callback) {
         if (android.os.Build.VERSION.SDK_INT < 24 || destroyed || !hasFrame() || !hasSurfaceFrame
                 || surface.getWidth() == 0 || surface.getHeight() == 0 || !surface.getHolder().getSurface().isValid()) {
@@ -942,6 +959,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         nativeHostRelease(released);
         // A disposed page presents nothing more; its waiters must not wait forever.
         answerPresentationWaiters(false);
+        runCoverWaiters();
     }
     @Override public void surfaceCreated(SurfaceHolder holder) { surfaceRefusals = 0; updateCaretActivity(); updateSurfaceVisibility(); }
     @Override public void surfaceDestroyed(SurfaceHolder holder) {
@@ -1153,6 +1171,7 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
             if (revealed) updateSurfaceVisibility(); else reveal();
             if (!hold) answerCurrentFrame(true);
         }); }
+        @Override public void uncover() { onMain(GpuView.this::runCoverWaiters); }
         @Override public void hostChrome(int canvas, int bar, int barLine, int content, int contentMuted, int accent, boolean dark) { onMain(() -> {
             if (destroyed) return;
             chrome = new Chrome(canvas, bar, barLine, content, contentMuted, accent, dark);

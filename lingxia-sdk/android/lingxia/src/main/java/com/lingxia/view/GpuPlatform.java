@@ -62,6 +62,8 @@ interface GpuPlatform {
     void recovery(int message, int action, boolean retained, String error, String detail);
     /** Show the page from {@code GpuView.nativeReveal}; a held surface stays hidden until a later {@code revealed(false)}. */
     void revealed(boolean holdSurface);
+    /** After {@code GpuView.nativeCover}, a frame in the current size and appearance reached the screen. */
+    void uncover();
     /** Colours for the host chrome around this page (ARGB), from the palette it renders with. */
     void hostChrome(int canvas, int bar, int barLine, int content, int contentMuted, int accent, boolean dark);
     /** Show or update the floating text menu ({@code {target, anchor, actions}} JSON), or close it for null. */

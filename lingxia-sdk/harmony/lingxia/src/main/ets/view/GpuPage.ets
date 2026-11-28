@@ -15,6 +15,7 @@ import { observeFoldStatus } from './GpuFoldAdapter';
 import {
   gpuPageMount,
   gpuPageMeasured,
+  gpuPageCover,
   gpuPageSetVisible,
   gpuPageWindowVisible,
   gpuPageRetry,
@@ -432,6 +433,10 @@ export struct GpuPage {
     facts.dark = this.appearanceDark;
     this.systemBottom = facts.system_insets[2];
     gpuPageMeasured(this.page.token, JSON.stringify(facts), this.rect.x, this.rect.y);
+    if (this.page.schemeCoverFor === facts.dark) {
+      this.page.schemeCoverFor = null;
+      gpuPageCover(this.page.token);
+    }
   }
 
   /** The recovery panel as automation reads it: window chrome a tap reaches. Per panel, so

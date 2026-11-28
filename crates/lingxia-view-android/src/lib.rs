@@ -163,6 +163,7 @@ pub fn register_natives(env: &mut Env, class: &JClass) -> jni::errors::Result<()
         method!("nativeInputBlocked", "(J)Z", input_blocked),
         method!("nativeWindowFocus", "(JZ)V", window_focus),
         method!("nativeReveal", "(JZ)V", reveal),
+        method!("nativeCover", "(J)V", cover),
         method!("nativeTransition", "(JIF)V", transition),
         method!(
             "nativeChromeSnapshot",
@@ -608,6 +609,13 @@ extern "system" fn text_handle_drag<'a>(
 ) {
     run(&mut env, |_| {
         host(handle)?.text_handle_drag(active);
+        Ok(())
+    })
+}
+
+extern "system" fn cover<'a>(mut env: EnvUnowned<'a>, _: JClass<'a>, handle: jlong) {
+    run(&mut env, |_| {
+        host(handle)?.cover();
         Ok(())
     })
 }

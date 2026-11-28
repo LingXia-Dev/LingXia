@@ -130,22 +130,28 @@ object LxApp {
     private fun restyle(activity: LxAppActivity, appId: String, dark: Boolean) {
         activity.runOnUiThread {
             if (!activity.canPresentLxApp) return@runOnUiThread
-            activity.delegate.localNightMode = if (dark) {
-                AppCompatDelegate.MODE_NIGHT_YES
-            } else {
-                AppCompatDelegate.MODE_NIGHT_NO
-            }
-            // uiMode is a declared configChange, so nothing re-dispatches the
-            // updated configuration to attached views; WebViews re-evaluate
-            // prefers-color-scheme only when it reaches them.
-            activity.window.decorView.dispatchConfigurationChanged(
-                activity.resources.configuration
-            )
-            activity.applyCanvasBackground()
-            LxAppActivity.updateNavBarUI(appId)
-            LxAppActivity.updateTabBarUI(appId)
+            val mode = if (dark) AppCompatDelegate.MODE_NIGHT_YES else AppCompatDelegate.MODE_NIGHT_NO
+            if (activity.delegate.localNightMode == mode) applyScheme(activity, appId, dark)
+            else SchemeFade.begin(activity) { applyScheme(activity, appId, dark) }
         }
     }
+
+    private fun applyScheme(activity: LxAppActivity, appId: String, dark: Boolean) {
+        activity.delegate.localNightMode = if (dark) {
+            AppCompatDelegate.MODE_NIGHT_YES
+        } else {
+            AppCompatDelegate.MODE_NIGHT_NO
+        }
+    }
+        // uiMode is a declared configChange, so nothing re-dispatches the
+        // updated configuration to attached views; WebViews re-evaluate
+        // prefers-color-scheme only when it reaches them.
+        activity.window.decorView.dispatchConfigurationChanged(
+            activity.resources.configuration
+        )
+        activity.applyCanvasBackground()
+        LxAppActivity.updateNavBarUI(appId)
+        LxAppActivity.updateTabBarUI(appId)
 
     /** Open [appId] at a route; blank means its initial route. */
     @JvmStatic

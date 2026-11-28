@@ -25,16 +25,17 @@ public class GpuNativeLoadTest {
         final ArrayList<String> frames = new ArrayList<>(), events = new ArrayList<>();
         // CPU frames are drawn from the raster pool, not the host's thread.
         final java.util.List<byte[]> pixels = java.util.Collections.synchronizedList(new ArrayList<>());
-        boolean vsync;
+        boolean vsync, dark;
         int loaded, presented;
         public void post(long task, long delay) { if (delay == 0) tasks.add(task); else synchronized (delayed) { delayed.add(task); } }
         public void requestVsync() { vsync = true; }
         public String environment() {
-            return "{\"width\":200,\"height\":300,\"scale\":2,\"dark\":false,\"system_insets\":[0,0,0,0],\"chrome_insets\":[0,0,0,0],"
+            return "{\"width\":200,\"height\":300,\"scale\":2,\"dark\":" + dark + ",\"system_insets\":[0,0,0,0],\"chrome_insets\":[0,0,0,0],"
                 + "\"keyboard\":0,\"smallest_width\":360,\"locale\":\"en\",\"fine_pointer\":false,\"animation_scale\":1,\"reduce_motion\":false,\"runner\":false}";
         }
         public boolean presentPixels(java.nio.ByteBuffer rgba, int width, int height) { assertEquals(rgba.capacity(), width * height * 4); byte[] copy = new byte[rgba.capacity()]; rgba.get(copy); pixels.add(copy); return true; }
         public void gpuAttached(boolean attached) { }
+        public void gpuRefused() { }
         public void announce(int event, int id) { events.add("announce " + event); }
         public void announceText(int id, boolean secure, String before, String after) { }
         public void announceSelection(int id, boolean secure, String text, int start, int end) { }
@@ -59,6 +60,7 @@ public class GpuNativeLoadTest {
         public void clicked() { events.add("clicked"); }
         public void haptic() { }
         public void topLayer(boolean modal) { }
+        public void videoFullscreen(boolean on) { }
         public void chromeSnapshot(long generation) { }
         public int editText(int node, String text, int start, int end) { events.add("edit:" + text); return 0; }
         public void loaded() { loaded++; }
@@ -70,6 +72,9 @@ public class GpuNativeLoadTest {
         final ArrayList<String> copied = new ArrayList<>();
         public void copyText(String text) { copied.add(text); }
         public void revealed(boolean hold) { }
+        /** Frames presented when each cover came off. */
+        final ArrayList<Integer> uncovered = new ArrayList<>();
+        public void uncover() { uncovered.add(presented); }
         /** Host chrome pushes: frames presented before each, then its canvas. */
         final ArrayList<int[]> chromes = new ArrayList<>();
         public void hostChrome(int canvas, int bar, int barLine, int content, int contentMuted, int accent, boolean dark) {
@@ -124,6 +129,26 @@ public class GpuNativeLoadTest {
             GpuView.nativeUpdateEnvironment(host, "{\"kind\":\"language\",\"revision\":3,\"language\":\"zh-Hans-CN\"}");
             GpuView.nativeUpdateEnvironment(host, "{\"kind\":\"surface\",\"revision\":1,\"context\":{\"sizeClass\":\"compact\",\"canDock\":false,\"width\":1,\"height\":1}}");
             fake.pump(host, () -> { try { return "true regular zh-Hans-CN".equals(text(last(fake), "env")); } catch (Exception e) { throw new AssertionError(e); } });
+        } finally { GpuView.nativeHostRelease(host); }
+    }
+
+    /** A scheme change's picture stays until a frame in the new scheme is on screen. */
+    @Test public void aCoverComesOffWithTheFirstFrameInTheNewScheme() throws Exception {
+        Fake fake = new Fake();
+        long host = GpuView.nativeHostCreate(fake, "test:jvm-cover", false, 0);
+        try {
+            GpuView.nativeLoad(host, GpuNative.module(
+                "function render(){return h('text',{'data-testid':'scheme'},useView().env.appearance)}"));
+            GpuView.nativeSetVisible(host, true);
+            fake.pump(host, () -> fake.presented >= 1);
+            int before = fake.presented;
+            fake.dark = true;
+            GpuView.nativeCover(host);
+            GpuView.nativeEnvironmentChanged(host);
+            fake.pump(host, () -> !fake.uncovered.isEmpty());
+            assertTrue("after a new frame", fake.uncovered.get(0) > before);
+            assertEquals("dark", text(last(fake), "scheme"));
+            assertEquals("once", 1, fake.uncovered.size());
         } finally { GpuView.nativeHostRelease(host); }
     }
 

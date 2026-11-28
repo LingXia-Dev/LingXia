@@ -34,6 +34,9 @@ import { AnimationType, EDGE_BACK_SWIPE_ZONE_WIDTH_VP } from './LxAppNavigation'
 import { LxNativeVideoPlayer } from './APIs/media/player/LxNativeVideoPlayer';
 import { LxFullscreenVideoOverlay } from './APIs/media/player/LxFullscreenVideoOverlay';
 import { RefreshHeader } from './RefreshHeader';
+import {
+  SchemeFadePicture, SCHEME_FADE_DURATION_MS, SCHEME_FADE_TIMEOUT_MS, animationsReduced, takeSchemePictures
+} from './SchemeFade';
 import { localizedString } from '../app/DisplayLanguageResources';
 import { accessibility } from '@kit.AccessibilityKit';
 import { StatusBarArbiter } from './StatusBarArbiter';
@@ -156,6 +159,11 @@ export struct LxAppContainer {
   @State tabBarRefreshKey: number = 0  // Force TabBar refresh when data changes
   @State navbarRefreshKey: number = 0  // Force NavigationBar refresh when data changes
   @State appearanceDark: boolean = false
+  /** The page column's picture from before a scheme change, until the page shows the new one.
+   *  Kept out of state so the PixelMaps are not wrapped; `schemeFadeShown` redraws it. */
+  private schemeFade: SchemeFadePicture[] = []
+  @State private schemeFadeShown: boolean = false
+  @State private schemeFadeOpacity: number = 1
   @State webViewComponents: Map<string, webview.WebviewController> = new Map() // Store Web components for each WebView
   @State private childWebViewComponents: Map<string, webview.WebviewController> = new Map()
   @Watch('onCurrentPage') @State currentWebTag: string = '' // Current active WebView tag
@@ -715,6 +723,9 @@ export struct LxAppContainer {
   }
 
   /**
+      if (container.appearanceDark !== dark) {
+        container.beginSchemeFade(dark);
+      }
    * Static method to update tab selection for a specific appId and path
    */
   public static updateTabSelection(appId: string, path: string): boolean {
@@ -1014,12 +1025,15 @@ export struct LxAppContainer {
         this.reportShellWidth(Number(newValue.width) || 0);
         // Track where the container actually sits: when the window manager
         // already insets the page root below the system bar, the chrome must
+      this.buildSchemeFade()
+
         // not add its own status spacer on top of that.
         const globalY = Number((newValue.globalPosition?.y as number) ?? 0);
         this.containerTopVp = Math.max(0, Math.round(globalY));
       } catch (error) {
         hilog.warn(DOMAIN, TAG, `container onAreaChange failed: ${error}`);
       }
+    .id(this.rootId())
     })
 	    .expandSafeArea(this.shouldExpandSafeAreaForContainer() || this.fullscreenComponentId.length > 0 ? [SafeAreaType.SYSTEM, SafeAreaType.CUTOUT] : [], this.shouldExpandSafeAreaForContainer() || this.fullscreenComponentId.length > 0 ? [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM] : [])
 	  }
@@ -2117,6 +2131,84 @@ export struct LxAppContainer {
     }
     this.raiseFallback = setTimeout(() => {
       this.raiseFallback = -1;
+  private rootId(): string {
+    return `lx-container-${this.appId}`;
+  }
+
+  /** Holds the column's picture over the scheme change: it fades once the GPU page presents
+   *  in the new scheme, or after SCHEME_FADE_TIMEOUT_MS; it goes at once under reduced motion. */
+  private beginSchemeFade(dark: boolean): void {
+    const page = this.gpuPages.get(this.currentWebTag);
+    if (this.schemeFade.length > 0 || !page || !page.revealed || this.hidden) {
+      return;
+    }
+    let pictures: SchemeFadePicture[] = [];
+    try {
+      pictures = takeSchemePictures(this.rootId(), page, [this.barId(BAR_TOP), this.barId(BAR_BOTTOM), CAPSULE_ROW_ID]);
+    } catch (error) {
+      hilog.warn(DOMAIN, TAG, `scheme fade picture failed: ${error}`);
+    }
+    if (pictures.length === 0) {
+      return;
+    }
+    this.schemeFadeOpacity = 1;
+    this.schemeFade = pictures;
+    this.schemeFadeShown = true;
+    const started = Date.now();
+    let ended = false;
+    const end = (timedOut: boolean): void => {
+      if (ended) {
+        return;
+      }
+      ended = true;
+      if (page.uncoverWaiter === shown) {
+        page.uncoverWaiter = null;
+        page.schemeCoverFor = null;
+      }
+      LxLog.d(TAG, `scheme fade: ${timedOut ? 'timed out' : 'page shown'} after ${Date.now() - started} ms`);
+      const drop = (): void => {
+        if (this.schemeFade === pictures) {
+          this.schemeFade = [];
+          this.schemeFadeShown = false;
+        }
+      };
+      if (animationsReduced()) {
+        drop();
+        return;
+      }
+      animateTo({ duration: SCHEME_FADE_DURATION_MS, curve: Curve.EaseOut, onFinish: drop }, () => {
+        this.schemeFadeOpacity = 0;
+      });
+    };
+    const shown = (): void => end(false);
+    page.uncoverWaiter = shown;
+    page.schemeCoverFor = dark;
+    setTimeout(() => end(true), SCHEME_FADE_TIMEOUT_MS);
+    LxLog.d(TAG, 'scheme fade: began');
+  }
+
+  @Builder
+  buildSchemeFade(): void {
+    if (this.schemeFadeShown) {
+      Stack() {
+        ForEach(this.schemeFade, (picture: SchemeFadePicture) => {
+          Image(picture.pixels)
+            .objectFit(ImageFit.Fill)
+            .width(picture.width)
+            .height(picture.height)
+            .position({ x: picture.x, y: picture.y })
+        }, (_picture: SchemeFadePicture, index: number) => `scheme-fade-${index}`)
+      }
+      .width('100%')
+      .height('100%')
+      .position({ x: 0, y: 0 })
+      .opacity(this.schemeFadeOpacity)
+      .zIndex(30)
+      .hitTestBehavior(HitTestMode.None)
+      .accessibilityLevel('no-hide-descendants')
+    }
+  }
+
       if (this.barPage !== null) {
         this.raiseGpuPage();
       }

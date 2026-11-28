@@ -31,6 +31,7 @@ mod ime;
 mod overlay;
 mod pull;
 mod recovery;
+mod scheme_fade;
 mod surface;
 mod text_menu;
 mod touch;
@@ -702,9 +703,21 @@ impl Page {
     }
 
     pub fn set_scheme(&self, scheme: Scheme) {
-        if self.scheme.replace(scheme) != scheme {
-            self.report();
+        if self.scheme.replace(scheme) == scheme {
+            return;
         }
+        // The column holds this page's last frame until it presents in the new scheme.
+        let adapter = self.host.adapter();
+        // SAFETY: this thread's window.
+        if self.visible.get()
+            && unsafe { IsWindowVisible(self.window()) }.as_bool()
+            && let Ok(Some(frame)) = self.readback()
+            && scheme_fade::begin(self.hwnd, frame)
+        {
+            adapter.scheme_cover.store(true, Ordering::Release);
+            self.host.cover();
+        }
+        self.report();
     }
 
     /// The system's appearance or settings changed.
@@ -981,6 +994,16 @@ impl Page {
 
     fn gpu(&self) -> u64 {
         self.host.adapter().gpu.load(Ordering::Acquire)
+    }
+
+    /// The newest GPU frame: width, height and straight RGBA rows; `None` on the CPU path.
+    fn readback(&self) -> Result<Option<(u32, u32, Vec<u8>)>, String> {
+        let id = self.gpu();
+        if id == 0 {
+            return Ok(None);
+        }
+        render::run_now(move || lingxia_view::renderer::surfaces::readback(id))
+            .ok_or("UI_SURFACE: render thread gone")?
     }
 
     /// The newest GPU frame as a PNG; `None` on the CPU path.

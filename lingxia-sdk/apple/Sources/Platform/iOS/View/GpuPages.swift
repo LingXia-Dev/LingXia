@@ -39,6 +39,9 @@ final class GpuPageView: UIView {
     /// The last frame over the layer while the page is away, until it presents at its size.
     private var cover: CALayer?
     private var coverArmed = false
+    /// The page column's picture from before a scheme change, until the page shows the new one.
+    var schemeFade: UIView?
+    var schemeFadeStarted: CFTimeInterval = 0
     /// Paused between requested frames.
     private var vsyncLink: CADisplayLink?
     private lazy var semantics = GpuAccessibility(view: self)
@@ -215,6 +218,7 @@ final class GpuPageView: UIView {
         Self.dropCover(cover)
         cover = nil
         coverArmed = false
+        endSchemeFade()
     }
 
     /// Off screen and not kept: drop the layer's drawables; the next attach sizes the layer
@@ -1108,9 +1112,13 @@ public enum GpuPages {
         }
     }
 
-    /// The lxapp pinned or released its scheme: its pages measure again.
+    /// The lxapp pinned or released its scheme: its pages measure again under a picture of the
+    /// old scheme, which fades once each shows the new one.
     @MainActor static func schemeChanged(appId: String) {
-        for view in views.values where gpuPageInfo(view.token).app_id.toString() == appId { view.report() }
+        for view in views.values where gpuPageInfo(view.token).app_id.toString() == appId {
+            view.beginSchemeFade()
+            view.report()
+        }
     }
 
     /// The GPU view showing the page `webtag` of `appId`.

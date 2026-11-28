@@ -176,6 +176,9 @@ impl Shell for Bridge {
         source: String,
         done: Box<dyn FnOnce(std::result::Result<Vec<u8>, String>) + Send>,
     ) -> Box<dyn Send> {
+    fn uncover(&self, token: i64) {
+        arkts(token, "uncover", "");
+    }
         Box::new(gpu_page::load_image(token, source, done))
     }
     fn video_url(&self, token: i64, source: &str) -> std::result::Result<String, String> {
@@ -689,6 +692,23 @@ pub fn gpu_page_transition_start(token: i64, pop: bool) {
 #[napi]
 pub fn gpu_page_transition_frame(token: i64, at: f64) {
     with_page(token, |page| {
+/// The container holds a picture over the page; an `uncover` event says when to drop it.
+#[napi]
+pub fn gpu_page_cover(token: i64) {
+    with_page(token, |page| page.cover());
+}
+
+/// The page's newest frame: width and height (u32 little-endian), then straight RGBA rows.
+#[napi]
+pub fn gpu_page_frame(token: i64) -> Option<Uint8Array> {
+    let (width, height, pixels) = lingxia_view_harmony::frame(token)?;
+    let mut out = Vec::with_capacity(8 + pixels.len());
+    out.extend_from_slice(&width.to_le_bytes());
+    out.extend_from_slice(&height.to_le_bytes());
+    out.extend_from_slice(&pixels);
+    Some(Uint8Array::new(out))
+}
+
         page.with_host(|host| host.transition(TransitionEvent::Frame { at: at as f32 }))
     });
 }

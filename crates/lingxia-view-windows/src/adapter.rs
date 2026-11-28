@@ -76,6 +76,8 @@ pub struct WindowsAdapter {
     feedback: Mutex<Option<lingxia_view::interaction::chrome::FeedbackStyle>>,
     /// A window overlay: frames leave clear what the page does not draw.
     pub(crate) see_through: AtomicBool,
+    /// A scheme-change picture waits for this page's next frame in the new scheme.
+    pub(crate) scheme_cover: AtomicBool,
 }
 
 impl WindowsAdapter {
@@ -104,6 +106,7 @@ impl WindowsAdapter {
             highlights: Mutex::new([None; 2]),
             feedback: Mutex::new(None),
             see_through: AtomicBool::new(false),
+            scheme_cover: AtomicBool::new(false),
         }
     }
 
@@ -610,6 +613,11 @@ impl Feedback for WindowsAdapter {
 
 impl HostEvents for WindowsAdapter {
     fn loaded(&self) {}
+    fn uncover(&self) {
+        if self.scheme_cover.swap(false, Ordering::AcqRel) {
+            crate::scheme_fade::shown(self.hwnd.load(Ordering::Acquire));
+        }
+    }
     fn presented(&self, frame: &FrameSnapshot, timing: &FrameTiming) {
         *self.feedback.lock().unwrap_or_else(|p| p.into_inner()) = Some(frame.feedback);
         // An exiting dialog still covers the page until its exit ends.

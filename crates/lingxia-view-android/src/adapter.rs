@@ -962,6 +962,9 @@ impl HostEvents for AndroidAdapter {
     fn revealed(&self, hold_surface: bool) {
         self.flag(jni_str!("revealed"), hold_surface);
     }
+    fn uncover(&self) {
+        self.void(jni_str!("uncover"));
+    }
     fn host_chrome(&self, chrome: &lingxia_view::platform::HostChrome) {
         let argb = |[r, g, b, a]: [u8; 4]| JValue::Int(i32::from_be_bytes([a, r, g, b]));
         self.java(|env, platform| {

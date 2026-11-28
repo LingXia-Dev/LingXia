@@ -124,6 +124,11 @@ export class GpuPageModel {
   keyboardFocus: (() => boolean) | null = null;
   /** Where the page shows in its window, device pixels; null while it is hidden. A window
    *  snapshot leaves the XComponent surface out, so screenshots draw this page in beneath. */
+  /** Runs once a frame in the current size and appearance is on screen after `gpuPageCover`. */
+  uncoverWaiter: (() => void) | null = null;
+  /** The scheme a held picture waits for: the page covers once it is measured in it, so the
+   *  frame the cover asks for is already in the new scheme. */
+  schemeCoverFor: boolean | null = null;
   onScreen: GpuRect | null = null;
 
   constructor(token: number, identity: GpuPageIdentity) {
@@ -327,6 +332,12 @@ export class GpuPages {
         GpuPages.captureScreenshot(token, payload);
         return true;
       case 'pictureWebviews':
+      case 'uncover': {
+        const waiter = page.uncoverWaiter;
+        page.uncoverWaiter = null;
+        waiter?.();
+        break;
+      }
         GpuPages.pictureWebViews(page, payload);
         return true;
       default:

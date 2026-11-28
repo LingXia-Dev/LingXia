@@ -46,6 +46,8 @@ pub trait Shell: Send + Sync + 'static {
     }
     /// Show the page in place of the outgoing one; see `HostEvents::revealed`.
     fn revealed(&self, token: i64, hold_surface: bool);
+    /// After [`Page::cover`], a frame in the current size and appearance is on screen.
+    fn uncover(&self, token: i64);
     /// Load authorized image bytes; `done` runs once unless the handle is dropped first.
     fn load_image(
         &self,
@@ -395,6 +397,11 @@ impl Page {
     }
 
     /// Creates the page's XComponent node in the ArkTS `NodeContent` passed as `content`.
+    /// The host shows a picture over the page: see [`ViewHost::cover`].
+    pub fn cover(&self) {
+        pages::with(self.token, |host| host.cover());
+    }
+
     ///
     /// # Safety
     /// `env` must be the main thread's environment and `content` a `NodeContent` value in it.
