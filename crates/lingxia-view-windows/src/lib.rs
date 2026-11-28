@@ -790,6 +790,7 @@ impl Page {
                     None => Some(hinge.clone()),
                 }
             }),
+            tab_bar: None,
         };
         // A simulated device lays out at its own pixels; frames draw at the window's.
         let raster = simulated

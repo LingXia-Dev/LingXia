@@ -516,6 +516,7 @@ fn gpu_page_measured(
                 first_weekday.into(),
             ),
         hinge: current_simulated_hinge(token),
+        tab_bar: None,
     };
     with_page(token, |page| page.measured(facts));
 }

@@ -409,6 +409,7 @@ mod tests {
             height,
             scale: 1.0,
             value: crate::platform::test_environment(serde_json::json!({})),
+            tab_bar: None,
         }
     }
 

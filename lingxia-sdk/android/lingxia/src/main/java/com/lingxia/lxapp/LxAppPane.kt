@@ -368,6 +368,7 @@ internal class LxAppPane(
                 var top = 0
                 var right = 0
                 var bottom = 0
+                var tabBarShape: FloatArray? = null
                 // A GPU page spans the screen: the navigation bar over its top is chrome too.
                 val navigation = navigationBar
                 if (page.getGlobalVisibleRect(pageBounds) && navigation != null && navigation.isShown &&
@@ -393,8 +394,10 @@ internal class LxAppPane(
                     left = overlap.left
                     right = overlap.right
                     bottom = overlap.bottom
+                    tabBarShape = onPage(bar, box, x, y)
                 }
                 page.setChromeInsets(left, top, right, bottom)
+                page.setTabBarShape(tabBarShape)
             }
             reportKeptChromeInsets()
             true
@@ -426,6 +429,7 @@ internal class LxAppPane(
             )
             val navigation = if (chrome.gpu && chrome.navigationBar) currentBars().navigationBar else 0
             page.setChromeInsets(overlap.left, navigation, overlap.right, overlap.bottom)
+            page.setTabBarShape(if (overlap.bottom > 0) onPage(bar, barBox, left, top) else null)
         }
     }
 
@@ -435,6 +439,12 @@ internal class LxAppPane(
         if (path.isEmpty()) return tabBar?.visibility == View.VISIBLE
         return NativeApi.tabBarVisibleOn(appId, path)
     }
+
+    /** The bar's material shape on a page whose top left is at ([x], [y]) in the root, as [box] places the bar. */
+    private fun onPage(bar: TabBar, box: KeptPageGeometry.Box, x: Int, y: Int): FloatArray? =
+        bar.materialShape()?.let { shape ->
+            floatArrayOf(box.left - x + shape[0], box.top - y + shape[1], shape[2], shape[3], shape[4])
+        }
 
     /** The bar's laid-out frame in root coordinates: it keeps its place while hidden. */
     internal fun laidOutBox(bar: View): KeptPageGeometry.Box? {

@@ -1,6 +1,6 @@
 //! The View `env` from what an adapter measured. Adapters report OS facts;
 //! insets, pointer and motion policy are decided here.
-use super::FrameEnvironment;
+use super::{ChromeShape, FrameEnvironment};
 use crate::platform::calendar;
 use crate::protocol::env;
 use serde_json::json;
@@ -19,6 +19,9 @@ pub struct DeviceFacts {
     pub system_insets: [f32; 4],
     /// Host chrome (navigation and tab bars) over the surface, same order.
     pub chrome_insets: [f32; 4],
+    /// The shape of a tab bar over the surface, device pixels; `None` takes the bottom chrome
+    /// inset as a full-width band.
+    pub tab_bar: Option<ChromeShape>,
     /// The software keyboard's overlap with the surface's bottom edge.
     pub keyboard: f32,
     /// The window's shorter side, logical pixels.
@@ -121,11 +124,21 @@ impl DeviceFacts {
             palette: None,
             scales: None,
         };
+        let tab_bar = self.tab_bar.and_then(|shape| {
+            let [x, y, w, h] = shape.rect.map(|px| px / self.scale);
+            ([x, y, w, h, shape.radius].iter().all(|n| n.is_finite()) && w > 0.0 && h > 0.0).then(
+                || ChromeShape {
+                    rect: [x, y, w, h],
+                    radius: (shape.radius / self.scale).clamp(0.0, w.min(h) / 2.0),
+                },
+            )
+        });
         Some(FrameEnvironment {
             width,
             height,
             scale: self.scale,
             value,
+            tab_bar,
         })
     }
 }
@@ -190,6 +203,29 @@ mod tests {
             animation_scale: 1.0,
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn a_tab_bar_shape_reaches_the_frame_in_logical_pixels() {
+        let mut facts = phone();
+        assert_eq!(facts.environment().unwrap().tab_bar, None);
+        facts.tab_bar = Some(ChromeShape {
+            rect: [100.0, 1600.0, 628.0, 120.0],
+            radius: 200.0,
+        });
+        assert_eq!(
+            facts.environment().unwrap().tab_bar,
+            Some(ChromeShape {
+                rect: [50.0, 800.0, 314.0, 60.0],
+                radius: 30.0,
+            }),
+            "a radius past half the height is a pill"
+        );
+        facts.tab_bar = Some(ChromeShape {
+            rect: [0.0, 0.0, f32::NAN, 10.0],
+            radius: 0.0,
+        });
+        assert_eq!(facts.environment().unwrap().tab_bar, None);
     }
 
     #[test]

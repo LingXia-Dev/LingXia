@@ -516,6 +516,14 @@ impl EnvironmentSource for AndroidAdapter {
                 .as_u64()
                 .and_then(DeviceFacts::weekday_from_sunday_first),
             hinge: facts.get("hinge").filter(|h| !h.is_null()).cloned(),
+            // `[x, y, width, height, radius]` in device pixels, or absent.
+            tab_bar: facts["tab_bar"].as_array().and_then(|shape| {
+                let n = |i: usize| shape.get(i)?.as_f64().map(|v| v as f32);
+                Some(lingxia_view::platform::ChromeShape {
+                    rect: [n(0)?, n(1)?, n(2)?, n(3)?],
+                    radius: n(4)?,
+                })
+            }),
         }
         .environment()
     }

@@ -34,6 +34,16 @@ pub struct FrameEnvironment {
     pub scale: f32,
     /// The View `env` snapshot, before the session adds its own keys.
     pub value: crate::protocol::env::Environment,
+    /// A tab bar floating over the page, logical pixels: the page draws its material in this shape.
+    pub tab_bar: Option<ChromeShape>,
+}
+
+/// Host chrome over the page: its box `[x, y, width, height]` from the surface's top left,
+/// and its corner radius.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct ChromeShape {
+    pub rect: [f32; 4],
+    pub radius: f32,
 }
 
 /// Encodes frames on the View worker and puts them on screen on the main thread.

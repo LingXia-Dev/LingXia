@@ -272,6 +272,8 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
     private final java.util.ArrayList<Runnable> surfaceRedraws = new java.util.ArrayList<>();
     private int unoccludedWidth, unoccludedHeight;
     private final android.graphics.Rect chromeInsets = new android.graphics.Rect();
+    /** A tab bar over the page, device px from its top left: x, y, width, height, corner radius. */
+    private float[] tabBarShape;
     private GpuTextMenu textMenu;
     private GpuSelectionHandles selectionHandles;
     private GpuStaticSelection staticSelection;
@@ -825,6 +827,16 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
         requestFrame();
     }
 
+    /**
+     * The shape of the tab bar over the page (device px from its top left, and its corner
+     * radius), or null: the page draws the bar's material in it.
+     */
+    public void setTabBarShape(float[] shape) {
+        if (destroyed || java.util.Arrays.equals(tabBarShape, shape)) return;
+        tabBarShape = shape == null ? null : shape.clone();
+        requestFrame();
+    }
+
     /** Raw device facts for the next frame (device px); the core builds the environment. Null while the surface cannot present. */
     private String sampleEnvironment() {
         android.view.Surface target = surface.getHolder().getSurface();
@@ -896,6 +908,9 @@ public final class GpuView extends FrameLayout implements SurfaceHolder.Callback
                     == android.content.res.Configuration.UI_MODE_NIGHT_YES)
                 .put("system_insets", new JSONArray().put(top - y).put(right - trailingX).put(bottom - trailingY).put(left - x))
                 .put("chrome_insets", new JSONArray().put(chromeInsets.top).put(chromeInsets.right).put(chromeInsets.bottom).put(chromeInsets.left))
+                .put("tab_bar", tabBarShape == null ? JSONObject.NULL : new JSONArray()
+                    .put((double)tabBarShape[0]).put((double)tabBarShape[1]).put((double)tabBarShape[2])
+                    .put((double)tabBarShape[3]).put((double)tabBarShape[4]))
                 .put("keyboard", keyboard - trailingY)
                 .put("smallest_width", configuration.smallestScreenWidthDp)
                 .put("locale", locale.toLanguageTag())

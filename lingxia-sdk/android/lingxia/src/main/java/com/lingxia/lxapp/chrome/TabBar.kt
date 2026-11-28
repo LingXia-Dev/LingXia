@@ -287,12 +287,36 @@ internal class TabBar(context: Context) : LinearLayout(context) {
     private fun immersivePlate(): Int =
         ((theme?.background ?: Color.WHITE) and 0x00FFFFFF) or (IMMERSIVE_PLATE_ALPHA shl 24)
 
+    /**
+     * Where a GPU page draws this bar's material, in the bar's own pixels, and its corner
+     * radius: x, y, width, height, radius. The pill when floating, the whole strip otherwise;
+     * null for a bar with a plate of its own or one beside the page.
+     */
+    internal fun materialShape(): FloatArray? {
+        if (theme == null || !config.isBackgroundTransparent() ||
+            config.position.value != TabBarState.POSITION_BOTTOM) return null
+        return when (shape) {
+            TabBarShape.FLOATING -> itemsContainer?.takeIf { it.width > 0 && it.height > 0 }?.let {
+                floatArrayOf(it.left.toFloat(), it.top.toFloat(), it.width.toFloat(), it.height.toFloat(), floatingRadius())
+            }
+            TabBarShape.STRIP -> floatArrayOf(0f, 0f, width.toFloat(), height.toFloat(), 0f)
+            TabBarShape.COLUMN -> null
+        }
+    }
+
+    private fun floatingRadius(): Float = FLOATING_CELL_DP * resources.displayMetrics.density / 2f
+
     /** A rounded, slightly see-through plate: the page shows faintly around the tabs. */
     private fun floatingPill(state: TabBarState): Drawable = GradientDrawable().apply {
+        cornerRadius = floatingRadius()
         val density = resources.displayMetrics.density
-        cornerRadius = FLOATING_CELL_DP * density / 2f
         val immersive = state.isBackgroundTransparent()
-        setColor(if (immersive) immersivePlate() else (state.backgroundColor and 0x00FFFFFF) or (FLOATING_ALPHA shl 24))
+        // Over a GPU page the page draws the pill's plate itself, blurred, in this shape.
+        setColor(when {
+            immersive && theme != null -> Color.TRANSPARENT
+            immersive -> immersivePlate()
+            else -> (state.backgroundColor and 0x00FFFFFF) or (FLOATING_ALPHA shl 24)
+        })
         if (state.borderStyle != 0) setStroke(maxOf(1, density.toInt()), state.borderStyle)
     }
 
@@ -385,9 +409,11 @@ internal class TabBar(context: Context) : LinearLayout(context) {
         val tabBarBackgroundColor = when {
             shape == TabBarShape.FLOATING -> Color.TRANSPARENT
             shape == TabBarShape.COLUMN -> config.backgroundColor
-            // Immersive: the page runs under the bar, but its labels keep a plate.
+            // Immersive: the page runs under the bar, but its labels keep a plate. A GPU page
+            // (one that gives the bar a theme) draws that plate itself, blurred, under the bar.
             config.backgroundColor == Color.TRANSPARENT ->
-                if (config.position.value == TabBarState.POSITION_BOTTOM) immersivePlate() else Color.TRANSPARENT
+                if (config.position.value == TabBarState.POSITION_BOTTOM && theme == null) immersivePlate()
+                else Color.TRANSPARENT
             config.position.value == TabBarState.POSITION_LEFT || config.position.value == TabBarState.POSITION_RIGHT -> VERTICAL_TABBAR_BACKGROUND_COLOR
             else -> config.backgroundColor
         }

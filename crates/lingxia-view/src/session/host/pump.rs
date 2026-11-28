@@ -638,6 +638,7 @@ impl<A: PlatformAdapter> Inner<A> {
             height,
             scale,
             value,
+            tab_bar,
         } = request.environment;
         let mut loaded_images = 0;
         let mut image_buckets = Default::default();
@@ -658,6 +659,19 @@ impl<A: PlatformAdapter> Inner<A> {
         let generation = CommitTicket::new(session.generation().get() + 1);
         let caret = request.caret;
         let surface = request.surface;
+        // A tab bar floating over the page takes the page theme's material, under the HUD.
+        let material = {
+            let env = &session.environment;
+            let logical = |px: u16| f32::from(px) / scale.max(f32::MIN_POSITIVE);
+            let inset = |key: &str| env[key]["bottom"].as_f64().unwrap_or(0.0) as f32;
+            crate::scene::chrome_material::paints(
+                session.renderer.palette.role(lingxia_theme::Role::Surface),
+                [logical(width), logical(height)],
+                tab_bar,
+                inset("insets"),
+                inset("safeArea"),
+            )
+        };
         let hud = request.hud.as_ref().map(|hud| {
             let top = session.environment["safeArea"]["top"]
                 .as_f64()
@@ -682,6 +696,7 @@ impl<A: PlatformAdapter> Inner<A> {
                 if !caret {
                     display.hide_caret();
                 }
+                display.push_overlay("lingxia:chrome-material", material);
                 if let Some(hud) = hud {
                     display.push_overlay("lingxia:hud", hud);
                 }

@@ -107,6 +107,7 @@ public final class GpuPage extends FrameLayout {
     public void setChromeInsets(int left, int top, int right, int bottom) {
         content.setChromeInsets(left, top, right, bottom);
     }
+    public void setTabBarShape(float[] shape) { content.setTabBarShape(shape); }
     public void setPullToRefresh(GpuView.PullToRefresh callback) { content.setPullToRefresh(callback); }
     public void clearPullToRefresh(GpuView.PullToRefresh callback) { content.clearPullToRefresh(callback); }
     @Override public boolean canScrollVertically(int direction) { return content.canScrollVertically(direction); }

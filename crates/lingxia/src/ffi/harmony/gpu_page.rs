@@ -584,6 +584,7 @@ pub fn gpu_page_measured(token: i64, facts: String, origin_x: f64, origin_y: f64
             .as_u64()
             .and_then(DeviceFacts::weekday_from_sunday_first),
         hinge: facts.get("hinge").filter(|h| !h.is_null()).cloned(),
+        tab_bar: None,
     };
     with_page(token, |page| {
         page.measured(facts, [origin_x as f32, origin_y as f32])

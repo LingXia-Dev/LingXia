@@ -279,6 +279,10 @@ impl HostEnvironment {
         if a == b {
             return true;
         }
+        // The page draws its material under the tab bar: a moved bar needs a new frame.
+        if a.tab_bar != b.tab_bar {
+            return false;
+        }
         if reads_host_context || (a.width, a.height, a.scale) != (b.width, b.height, b.scale) {
             return false;
         }
@@ -579,6 +583,7 @@ mod tests {
                 height: 800,
                 scale,
                 value: env_with(value),
+                tab_bar: None,
             };
         let mut host = HostEnvironment::default();
         let mut built = frame(400, 2.0, json!({"appearance": "light"}));
