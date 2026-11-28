@@ -121,6 +121,22 @@ final class GpuPageView: NSView {
         return recoveryCovers ? [panel] : base + [panel]
     }
 
+    /// The element under a screen point: an embedded web view's own, else the smallest
+    /// semantic node there, so pointing at a control reaches it and not the page.
+    override func accessibilityHitTest(_ point: NSPoint) -> Any? {
+        if let panel = recoveryPanel, !panel.isHidden, recoveryCovers {
+            return panel.accessibilityHitTest(point)
+        }
+        for case let web as NSView in webContainer.accessibleWebViews.reversed() {
+            if web.accessibilityFrame().contains(point) { return web.accessibilityHitTest(point) }
+        }
+        let hit = semantics.list
+            .filter { $0.accessibilityFrame().contains(point) }
+            .min { $0.accessibilityFrame().width * $0.accessibilityFrame().height
+                < $1.accessibilityFrame().width * $1.accessibilityFrame().height }
+        return hit ?? super.accessibilityHitTest(point)
+    }
+
     func accessibilityEvent(kind: UInt8, id: UInt32, text: String) {
         semantics.event(kind: kind, id: id, text: text)
     }
