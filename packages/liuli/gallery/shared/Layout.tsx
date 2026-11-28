@@ -53,19 +53,15 @@ const StageFit = createContext<((isOver: boolean) => void) | null>(null);
  */
 export function Stage({ caption, bare = false, children }: { caption?: string; bare?: boolean; children: Child }) {
   const report = useContext(StageFit);
-  // In a grid the specimen is laid no narrower than its widest line, so a line that would wrap shows as overflow.
-  const room = useLocal('room', 0);
-  const need = useLocal('need', 0);
+  // In a grid the specimen keeps to its stage and reports whether its widest line would fit there; a lost
+  // report leaves it wrapped inside the stage, never running past it.
   const body = report === null ? children : (
-    <view onLayout={box => { need.set(box.width); if (room.value > 0) report(box.width > room.value + 0.5); }} className="min-w-max gap-3">{children}</view>
+    <view onLayout={box => report(box.maxContentWidth > box.width + 0.5)} className="gap-3">{children}</view>
   );
   return (
     <view className="gap-2">
       {caption !== undefined && <text className="text-footnote text-text">{caption}</text>}
-      <view
-        onLayout={report === null ? undefined : box => { room.set(box.width); if (need.value > 0) report(need.value > box.width + 0.5); }}
-        className={bare ? 'grow gap-3' : 'grow gap-3 overflow-hidden rounded-container border border-line bg-surface p-5'}
-      >
+      <view className={bare ? 'grow gap-3' : 'grow gap-3 overflow-hidden rounded-container border border-line bg-surface p-5'}>
         {body}
       </view>
     </view>
@@ -96,7 +92,7 @@ export function StageGrid({ children, stack = false }: { children: Child; stack?
       </view>
       {/* One to a row, the stages do not measure, so a specimen wraps to its stage instead of running past the screen. */}
       <StageFit.Provider value={isOneColumn ? null : report}>
-        <view key={key} box={grid} className={isOneColumn ? 'grid grid-cols-1 gap-y-6' : 'grid grid-cols-2 gap-x-3 gap-y-6'}>{children}</view>
+        <view key={key} box={grid} className={isOneColumn ? 'grid grid-cols-1 gap-y-6' : 'grid grid-cols-2 items-start gap-x-3 gap-y-6'}>{children}</view>
       </StageFit.Provider>
     </view>
   );
