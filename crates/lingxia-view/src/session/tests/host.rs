@@ -761,8 +761,10 @@ fn a_module_refused_at_load_asks_for_an_update_and_a_connection_keeps_it() {
 
 #[test]
 fn removed_images_cancel_their_transport_and_failures_stop_input() {
-    super::short_limit();
     let worker = ViewWorker::spawn("test-view").unwrap();
+    // The limit is per thread and the spinning callback runs on the worker; at the real limit it
+    // would spin for 24 CPU seconds, past settle's wait on a loaded host.
+    worker.run(|_| super::short_limit());
     let platform = Platform::new(&[&worker]);
     let host = platform.host(
         &worker,
