@@ -51,6 +51,21 @@ test('Stay, with a mouse: the calendar is in a panel under the field', async () 
   assert.equal(textOf(screen.getByTestId('stay')), '16 Nov – 19 Nov', 'the earlier day first');
 });
 
+test('Stay, with a mouse and room: two months side by side, paged together, and a span chosen across their seam', async () => {
+  const screen = await renderExample('DateRangeInput/DateRangeInput', 'Stay', { env: { pointer: 'fine', sizeClass: 'regular' } });
+  screen.press(screen.getByTestId('stay'));
+  const [popover] = panel(screen, 'stay');
+  assert.equal(popover.props.width, 648);
+  const title = id => textOf(screen.getByTestId(`${id}-title`));
+  assert.deepEqual([title('stay-calendar'), title('stay-calendar-next')], ['November 2026', 'December 2026']);
+  screen.press(screen.getByTestId('stay-calendar-next-next'));
+  assert.deepEqual([title('stay-calendar'), title('stay-calendar-next')], ['December 2026', 'January 2027'], 'either month pages both');
+  screen.press(screen.getByTestId('stay-calendar-previous'));
+  screen.press(screen.getByTestId('stay-calendar-2026-11-28'));
+  screen.press(screen.getByTestId('stay-calendar-next-2026-12-03'));
+  assert.equal(textOf(screen.getByTestId('stay')), '28 Nov – 3 Dec');
+});
+
 test('Empty and states: the placeholder is muted; an error marks the edge and is read; disabled takes no press', async () => {
   const empty = await renderExample('DateRangeInput/DateRangeInput', 'Empty');
   const field = empty.getByTestId('leave');

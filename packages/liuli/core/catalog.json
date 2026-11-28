@@ -2784,7 +2784,7 @@
           "name": "data-testid",
           "type": "string",
           "required": false,
-          "description": "On the calendar; a day is `<id>-<YYYY-MM-DD>`, the month buttons `<id>-previous` and `<id>-next`."
+          "description": "On the calendar; a day is `<id>-<YYYY-MM-DD>`, the month buttons `<id>-previous` and `<id>-next`, the title `<id>-title`; choosing a month, a month is `<id>-<YYYY-MM>`."
         }
       ],
       "otherProps": {
@@ -2817,13 +2817,21 @@
       "parts": {
         "root": "view",
         "header": "view",
+        "titleButton": "button",
         "title": "text",
+        "titleChevron": "vector",
+        "spacer": "view",
         "grid": "view",
         "week": "view",
         "weekday": "text",
         "slot": "view",
+        "band": "view",
         "day": "button",
-        "dayLabel": "text"
+        "dayLabel": "text",
+        "monthGrid": "view",
+        "monthRow": "view",
+        "month": "button",
+        "monthLabel": "text"
       },
       "accessibility": {
         "pattern": null,
@@ -2842,7 +2850,11 @@
         "keyboard": [
           {
             "keys": "Tab",
-            "effect": "To the month buttons, then into the days as one stop"
+            "effect": "To the title, the month buttons, then into the days as one stop"
+          },
+          {
+            "keys": "Enter or Space on the title",
+            "effect": "Opens the year's months; a month shows its days again"
           },
           {
             "keys": "Arrow keys",
@@ -2970,7 +2982,8 @@
         ],
         "tokens": [
           "--text-caption",
-          "--text-body"
+          "--text-body",
+          "--radius-control"
         ],
         "roles": [
           "accent-soft",
@@ -6872,7 +6885,9 @@
         "icon": "vector",
         "popover": "view",
         "presets": "view",
-        "preset": "button"
+        "preset": "button",
+        "months": "view",
+        "month": "view"
       },
       "accessibility": {
         "pattern": "button",

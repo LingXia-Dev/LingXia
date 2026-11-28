@@ -50,7 +50,10 @@ test('Stay: a span is selected end to end with a band between; a press starts ov
   const screen = await renderExample('Calendar/Calendar', 'Stay');
   const day = date => screen.getByTestId(`stay-${date}`);
   assert.deepEqual(selected(screen), ['18', '19', '20', '21', '22', '23', '24']);
-  assert.deepEqual(['18', '21', '24'].map(d => day(`2026-11-${d}`).parent.props.background), ['accent-soft', 'accent-soft', 'accent-soft']);
+  assert.equal(day('2026-11-21').parent.props.background, 'accent-soft');
+  // An end's band is the slot's half toward the span, so it meets the filled day at its centre.
+  const band = d => day(`2026-11-${d}`).parent.children.find(node => node.props.background === 'accent-soft');
+  assert.deepEqual(['18', '24'].map(d => [band(d).props.widthPercent, band(d).props.insetInlineEnd, band(d).props.insetInlineStart]), [[50, 0, undefined], [50, undefined, 0]]);
   assert.deepEqual(['18', '21', '24'].map(d => day(`2026-11-${d}`).props.background), ['accent-solid', undefined, 'accent-solid'], 'the ends are filled, the days between sit on the band');
   screen.press(day('2026-11-27'));
   assert.deepEqual(selected(screen), ['27']);
@@ -113,4 +116,25 @@ test('a swipe or key on the grid does not page past min or max, as the buttons d
   screen.fire(grid(), 'onPage', 'next');
   screen.fire(grid(), 'onPage', 'next');
   assert.equal(grid().props.accessibilityLabel, 'December 2026', 'nothing after max');
+});
+
+test('the title opens a year of months: next year, a month, and its days; months past the range cannot be chosen', async () => {
+  const screen = await renderExample('Calendar/Calendar', 'Stay');
+  const title = screen.getByTestId('stay-title');
+  assert.equal(title.tag, 'button');
+  assert.equal(textOf(title), 'November 2026');
+  screen.press(title);
+  const grid = screen.queryAll(node => node.props.role === 'grid')[0];
+  assert.equal(grid.props.accessibilityLabel, '2026');
+  const month = key => screen.getByTestId(`stay-${key}`);
+  assert.equal(textOf(month('2026-03')), 'March');
+  assert.equal(month('2026-03').props.accessibilityLabel, 'March 2026');
+  assert.equal(month('2026-10').props.enabled, 0, 'October 2026 ends before the earliest day');
+  assert.equal(month('2026-11').props.stateSelected, 1);
+  assert.equal(screen.getByTestId('stay-previous').props.enabled, 0, 'no year wholly before the range');
+  screen.press(screen.getByTestId('stay-next'));
+  assert.equal(screen.queryAll(node => node.props.role === 'grid')[0].props.accessibilityLabel, '2027');
+  screen.press(month('2027-03'));
+  assert.equal(screen.queryAll(node => node.props.role === 'grid')[0].props.accessibilityLabel, 'March 2027');
+  assert.equal(textOf(screen.getByTestId('stay-title')), 'March 2027');
 });

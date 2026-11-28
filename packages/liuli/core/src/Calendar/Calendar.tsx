@@ -1,5 +1,6 @@
 import { cx, useLocal, useView, type Local, type Weekday } from '@lingxia/view';
 import { liuliText, monthName, weekdayInitial, weekdayName } from '../i18n/text';
+import { Icon } from '../Icon/Icon';
 import { IconButton } from '../IconButton/IconButton';
 import { calendarRecipe as r } from './Calendar.recipe';
 import { isDate, parts, shiftMonth, toDate, weekdayOf, weeksOf, type CalendarDate } from './dates';
@@ -63,7 +64,7 @@ export type CalendarProps = CalendarSelection & {
   /** The week's first day, 1 is Monday to 7 is Sunday, for a week that is the app's own (a school timetable). @default the user's first weekday */
   firstWeekday?: CalendarWeekday;
   className?: string;
-  /** On the calendar; a day is `<id>-<YYYY-MM-DD>`, the month buttons `<id>-previous` and `<id>-next`. */
+  /** On the calendar; a day is `<id>-<YYYY-MM-DD>`, the month buttons `<id>-previous` and `<id>-next`, the title `<id>-title`; choosing a month, a month is `<id>-<YYYY-MM>`. */
   'data-testid'?: string;
 };
 
@@ -98,12 +99,17 @@ export function Calendar(props: CalendarProps) {
   const own = useLocal('month', (isDate(anchor) ? anchor : now).slice(0, 7));
   const shown = props.month ?? own.value;
   const [year, month] = [Number(shown.slice(0, 4)), Number(shown.slice(5, 7))];
-  const go = (by: number) => {
-    const [nextYear, nextMonth] = shiftMonth(year, month, by);
-    const next = toDate(nextYear, nextMonth, 1).slice(0, 7);
+  const show = (next: string) => {
     own.set(next);
     props.onMonthChange?.(next);
   };
+  const go = (by: number) => {
+    const [nextYear, nextMonth] = shiftMonth(year, month, by);
+    show(toDate(nextYear, nextMonth, 1).slice(0, 7));
+  };
+  // The title opens a year of months to jump to; choosing one shows its days again.
+  const picking = useLocal('picking', false);
+  const pickYear = useLocal('pickYear', year);
   const [start, end] = span ? [span.start, span.end] : [day, day];
   const press = (date: CalendarDate) => {
     if (!span) return chooseDay(date);
@@ -118,10 +124,63 @@ export function Calendar(props: CalendarProps) {
   const [previous, following] = [shiftMonth(year, month, -1), shiftMonth(year, month, 1)];
   // A month wholly outside the range is not paged to, by the buttons or by a swipe or key on the grid.
   const [hasPrevious, hasNext] = [min === undefined || toDate(previous[0], previous[1], 31) >= min, max === undefined || toDate(following[0], following[1], 1) <= max];
+  const isMonthOff = (y: number, m: number) => (min !== undefined && toDate(y, m, 31) < min) || (max !== undefined && toDate(y, m, 1) > max);
+  const shownYear = pickYear.value;
+  const [hasPreviousYear, hasNextYear] = [min === undefined || String(shownYear - 1) >= min.slice(0, 4), max === undefined || String(shownYear + 1) <= max.slice(0, 4)];
+  const titleButton = (
+    <button
+      aria-expanded={picking.value}
+      onClick={() => { pickYear.set(year); picking.set(!picking.value); }}
+      data-testid={testId && `${testId}-title`}
+      className={r.titleButton.base}
+    >
+      <text role="status" className={r.title.base}>{picking.value ? String(shownYear) : title}</text>
+      <Icon name={picking.value ? 'chevron-up' : 'chevron-down'} size="sm" className={r.titleChevron.base} />
+    </button>
+  );
+  if (picking.value) {
+    const months = Array.from({ length: 12 }, (_, index) => index + 1);
+    const thisMonth = now.slice(0, 7);
+    return (
+      <view role="group" aria-label={label} data-testid={testId} {...dataOf(props)} className={cx(r.root.base, className)}>
+        <view className={r.header.base}>
+          {titleButton}
+          <view className={r.spacer.base} />
+          <IconButton label={liuliText('@liuli.calendar.previousYear')} icon="chevron-start" size="sm" isDisabled={!hasPreviousYear} onClick={() => pickYear.set(shownYear - 1)} data-testid={testId && `${testId}-previous`} />
+          <IconButton label={liuliText('@liuli.calendar.nextYear')} icon="chevron-end" size="sm" isDisabled={!hasNextYear} onClick={() => pickYear.set(shownYear + 1)} data-testid={testId && `${testId}-next`} />
+        </view>
+        <view role="grid" aria-label={String(shownYear)} onPage={direction => { if (direction === 'next' ? hasNextYear : hasPreviousYear) pickYear.set(shownYear + (direction === 'next' ? 1 : -1)); }} className={r.monthGrid.base}>
+          {[0, 1, 2, 3].map(row => (
+            <view key={String(row)} role="row" className={r.monthRow.base}>
+              {months.slice(row * 3, row * 3 + 3).map(m => {
+                const key = toDate(shownYear, m, 1).slice(0, 7);
+                const isChosen = key === shown;
+                return (
+                  <button
+                    key={key}
+                    role="gridcell"
+                    aria-label={liuliText('@liuli.calendar.title', { monthName: monthName(m), year: String(shownYear) })}
+                    aria-selected={isChosen}
+                    disabled={isMonthOff(shownYear, m)}
+                    onClick={() => { show(key); picking.set(false); }}
+                    data-testid={testId && `${testId}-${key}`}
+                    className={cx(r.month.base, isChosen ? r.month.chosen : r.month.idle, !isChosen && key === thisMonth && r.month.current)}
+                  >
+                    <text className={cx(r.monthLabel.base, isChosen && r.monthLabel.chosen)}>{monthName(m)}</text>
+                  </button>
+                );
+              })}
+            </view>
+          ))}
+        </view>
+      </view>
+    );
+  }
   return (
     <view role="group" aria-label={label} data-testid={testId} {...dataOf(props)} className={cx(r.root.base, className)}>
       <view className={r.header.base}>
-        <text role="status" className={r.title.base}>{title}</text>
+        {titleButton}
+        <view className={r.spacer.base} />
         <IconButton
           label={liuliText('@liuli.calendar.previousMonth')}
           icon="chevron-start"
@@ -154,7 +213,8 @@ export function Calendar(props: CalendarProps) {
               const isSpan = start !== null && end !== null && start !== end;
               const isBetween = isSpan && date > start && date < end;
               return (
-                <view key={date} className={cx(r.slot.base, isBetween && r.slot.between, isSpan && isStart && r.slot.start, isSpan && isEnd && r.slot.end)}>
+                <view key={date} className={cx(r.slot.base, isBetween && r.slot.between)}>
+                  {isSpan && isChosen && <view aria-hidden className={cx(r.band.base, isStart ? r.band.start : r.band.end)} />}
                   <button
                     role="gridcell"
                     aria-label={liuliText('@liuli.calendar.day', {

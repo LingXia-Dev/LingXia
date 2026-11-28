@@ -1,6 +1,7 @@
 import { cx, useId, useLocal, useView, type Local } from '@lingxia/view';
 import { useControlSize } from '../density';
 import { Calendar, type CalendarDate, type CalendarRange, type CalendarWeekday } from '../Calendar/Calendar';
+import { shiftMonth, toDate } from '../Calendar/dates';
 import { comboboxRecipe as c } from '../Combobox/Combobox.recipe';
 import { Field, type FieldOwnProps, type FieldControl } from '../Field/Field';
 import { liuliText } from '../i18n/text';
@@ -80,6 +81,14 @@ export function DateRangeInput(props: DateRangeInputProps) {
     onRangeChange(next);
     if (next.end !== null) open.set(false);
   };
+  // With a mouse and room, two months side by side: a span across a month's end is chosen without paging.
+  const isPair = !isSheet && env.sizeClass === 'regular';
+  const first = useLocal('month', (range.start ?? today).slice(0, 7));
+  const after = (month: string, by: number) => {
+    const [year, number] = shiftMonth(Number(month.slice(0, 4)), Number(month.slice(5, 7)), by);
+    return toDate(year, number, 1).slice(0, 7);
+  };
+  const month = (shown: string, offset: number) => ({ month: shown, onMonthChange: (next: string) => first.set(after(next, -offset)) });
   const isPreset = (preset: DateRangePreset) => preset.range.start === range.start && preset.range.end === range.end;
   const calendar = (
     <>
@@ -99,18 +108,40 @@ export function DateRangeInput(props: DateRangeInputProps) {
         </view>
       )}
       <LayerContext.Provider value="overlay">
-        <Calendar
-          label={label}
-          today={today}
-          isRange
-          value={range}
-          onChange={choose}
-          min={min}
-          max={max}
-          isDateDisabled={isDateDisabled}
-          firstWeekday={firstWeekday}
-          data-testid={testId && `${testId}-calendar`}
-        />
+        {isPair ? (
+          <view className={r.months.base}>
+            {[0, 1].map(offset => (
+              <Calendar
+                key={String(offset)}
+                label={label}
+                today={today}
+                isRange
+                value={range}
+                onChange={choose}
+                min={min}
+                max={max}
+                isDateDisabled={isDateDisabled}
+                firstWeekday={firstWeekday}
+                {...month(after(first.value, offset), offset)}
+                className={r.month.base}
+                data-testid={testId && `${testId}-calendar${offset ? '-next' : ''}`}
+              />
+            ))}
+          </view>
+        ) : (
+          <Calendar
+            label={label}
+            today={today}
+            isRange
+            value={range}
+            onChange={choose}
+            min={min}
+            max={max}
+            isDateDisabled={isDateDisabled}
+            firstWeekday={firstWeekday}
+            data-testid={testId && `${testId}-calendar`}
+          />
+        )}
       </LayerContext.Provider>
     </>
   );
@@ -179,7 +210,7 @@ export function DateRangeInput(props: DateRangeInputProps) {
               {calendar}
             </dialog>
           ) : (
-            <view id={panelId} popover aria-label={label} open={open.value} onToggle={open.set} data-testid={testId && `${testId}-panel`} className={r.popover.base}>
+            <view id={panelId} popover aria-label={label} open={open.value} onToggle={open.set} data-testid={testId && `${testId}-panel`} className={cx(r.popover.base, isPair ? r.popover.pair : r.popover.single)}>
               {calendar}
             </view>
           )}

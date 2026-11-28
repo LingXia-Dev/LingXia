@@ -16,7 +16,9 @@ export const doc: ComponentDoc = {
   anatomy: [
     { part: 'value', required: true, description: 'The span in the field, "18 Nov – 24 Nov", or the placeholder; in tabular figures.' },
     { part: 'icon', required: true, description: 'The calendar mark at the field\'s end, the size of DateInput\'s.' },
-    { part: 'popover', required: false, description: 'With a mouse or trackpad: a panel under the field holding the calendar.' },
+    { part: 'popover', required: false, description: 'With a mouse or trackpad: a panel under the field holding the calendar; with room (the regular size class), two months side by side.' },
+    { part: 'months', required: false, description: 'With room: the two months, side by side; either one\'s buttons page both.' },
+    { part: 'month', required: false, description: 'With room: one of the two months.' },
     { part: 'presets', required: false, description: 'With `presets`: named spans over the calendar, a group a screen reader names "Quick ranges".' },
     { part: 'preset', required: false, description: 'A named span: pressed, it fills the field and closes the calendar; the one the field holds reports pressed.' },
   ],

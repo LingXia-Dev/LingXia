@@ -4,6 +4,8 @@ export const dateRangeInputParts = {
   popover: 'view',
   presets: 'view',
   preset: 'button',
+  months: 'view',
+  month: 'view',
 } as const;
 
 /**
@@ -29,6 +31,15 @@ export const dateRangeInputRecipe = {
     label: 'text-footnote font-medium text-text',
   },
   popover: {
-    base: 'mt-1 w-78 max-w-[90vw] p-3 rounded-container border border-line bg-surface-overlay shadow-raised transition duration-fast ease-standard starting:opacity-0 exit:opacity-0 motion-safe:starting:-translate-y-1',
+    base: 'mt-1 max-w-[90vw] p-3 rounded-container border border-line bg-surface-overlay shadow-raised transition duration-fast ease-standard starting:opacity-0 exit:opacity-0 motion-safe:starting:-translate-y-1',
+    single: 'w-78',
+    // Two months and the gap between them.
+    pair: 'w-162',
+  },
+  months: {
+    base: 'flex-row items-start gap-6',
+  },
+  month: {
+    base: 'grow basis-0 min-w-0',
   },
 } as const;

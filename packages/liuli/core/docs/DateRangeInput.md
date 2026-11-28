@@ -156,7 +156,9 @@ export function Empty() {
 | --- | --- | --- | --- |
 | value | `<text>` | yes | The span in the field, "18 Nov – 24 Nov", or the placeholder; in tabular figures. |
 | icon | `<vector>` | yes | The calendar mark at the field's end, the size of DateInput's. |
-| popover | `<view>` | no | With a mouse or trackpad: a panel under the field holding the calendar. |
+| popover | `<view>` | no | With a mouse or trackpad: a panel under the field holding the calendar; with room (the regular size class), two months side by side. |
+| months | `<view>` | no | With room: the two months, side by side; either one's buttons page both. |
+| month | `<view>` | no | With room: one of the two months. |
 | presets | `<view>` | no | With `presets`: named spans over the calendar, a group a screen reader names "Quick ranges". |
 | preset | `<button>` | no | A named span: pressed, it fills the field and closes the calendar; the one the field holds reports pressed. |
 

@@ -95,7 +95,7 @@ export function MondayFirst() {
 | `today` (required) | `string` |  | The day marked as today, and the month shown when nothing is chosen. A View takes the time from its page, not from a clock. |
 | `firstWeekday` | `Weekday` | `the user's first weekday` | The week's first day, 1 is Monday to 7 is Sunday, for a week that is the app's own (a school timetable). |
 | `className` | `string` |  |  |
-| `data-testid` | `string` |  | On the calendar; a day is `<id>-<YYYY-MM-DD>`, the month buttons `<id>-previous` and `<id>-next`. |
+| `data-testid` | `string` |  | On the calendar; a day is `<id>-<YYYY-MM-DD>`, the month buttons `<id>-previous` and `<id>-next`, the title `<id>-title`; choosing a month, a month is `<id>-<YYYY-MM>`. |
 
 - `bind` | `value` + `onChange`: props from one side only.
 
@@ -111,18 +111,25 @@ export function MondayFirst() {
 | Part | Element | Required | Description |
 | --- | --- | --- | --- |
 | root | `<view>` | yes | The calendar, a group named by `label`. |
-| header | `<view>` | yes | The month's title and the buttons to the previous and next month. |
-| title | `<text>` | yes | The month and year, announced when the month changes. |
+| header | `<view>` | yes | The month's title and the buttons to the previous and next month; while choosing a month, the year's. |
+| titleButton | `<button>` | yes | The title as a button: it opens a year of months to jump to, and reports expanded while open. |
+| title | `<text>` | yes | The month and year, announced when the month changes; the year while choosing a month. |
+| titleChevron | `<vector>` | yes | The chevron after the title, down for the days and up for the months. |
+| spacer | `<view>` | yes | Holds the month buttons at the header's end. |
 | grid | `<view>` | yes | The weeks, a grid named by the month. |
 | weekday | `<text>` | yes | The short weekday names over the columns; hidden from assistive tech, since each day is named in full. |
 | slot | `<view>` | yes | A day's seventh of the row; it carries the band of a span. |
 | day | `<button>` | yes | A day: a 40 px button, named in full, selected when chosen or inside the span. |
+| monthGrid | `<view>` | no | While choosing a month: the year's twelve months, a grid named by the year. |
+| monthRow | `<view>` | no | Three months of the year. |
+| month | `<button>` | no | A month: a 44 px button named by month and year, selected for the month shown, ringed for this month, disabled when the range leaves it out. |
+| monthLabel | `<text>` | no | The month's name. |
 
 ## What an app may override
 
 - `className`: classes merged after the recipe's, so they win.
 - The recipe, `calendarRecipe` from `@liulidesign/core/Calendar/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
-- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-caption`, `--text-body`.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-caption`, `--text-body`, `--radius-control`.
 - Colour roles it paints with, set by the theme pack: `accent-soft`, `accent-solid`, `accent-solid-hover`, `accent-solid-pressed`, `focus`, `line-strong`, `on-accent-solid`, `text`, `text-muted`.
 
 ## Accessibility
@@ -131,7 +138,8 @@ export function MondayFirst() {
 - Name: label.
 - Description: none.
 - States: selected (from value or bind, a day or a span); disabled (from min, max, isDateDisabled).
-- Tab: To the month buttons, then into the days as one stop.
+- Tab: To the title, the month buttons, then into the days as one stop.
+- Enter or Space on the title: Opens the year's months; a month shows its days again.
 - Arrow keys: A day along the week, a week up and down; days that cannot be chosen are passed over.
 - Home and End: To the ends of the week.
 - PageUp and PageDown: To the month before and after.

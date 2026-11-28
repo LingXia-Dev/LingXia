@@ -155,6 +155,14 @@
     "defaultMessage": "Next month",
     "description": "Calendar button."
   },
+  "@liuli.calendar.previousYear": {
+    "defaultMessage": "Previous year",
+    "description": "Calendar button, while choosing a month."
+  },
+  "@liuli.calendar.nextYear": {
+    "defaultMessage": "Next year",
+    "description": "Calendar button, while choosing a month."
+  },
   "@liuli.timestamp.justNow": {
     "defaultMessage": "Just now",
     "description": "A moment less than a minute ago."

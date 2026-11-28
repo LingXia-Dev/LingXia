@@ -116,6 +116,12 @@
   "@liuli.calendar.nextMonth": {
     "defaultMessage": "下个月"
   },
+  "@liuli.calendar.previousYear": {
+    "defaultMessage": "上一年"
+  },
+  "@liuli.calendar.nextYear": {
+    "defaultMessage": "下一年"
+  },
   "@liuli.timestamp.justNow": {
     "defaultMessage": "刚刚"
   },

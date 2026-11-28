@@ -1,13 +1,21 @@
 export const calendarParts = {
   root: 'view',
   header: 'view',
+  titleButton: 'button',
   title: 'text',
+  titleChevron: 'vector',
+  spacer: 'view',
   grid: 'view',
   week: 'view',
   weekday: 'text',
   slot: 'view',
+  band: 'view',
   day: 'button',
   dayLabel: 'text',
+  monthGrid: 'view',
+  monthRow: 'view',
+  month: 'button',
+  monthLabel: 'text',
 } as const;
 
 /**
@@ -19,10 +27,20 @@ export const calendarRecipe = {
     base: 'self-stretch gap-2',
   },
   header: {
-    base: 'flex-row items-center gap-1 ps-2',
+    base: 'flex-row items-center gap-1',
+  },
+  // The title is the button that opens a year of months; it keeps the title's place and weight.
+  titleButton: {
+    base: 'shrink min-w-0 flex-row items-center gap-1 min-h-8 px-2 rounded-control transition-colors duration-fast ease-standard hover:bg-text/6 active:bg-text/10 focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2',
   },
   title: {
-    base: 'grow basis-0 text-body font-semibold text-text',
+    base: 'shrink text-body font-semibold text-text',
+  },
+  titleChevron: {
+    base: 'text-muted',
+  },
+  spacer: {
+    base: 'grow',
   },
   grid: {
     base: 'self-stretch gap-0.5',
@@ -37,8 +55,12 @@ export const calendarRecipe = {
   slot: {
     base: 'grow basis-0 min-w-0 min-h-10 items-center justify-center',
     between: 'bg-accent-soft',
-    start: 'bg-accent-soft rounded-s-full',
-    end: 'bg-accent-soft rounded-e-full',
+  },
+  // The band's half from a span's first or last day onward, so it meets the filled day at its centre however wide the slot.
+  band: {
+    base: 'absolute inset-y-0 w-1/2 bg-accent-soft',
+    start: 'end-0',
+    end: 'start-0',
   },
   day: {
     // At least 40 px; at large text a two-digit day widens it and it stays square, up to its seventh of the row.
@@ -49,6 +71,23 @@ export const calendarRecipe = {
   },
   dayLabel: {
     base: 'text-body text-text tabular-nums',
+    chosen: 'font-semibold text-on-accent-solid',
+  },
+  // A year as three columns of months, the shown one filled like a chosen day, this month ringed like today.
+  monthGrid: {
+    base: 'self-stretch gap-1',
+  },
+  monthRow: {
+    base: 'flex-row self-stretch gap-1',
+  },
+  month: {
+    base: 'grow basis-0 min-w-0 min-h-11 px-2 items-center justify-center rounded-control transition-colors duration-fast ease-standard disabled:opacity-40 focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2',
+    idle: 'hover:bg-text/6 active:bg-text/10',
+    chosen: 'bg-accent-solid hover:bg-accent-solid-hover active:bg-accent-solid-pressed',
+    current: 'inset-ring-1 inset-ring-line-strong',
+  },
+  monthLabel: {
+    base: 'text-body text-text text-center',
     chosen: 'font-semibold text-on-accent-solid',
   },
 } as const;
