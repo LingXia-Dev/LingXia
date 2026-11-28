@@ -17,7 +17,8 @@ globalThis.LxAppSvc = class { constructor(app) { globalThis.app = app; } };
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 const link = `{ scene: 8003, url: 'https://x.example/showcase/detail?id=7', path: 'pages/home/index', query: { id: '7' } }`;
 
-// Cold: onOpen runs after onLaunch settles, and its target is navigated to.
+// Cold: onOpen runs after onLaunch settles. Before the deadline its target is the first page,
+// which the host opens; nothing is navigated.
 {
   const run = world();
   const json = (script) => JSON.parse(run(`JSON.stringify(${script})`));
@@ -26,9 +27,24 @@ __registerApp({
   async onLaunch() { order.push('launch'); await Promise.resolve(); order.push('launched'); },
   onOpen(link) { order.push('open'); return { page: 'detail', params: { id: link.query.id } }; },
 });`);
-  run(`app.onLaunch(${link})`);
+  run(`app.onLaunch({ ...${link}, launchDeadline: Date.now() + 60000 }).then((first) => { globalThis.first = first; })`);
   await settle();
   assert.deepEqual(json('order'), ['launch', 'launched', 'open']);
+  assert.deepEqual(json('first'), { page: 'detail', params: { id: '7' } });
+  assert.deepEqual(json('went'), []);
+}
+
+// Cold, past the deadline: the start page opens, and the target is navigated to once it shows.
+{
+  const run = world();
+  const json = (script) => JSON.parse(run(`JSON.stringify(${script})`));
+  run(`__registerApp({ onOpen(link) { return { page: 'detail', params: { id: link.query.id } }; } });`);
+  run(`app.onLaunch(${link}).then((first) => { globalThis.first = first; })`);
+  await settle();
+  assert.equal(json('first'), 'start');
+  assert.deepEqual(json('went'), []);
+  run(`app.onShow({})`);
+  await settle();
   assert.deepEqual(json('went'), [{ page: 'detail', params: { id: '7' } }]);
 }
 
@@ -48,16 +64,24 @@ __registerApp({ onShow() { shows += 1; }, onOpen(link) { return link.query.id ==
   assert.equal(run('shows'), 3, 'the app hook still runs');
 }
 
-// The hooks see no link plumbing: onLaunch takes nothing, onShow keeps where it lands.
+// onLaunch gets only `{ link }`; onShow keeps where it lands, without the link fields.
 {
   const run = world();
   const json = (script) => JSON.parse(run(`JSON.stringify(${script})`));
   run(`globalThis.seen = [];
-__registerApp({ onLaunch(...args) { seen.push(args.length); }, onShow(args) { seen.push(args); }, onOpen() {} });`);
+__registerApp({
+  onLaunch(...args) { seen.push(['launch', args.length, Object.keys(args[0]), args[0].link.query.id]); },
+  onShow(args) { seen.push(['show', args]); },
+  onOpen() {},
+});`);
   run(`app.onLaunch(${link})`);
+  await settle();
   run(`app.onShow(${link})`);
   await settle();
-  assert.deepEqual(json('seen'), [0, { path: 'pages/home/index', query: { id: '7' } }]);
+  assert.deepEqual(json('seen'), [
+    ['launch', 1, ['link'], '7'],
+    ['show', { path: 'pages/home/index', query: { id: '7' } }],
+  ]);
 }
 
 // globalData is gone, App() is removed, and __registerDefinedApp checks the brand.
@@ -94,7 +118,7 @@ __registerApp({
   },
   async onLaunch() { throw new Error('launch'); },
 });`);
-  run(`app.onLaunch().catch(() => { globalThis.launchStillRejects = true; })`);
+  run(`app.onLaunch().then((first) => { globalThis.launchDecided = first; })`);
   run(`const page = { name: 'home', instance: 'p1' };
 const hook = (message) => ({ error: new Error(message), source: { kind: 'hook', hook: 'every' } });
 __LX_REPORT_FAILURE__(hook('flaky'), page);
@@ -108,7 +132,8 @@ globalThis.reportedSync = got.length;`);
   run(`now = 1500; __LX_REPORT_FAILURE__({ error: new Error('flaky'), source: { kind: 'hook', hook: 'every' } }, { name: 'home', instance: 'p1' });`);
   await settle();
   const got = json('got');
-  assert.equal(run('launchStillRejects'), true);
+  // A throwing onLaunch is reported, and the host keeps the page it was asked for.
+  assert.equal(run('launchDecided'), null);
   // In the order they happened: onLaunch's rejection settles after the reports made in this turn.
   assert.deepEqual(got.map((g) => [g.message, g.repeated]), [
     ['flaky', 0], ['plain', 0], ['boom-in-handler', 0], ['launch', 0], ['flaky', 2],
