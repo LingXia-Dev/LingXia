@@ -142,3 +142,28 @@ fn a_box_delivers_its_content_widths_to_the_page() {
     );
     assert_eq!(count(&host, "fits-true"), 1);
 }
+
+#[cfg(feature = "hot-swap")]
+#[test]
+fn a_hot_swap_measures_every_box_again() {
+    let worker = ViewWorker::spawn("test-box-swap").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let render = "function render(){const box=useBox('m'),log=useLocal('log','');const b=box.value;return h('page',{},h('view',{box,onLayout(s){log.set(log.value+s.width+';')},style:{width:40,height:20}}),h('text',{'data-testid':'box-'+(b?b.width:'none')},'b'),h('text',{'data-testid':'log-'+log.value},'l'))}";
+    let module = source(render) + "\nenableHotSwap();";
+    let host = platform.host(&worker, &module, false);
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    run_frames(&platform, &host, 4);
+    assert_eq!(count(&host, "box-40"), 1);
+    assert_eq!(count(&host, "log-40;"), 1);
+    // The new isolate's box starts empty and its `onLayout` has not heard the size.
+    host.swap_module(module);
+    platform.settle(&[&host]);
+    run_frames(&platform, &host, 4);
+    assert_eq!(
+        count(&host, "box-40"),
+        1,
+        "the swapped module reads its box"
+    );
+    assert_eq!(count(&host, "log-40;40;"), 1, "and is told the size again");
+}

@@ -23,6 +23,13 @@ impl ViewSession {
             self.chunks.clone(),
         )?;
         self.exchange_isolate(&mut fresh);
+        // The new isolate's boxes, scroll visibility and players start unmeasured: report each anew.
+        let reported = (
+            std::mem::take(&mut self.boxes),
+            std::mem::take(&mut self.boxes_due),
+            std::mem::take(&mut self.visibility),
+            std::mem::take(&mut self.video_reported),
+        );
         let imported = (|| {
             let state = serde_json::to_string(&state).map_err(|e| e.to_string())?;
             self.eval(&format!(
@@ -44,6 +51,12 @@ impl ViewSession {
         })();
         if let Err(error) = imported {
             self.exchange_isolate(&mut fresh);
+            (
+                self.boxes,
+                self.boxes_due,
+                self.visibility,
+                self.video_reported,
+            ) = reported;
             return Err(error);
         }
         Ok(())
