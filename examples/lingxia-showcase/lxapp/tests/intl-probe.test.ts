@@ -41,7 +41,7 @@ test('record the Logic engine\'s Intl features', {
     for (const name of ['bit-per-second', 'kilobit-per-second', 'megabit-per-second', 'gigabit-per-second', 'terabit-per-second']) item(`unit ${name}`, () => unit(name, 487));
     for (const name of ['day', 'hour', 'minute', 'second']) item(`unit ${name} long`, () => new Intl.NumberFormat('en-US', { style: 'unit', unit: name, unitDisplay: 'long' }).format(2));
     const date = (options: Intl.DateTimeFormatOptions, language = 'en-US') =>
-      new Intl.DateTimeFormat(language, { timeZone: 'America/New_York', ...options }).format(at);
+      new Intl.DateTimeFormat(language, { timeZone: 'Asia/Shanghai', ...options }).format(at);
     for (const style of ['short', 'medium', 'long', 'full'] as const) item(`dateStyle ${style}`, () => date({ dateStyle: style }));
     item('dateStyle medium + timeStyle short, hour12', () => date({ dateStyle: 'medium', timeStyle: 'short', hour12: true }));
     item('dateStyle medium + timeStyle short, h23', () => date({ dateStyle: 'medium', timeStyle: 'short', hourCycle: 'h23' }));
