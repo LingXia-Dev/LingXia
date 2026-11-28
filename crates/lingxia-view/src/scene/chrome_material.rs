@@ -8,16 +8,19 @@ use vello_cpu::kurbo::Affine;
 
 /// Blur radius in logical pixels.
 const BLUR: f32 = 24.0;
-/// Colour kept vivid through the blur, as the platforms' bar materials do.
-const SATURATION: f32 = 1.8;
-/// How much `surface` covers the blurred page: enough for the bar's text contrast on any page.
-const TINT_ALPHA: u8 = 0xD1;
+/// Colour kept vivid through the blur, so the content under the bar still reads as its own.
+const SATURATION: f32 = 1.4;
+/// How much `surface` covers the blurred page: the least that keeps the bar's items at 4.5:1
+/// over a mid-grey page and over the appearance's own white or black, so content reads through.
+const TINT_ALPHA_LIGHT: u8 = 0xCC;
+const TINT_ALPHA_DARK: u8 = 0xC0;
 
 /// Paints for the tab bar over a `width` x `height` page (logical pixels), or none. A host that
 /// reports the bar's `shape` gets the material in it (a floating pill gets a pill); otherwise
 /// the band the bottom inset covers past the system area, full width.
 pub(crate) fn paints(
     surface: [u8; 4],
+    dark: bool,
     [width, height]: [f32; 2],
     shape: Option<ChromeShape>,
     insets_bottom: f32,
@@ -44,6 +47,11 @@ pub(crate) fn paints(
         }
     };
     let [r, g, b, _] = surface;
+    let alpha = if dark {
+        TINT_ALPHA_DARK
+    } else {
+        TINT_ALPHA_LIGHT
+    };
     vec![
         Paint::Transform(Affine::IDENTITY),
         Paint::Backdrop {
@@ -59,7 +67,7 @@ pub(crate) fn paints(
             opacity: 1.0,
         },
         Paint::Rect {
-            color: [r, g, b, TINT_ALPHA],
+            color: [r, g, b, alpha],
             bounds,
             radius,
             corners: None,
@@ -82,7 +90,7 @@ mod tests {
                 Paint::Transform(_),
                 Paint::Backdrop { clip, .. },
                 Paint::Rect {
-                    color: [250, 250, 250, TINT_ALPHA],
+                    color: [250, 250, 250, TINT_ALPHA_LIGHT],
                     bounds,
                     radius,
                     ..
@@ -96,13 +104,13 @@ mod tests {
     #[test]
     fn without_a_shape_the_bottom_chrome_band_gets_a_full_width_material() {
         assert!(
-            paints(SURFACE, PAGE, None, 34.0, 34.0).is_empty(),
+            paints(SURFACE, false, PAGE, None, 34.0, 34.0).is_empty(),
             "the home indicator alone"
         );
-        assert!(paints(SURFACE, PAGE, None, 0.0, 0.0).is_empty());
+        assert!(paints(SURFACE, false, PAGE, None, 0.0, 0.0).is_empty());
         let band = [0.0, 717.0, 400.0, 83.0];
         assert_eq!(
-            drawn(&paints(SURFACE, PAGE, None, 83.0, 34.0)),
+            drawn(&paints(SURFACE, false, PAGE, None, 83.0, 34.0)),
             Some((band, 0.0, band, 0.0)),
             "the bar and the system area under it"
         );
@@ -116,7 +124,7 @@ mod tests {
         };
         let rect = pill.rect;
         assert_eq!(
-            drawn(&paints(SURFACE, PAGE, Some(pill), 100.0, 20.0)),
+            drawn(&paints(SURFACE, false, PAGE, Some(pill), 100.0, 20.0)),
             Some((rect, 28.0, rect, 28.0)),
             "the reported shape wins over the inset band"
         );
@@ -125,7 +133,14 @@ mod tests {
             radius: 0.0,
         };
         assert_eq!(
-            drawn(&paints(SURFACE, PAGE, Some(past_the_edge), 20.0, 0.0)),
+            drawn(&paints(
+                SURFACE,
+                false,
+                PAGE,
+                Some(past_the_edge),
+                20.0,
+                0.0
+            )),
             Some((
                 [0.0, 780.0, 400.0, 20.0],
                 0.0,
@@ -138,6 +153,26 @@ mod tests {
             rect: [0.0, 900.0, 400.0, 40.0],
             radius: 0.0,
         };
-        assert!(paints(SURFACE, PAGE, Some(off_page), 40.0, 0.0).is_empty());
+        assert!(paints(SURFACE, false, PAGE, Some(off_page), 40.0, 0.0).is_empty());
+    }
+
+    #[test]
+    fn the_bar_items_keep_their_contrast_over_mid_grey_and_their_own_ground() {
+        use lingxia_theme::{Rgba, Role, contrast, over};
+        let looks = lingxia_theme::looks(None);
+        for (dark, alpha) in [(false, TINT_ALPHA_LIGHT), (true, TINT_ALPHA_DARK)] {
+            let [r, g, b, _] = looks.role(Role::Surface, dark, false).0;
+            let own = if dark { [0, 0, 0, 255] } else { [255; 4] };
+            for page in [own, [128, 128, 128, 255]] {
+                let ground = over(Rgba([r, g, b, alpha]), Rgba(page));
+                for item in [Role::TextMuted, Role::Accent, Role::Text] {
+                    let ratio = contrast(looks.role(item, dark, false), ground);
+                    assert!(
+                        ratio >= 4.5,
+                        "{item:?} at {ratio:.2}:1 over {page:?}, dark {dark}"
+                    );
+                }
+            }
+        }
     }
 }

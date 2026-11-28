@@ -669,6 +669,7 @@ impl<A: PlatformAdapter> Inner<A> {
             let inset = |key: &str| env[key]["bottom"].as_f64().unwrap_or(0.0) as f32;
             crate::scene::chrome_material::paints(
                 session.renderer.palette.role(lingxia_theme::Role::Surface),
+                env["appearance"].as_str() == Some("dark"),
                 [logical(width), logical(height)],
                 tab_bar,
                 inset("insets"),
