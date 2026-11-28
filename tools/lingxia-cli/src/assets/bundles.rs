@@ -3,9 +3,7 @@ use super::embed_cache::EmbedCache;
 use super::hash::{hash_tree, path_key, sha256_hex};
 use super::lxapp_package::resolve_lxapp_package;
 use super::system_lxapps::{SystemLxapp, resolve_system_lxapp};
-use crate::config::{
-    HOST_CONFIG_FILE, LXAPP_BUILD_CONFIG_FILE, LingXiaConfig, ResourceBundleConfig,
-};
+use crate::config::{HOST_CONFIG_FILE, LingXiaConfig, ResourceBundleConfig};
 use crate::lxapp;
 use crate::platform::BuildProfile;
 use anyhow::{Context, Result, anyhow};
@@ -281,18 +279,12 @@ fn prepare_lxapp_bundle_dir(
             bundle_dir.display()
         ));
     }
+    // `lxapp.json` makes a directory an lxapp, as for `lingxia dev`; a source bundle without
+    // `lxapp.config.ts` builds with the default pipeline.
     let lxapp_json = bundle_dir.join("lxapp.json");
-    let lxapp_build_config = bundle_dir.join(LXAPP_BUILD_CONFIG_FILE);
     if !lxapp_json.exists() {
         return Err(anyhow!(
-            "Configured {config_key} must contain lxapp.json: {}",
-            bundle_dir.display()
-        ));
-    }
-    if build && !lxapp_build_config.exists() {
-        return Err(anyhow!(
-            "Configured {config_key} source bundle must contain {}: {}",
-            LXAPP_BUILD_CONFIG_FILE,
+            "Configured {config_key} is not an lxapp: no lxapp.json in {}",
             bundle_dir.display()
         ));
     }
@@ -1159,6 +1151,44 @@ mod tests {
             .filter(|name| name.starts_with('.'))
             .collect();
         assert!(leftovers.is_empty(), "{leftovers:?}");
+    }
+
+    #[test]
+    fn a_source_bundle_needs_lxapp_json_but_not_a_build_config() {
+        let temp = tempfile::tempdir().unwrap();
+        let bundle_dir = temp.path().join("gallery");
+        fs::create_dir_all(&bundle_dir).unwrap();
+        let prepare = |bundle_dir: &Path| {
+            prepare_lxapp_bundle_dir(
+                temp.path(),
+                bundle_dir.to_path_buf(),
+                "gallery-app",
+                "resources.bundles[gallery-app]",
+                "resource-lxapp",
+                BuildProfile::Debug,
+                None,
+                false,
+                true,
+                None,
+                &mut HostAssetsCache::default(),
+            )
+            .err()
+            .map(|error| error.to_string())
+            .unwrap_or_default()
+        };
+        let missing = prepare(&bundle_dir);
+        assert!(
+            missing.contains("is not an lxapp: no lxapp.json"),
+            "{missing}"
+        );
+        // No lxapp.config.ts: the step reads lxapp.json (here its appId mismatches) and goes on.
+        fs::write(
+            bundle_dir.join("lxapp.json"),
+            r#"{"appId":"other-app","version":"1.0.0","pages":[]}"#,
+        )
+        .unwrap();
+        let mismatch = prepare(&bundle_dir);
+        assert!(mismatch.contains("does not match"), "{mismatch}");
     }
 
     #[test]
