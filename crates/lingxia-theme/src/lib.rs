@@ -1048,47 +1048,5 @@ pub fn advise(pack: &Pack) -> Vec<Problem> {
     advice
 }
 
-impl Pack {
-    /// A pack from W3C Design Tokens: `color.<appearance>.<role>.$value` hex colours.
-    /// Numeric scales come from `base`, which also supplies roles the tokens omit.
-    pub fn from_dtcg(tokens: &serde_json::Value, base: &Pack) -> Result<Pack, String> {
-        let groups = tokens
-            .get("color")
-            .and_then(|value| value.as_object())
-            .ok_or("THEME: design tokens need a color group")?;
-        let mut pack = base.clone();
-        for (appearance, roles) in groups {
-            let target = match appearance.as_str() {
-                "light" => &mut pack.appearance.light,
-                "dark" => &mut pack.appearance.dark,
-                "high-contrast-light" => pack
-                    .appearance
-                    .high_contrast_light
-                    .get_or_insert_with(Colors::new),
-                "high-contrast-dark" => pack
-                    .appearance
-                    .high_contrast_dark
-                    .get_or_insert_with(Colors::new),
-                other => return Err(format!("THEME: unknown appearance group {other}")),
-            };
-            for (role, token) in roles
-                .as_object()
-                .ok_or("THEME: an appearance group must be an object")?
-            {
-                if token.get("$type").is_some_and(|kind| kind != "color") {
-                    return Err(format!("THEME: {appearance}.{role} is not a color token"));
-                }
-                let value = token
-                    .get("$value")
-                    .and_then(|value| value.as_str())
-                    .and_then(Rgba::parse)
-                    .ok_or_else(|| format!("THEME: {appearance}.{role} needs a hex $value"))?;
-                target.insert(role.clone(), value);
-            }
-        }
-        Ok(pack)
-    }
-}
-
 #[cfg(test)]
 mod tests;

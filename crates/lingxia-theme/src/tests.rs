@@ -147,18 +147,6 @@ fn explicit_high_contrast_colours_win_and_are_held_to_boosted_pairs() {
 }
 
 #[test]
-fn design_tokens_import_replaces_named_roles_and_rejects_other_types() {
-    let base = default_pack();
-    let tokens = serde_json::json!({"color": {"light": {"canvas": {"$type": "color", "$value": "#fafafa"}}}});
-    let pack = Pack::from_dtcg(&tokens, &base).unwrap();
-    assert_eq!(pack.appearance.light["canvas"], hex("#fafafa"));
-    assert_eq!(pack.appearance.dark, base.appearance.dark);
-    let wrong = serde_json::json!({"color": {"light": {"canvas": {"$type": "dimension", "$value": "4px"}}}});
-    assert!(Pack::from_dtcg(&wrong, &base).is_err());
-    assert!(Pack::from_dtcg(&serde_json::json!({}), &base).is_err());
-}
-
-#[test]
 fn roles_are_kebab_names_in_slot_order() {
     assert_eq!(Role::ALL.len(), ROLE_COUNT);
     for (slot, role) in Role::ALL.into_iter().enumerate() {
