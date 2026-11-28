@@ -30,3 +30,18 @@ test('native routes: call, app error, and stream result', {
     await expect(view.testId('native-exported')).toContainText('Buy milk');
   });
 });
+
+// routes.rs sits in a private module: `lingxia::host!` must still register its routes.
+test('a route in a private module is registered on this platform', {
+  id: 'NATIVE-ROUTES-002',
+  app: SHOWCASE_APP_ID,
+  start: { page: 'native' },
+}, async (t) => {
+  const call = (route: string) => t.app.logic.eval(async (_scope, route) => {
+    const bridge = (globalThis as { __lingxiaNative?: { invoke(route: string): Promise<unknown> } }).__lingxiaNative;
+    if (!bridge) throw new Error('no native bridge in Logic');
+    return await bridge.invoke(route);
+  }, route);
+  expect(await call('showcase.ping')).toBe('pong');
+  expect(typeof await call('showcase.uptime')).toBe('number');
+});
