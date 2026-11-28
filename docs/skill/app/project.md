@@ -228,7 +228,7 @@ stay with the build env. Read the build env with `lx.host.env` (JS) or
   native control; any control lxapp must also set `"logic": false` or startup
   rejects it. JS-Logic lxapps need it `true`.
 - `devtools` (default `false`) — devtools hooks; `lingxia dev` enables it
-  transiently.
+  transiently. A `lingxia build --release` refuses it.
 
 Browser, terminal, and proxy runtime features come from `capabilities`.
 

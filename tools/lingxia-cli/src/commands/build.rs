@@ -453,10 +453,13 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
             } else {
                 None
             },
-            native_features: config.native_features_for_platform_with_extra(
-                platform_type.as_str(),
-                &extra_native_features,
-            ),
+            native_features: refuse_release_devtools(
+                build_profile,
+                config.native_features_for_platform_with_extra(
+                    platform_type.as_str(),
+                    &extra_native_features,
+                ),
+            )?,
             native_default_features: config.native_default_features_enabled(),
             resolved_env: resolved_env.clone(),
             skip_native_build: false,
@@ -574,6 +577,22 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
 
 fn platform_package_requested(package: bool, platform: &PlatformType) -> bool {
     package && matches!(platform, PlatformType::MacOs | PlatformType::Harmony)
+}
+
+/// A release build ships: the dev session, its test runner and mocks stay out of it.
+fn refuse_release_devtools(
+    profile: platform::BuildProfile,
+    features: Vec<String>,
+) -> Result<Vec<String>> {
+    if matches!(profile, platform::BuildProfile::Release)
+        && features.iter().any(|f| f == "devtools")
+    {
+        return Err(anyhow!(
+            "a release build cannot enable `devtools` (the dev session, tests and mocks); \
+             drop features.devtools from lingxia.yaml or --native-feature devtools, or build without --release"
+        ));
+    }
+    Ok(features)
 }
 
 pub(crate) fn validate_extra_native_features(
@@ -995,7 +1014,7 @@ fn build_standalone_apple_swift_package(
             native_features: {
                 let mut features = Vec::new();
                 append_native_features(&mut features, &extra_native_features);
-                features
+                refuse_release_devtools(build_profile, features)?
             },
             native_default_features: true,
             // Standalone Apple SwiftPM builds have no `lingxia.yaml` to draw
@@ -1029,6 +1048,28 @@ fn build_standalone_apple_swift_package(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_release_build_refuses_devtools() {
+        let features = |names: &[&str]| names.iter().map(|name| name.to_string()).collect();
+        let err = super::refuse_release_devtools(
+            super::platform::BuildProfile::Release,
+            features(&["standard", "devtools"]),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("devtools"), "{err}");
+        super::refuse_release_devtools(
+            super::platform::BuildProfile::Debug,
+            features(&["devtools"]),
+        )
+        .unwrap();
+        super::refuse_release_devtools(
+            super::platform::BuildProfile::Release,
+            features(&["standard"]),
+        )
+        .unwrap();
+    }
+
     use super::{
         platform_package_requested, resolve_build_env, stage_package_artifact,
         validate_platform_target_options,

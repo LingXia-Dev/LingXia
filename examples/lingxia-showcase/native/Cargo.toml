@@ -28,8 +28,6 @@ standard = ["lingxia/standard"]
 browser-shell = ["lingxia/browser-shell", "webview-input", "standard"]
 proxy = ["lingxia/proxy", "browser-shell"]
 terminal-runtime = ["lingxia/terminal-runtime"]
-# Dev builds always enable `devtools`; ride automation in so `lingxia dev`
-# sessions get lx.automation() by default (still privilege-gated per lxapp.json).
 control = ["dep:lingxia-control-runtime", "lingxia/devtool", "lingxia-control-runtime/local-control", "lingxia/product-cli"]
 # `lingxia/computer-use` carries both halves of the SDK side (the `computer`
 # subcommand and the in-process automation driver); the runtime provider is the
@@ -47,8 +45,7 @@ harmony-capture = ["realtime-capture", "lingxia/harmony-capture"]
 # Derived from `capabilities.browserUse`. Without it the browser methods are
 # not linked and every browser command answers "feature unavailable".
 browser-use = ["control", "lingxia-control-runtime/browser"]
-devtools = ["dep:lingxia-control-runtime", "lingxia/devtool", "lingxia-control-runtime/dev-bridge", "lingxia-control-runtime/browser", "lingxia-control-runtime/test-runtime", "automation"]
-automation = ["lingxia/automation"]
+devtools = ["dep:lingxia-control-runtime", "lingxia/devtool", "lingxia-control-runtime/dev-bridge", "lingxia-control-runtime/browser", "lingxia-control-runtime/test-runtime"]
 webview-input = ["lingxia/webview-input"]
 # Cloud provider. Inert by default; `lingxia build/dev --with-provider cloud`
 # injects the private `lingxia-cloud-client` crate and rewrites this to `dep:`.

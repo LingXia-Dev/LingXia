@@ -25,7 +25,8 @@ computer-use = ["dep:lingxia-device-io", "lingxia-device-io/full"]
 # builds omit it, so the session.test.* methods are absent rather than
 # permission-gated. Desktop I/O is deliberately not implied; a host that
 # declares computerUse enables `lingxia/desktop-automation` separately.
-test-runtime = ["dep:lingxia-automation", "dep:lingxia-network-dev"]
+# `lingxia/automation` installs the runtime tests and mocks drive in every dev build.
+test-runtime = ["dep:lingxia-automation", "dep:lingxia-network-dev", "lingxia/automation"]
 
 [dependencies]
 lingxia-control-protocol = { workspace = true }
