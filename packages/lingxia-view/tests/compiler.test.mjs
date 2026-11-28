@@ -1189,7 +1189,8 @@ test('GPU View rejects importing @lingxia/native directly', async () => {
 
 test('an app stylesheet that sets a package alias to a literal gets a hint; a step does not', () => {
   const pkg = ['@theme {\n  --radius-control: var(--radius-lg);\n  --text-footnote: var(--text-sm);\n  --spacing-control-md: calc(var(--spacing) * 10);\n}'];
-  const app = new Map([['theme/index.css', '@theme {\n  --radius-control: 12px;\n  --text-footnote: var(--text-xs);\n  --radius-brand: 3px;\n  --spacing-control-md: 44px;\n}']]);
+  // A step formula (`calc(var(--spacing) * 12)`) follows the theme; only a bare length warns.
+  const app = new Map([['theme/index.css', '@theme {\n  --radius-control: 12px;\n  --text-footnote: var(--text-xs);\n  --radius-brand: 3px;\n  --spacing-control-md: 44px;\n  --spacing-control-lg: calc(var(--spacing) * 12);\n}']]);
   assert.deepEqual(literalAliasHints(pkg, app), [
     'theme/index.css:2: UI_SCALE: --radius-control is 12px, which does not follow the theme; point it at a step, as the package does: var(--radius-lg)',
     'theme/index.css:5: UI_SCALE: --spacing-control-md is 44px, which does not follow the theme; point it at a step, as the package does: calc(var(--spacing) * 10)',

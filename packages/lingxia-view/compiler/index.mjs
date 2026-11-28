@@ -563,7 +563,7 @@ export function literalAliasHints(packageSheets, appSheets, labelOf = path => pa
   }));
   const hints = [];
   for (const [path, text] of appSheets) postcss.parse(text).walkAtRules('theme', rule => rule.each(decl => {
-    if (decl.type !== 'decl' || !aliases.has(decl.prop) || decl.value.trim().startsWith('var(')) return;
+    if (decl.type !== 'decl' || !aliases.has(decl.prop) || /var\(--/.test(decl.value)) return;
     hints.push(`${labelOf(path)}:${decl.source?.start?.line ?? 1}: UI_SCALE: ${decl.prop} is ${decl.value.trim()}, which does not follow the theme; point it at a step, as the package does: ${aliases.get(decl.prop)}`);
   }));
   return hints;
