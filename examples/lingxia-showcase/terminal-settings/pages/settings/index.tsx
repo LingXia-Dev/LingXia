@@ -27,13 +27,19 @@ const RAMP = ['red', 'yellow', 'green', 'cyan', 'blue', 'purple'] as const;
 function swatchPaths(colors: Scheme['scheme']) {
   const bar = (x: number, y: number, w: number) => `M${x} ${y}h${w}v4h${-w}Z`;
   const dot = (cx: number) => `M${cx - 3} 30a3 3 0 1 0 6 0a3 3 0 1 0 -6 0Z`;
+  // An imported scheme's colours are unchecked strings; a non-hex one paints nothing.
+  const paint = (value: string | undefined): `#${string}` | 'none' => (isHex(value) ? value : 'none');
   return [
-    { d: 'M0 0H100V40H0Z', fill: colors.background },
-    { d: bar(10, 7, 6), fill: colors.green || colors.foreground },
-    { d: bar(20, 7, 48), fill: colors.foreground },
-    { d: bar(10, 16, 72), fill: colors.foreground },
-    ...RAMP.map((key, i) => ({ d: dot(13 + i * 14.8), fill: colors[key] || colors.foreground })),
+    { d: 'M0 0H100V40H0Z', fill: paint(colors.background) },
+    { d: bar(10, 7, 6), fill: paint(colors.green || colors.foreground) },
+    { d: bar(20, 7, 48), fill: paint(colors.foreground) },
+    { d: bar(10, 16, 72), fill: paint(colors.foreground) },
+    ...RAMP.map((key, i) => ({ d: dot(13 + i * 14.8), fill: paint(colors[key] || colors.foreground) })),
   ];
+}
+
+function isHex(value: string | undefined): value is `#${string}` {
+  return value !== undefined && /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(value);
 }
 
 const SIZE_MIN = 4;
