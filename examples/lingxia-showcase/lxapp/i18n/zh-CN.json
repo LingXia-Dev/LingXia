@@ -98,6 +98,9 @@
   "api.leaveguardDetail": {
     "defaultMessage": "放弃未保存的更改前询问"
   },
+  "api.liuliGallery": {
+    "defaultMessage": "打开琉璃组件库"
+  },
   "api.location": {
     "defaultMessage": "位置"
   },
@@ -154,6 +157,9 @@
   },
   "api.shareDetail": {
     "defaultMessage": "分享文本、页面、图片和文件"
+  },
+  "api.showcaseWeb": {
+    "defaultMessage": "打开 Showcase Web"
   },
   "api.stream": {
     "defaultMessage": "流"

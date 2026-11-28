@@ -131,6 +131,10 @@
     "defaultMessage": "Ask before discarding unsaved changes",
     "description": "Under the Leave confirmation entry."
   },
+  "api.liuliGallery": {
+    "defaultMessage": "Open Liuli Gallery",
+    "description": "API list entry (api-liuli-gallery): opens the bundled Liuli component gallery lxapp."
+  },
   "api.location": {
     "defaultMessage": "Location",
     "description": "API list entry for the location page."
@@ -206,6 +210,10 @@
   "api.shareDetail": {
     "defaultMessage": "Share text, pages, images and files",
     "description": "Under the Share entry."
+  },
+  "api.showcaseWeb": {
+    "defaultMessage": "Open Showcase Web",
+    "description": "API list entry (api-showcase-web): opens the bundled WebView showcase lxapp."
   },
   "api.stream": {
     "defaultMessage": "Stream",

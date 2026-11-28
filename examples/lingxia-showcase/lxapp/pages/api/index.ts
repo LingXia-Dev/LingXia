@@ -11,6 +11,10 @@ export default definePage({
         try { await lx.nav.go({ app: 'lingxia-showcase-web', page: 'chat' }); }
         catch (error) { await lx.ui.toast(failureText(error, lx.app.t('api.openAppFailed'))); }
       },
+      async openBundledApp(app: 'liuli-gallery' | 'lingxia-showcase-web') {
+        try { await lx.nav.go({ app }); }
+        catch (error) { lx.ui.toast(error, { fallback: lx.app.t('api.openAppFailed') }); }
+      },
       async openDeepSeek() {
         const choice = await lx.ui.actionSheet({
           items: [{ id: 'self', label: lx.app.t('api.openIn.self') }, { id: 'aside', label: lx.app.t('api.openIn.aside') }, { id: 'external', label: lx.app.t('api.openIn.external') }],

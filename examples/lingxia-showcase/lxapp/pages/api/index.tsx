@@ -32,7 +32,15 @@ export const groups: Group[] = [
       entry('api-native', 'api.native', { page: 'native' }, 'api.nativeDetail'),
     ],
   },
-  { id: 'navigation', label: 'api.group.navigation', entries: [entry('api-deepseek', 'api.deepseek', a => a.openDeepSeek())] },
+  {
+    id: 'navigation',
+    label: 'api.group.navigation',
+    entries: [
+      entry('api-deepseek', 'api.deepseek', a => a.openDeepSeek()),
+      entry('api-liuli-gallery', 'api.liuliGallery', a => a.openBundledApp('liuli-gallery')),
+      entry('api-showcase-web', 'api.showcaseWeb', a => a.openBundledApp('lingxia-showcase-web')),
+    ],
+  },
   {
     id: 'interface',
     label: 'api.group.interface',
