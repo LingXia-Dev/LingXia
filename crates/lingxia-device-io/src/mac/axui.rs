@@ -21,6 +21,7 @@ const AX_ERROR_ATTRIBUTE_UNSUPPORTED: i32 = -25205;
 const AX_ERROR_ACTION_UNSUPPORTED: i32 = -25206;
 const AX_ERROR_NOT_IMPLEMENTED: i32 = -25208;
 const AX_ERROR_INVALID_ELEMENT: i32 = -25202;
+const AX_ERROR_CANNOT_COMPLETE: i32 = -25204;
 
 #[link(name = "ApplicationServices", kind = "framework")]
 unsafe extern "C" {
@@ -39,6 +40,7 @@ unsafe extern "C" {
     fn AXUIElementPerformAction(element: *mut c_void, action: *const c_void) -> i32;
     fn AXUIElementCopyActionNames(element: *mut c_void, names: *mut *const c_void) -> i32;
     fn AXUIElementGetPid(element: *mut c_void, pid: *mut libc::pid_t) -> i32;
+    fn AXUIElementSetMessagingTimeout(element: *mut c_void, timeout: f32) -> i32;
     fn AXUIElementCopyElementAtPosition(
         application: *mut c_void,
         x: f32,
@@ -101,6 +103,24 @@ impl Drop for Cf {
 /// An owned `AXUIElementRef` (released on drop).
 pub(super) struct AxEl(*mut c_void);
 
+/// An element carried between threads: a CF object, retained and messaged from any thread.
+pub(super) struct SendEl(pub(super) AxEl);
+
+unsafe impl Send for SendEl {}
+
+thread_local! {
+    static ON_CALLER: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Runs `work` with mutations kept on the calling thread: an element another process
+/// serves answers there, while a main-queue hop would wait on a main thread it needs.
+pub(super) fn on_caller<T>(work: impl FnOnce() -> T) -> T {
+    ON_CALLER.with(|flag| flag.set(true));
+    let out = work();
+    ON_CALLER.with(|flag| flag.set(false));
+    out
+}
+
 impl Drop for AxEl {
     fn drop(&mut self) {
         if !self.0.is_null() {
@@ -132,7 +152,10 @@ impl AxEl {
     where
         F: FnOnce(*mut c_void) -> Result<i32> + Send,
     {
-        if !self.targets_self() || unsafe { libc::pthread_main_np() } != 0 {
+        if !self.targets_self()
+            || unsafe { libc::pthread_main_np() } != 0
+            || ON_CALLER.with(|flag| flag.get())
+        {
             return operation(self.0);
         }
 
@@ -142,6 +165,24 @@ impl AxEl {
             result = operation(element as *mut c_void);
         });
         result
+    }
+
+    /// Whether the element answers within `secs`. WebKit serves web content from its
+    /// content process, which needs this app's main thread to answer: read on the main
+    /// thread it stalls until AX gives up, so the caller reads it off the main thread.
+    pub(super) fn answers_within(&self, secs: f32) -> bool {
+        unsafe { AXUIElementSetMessagingTimeout(self.0, secs) };
+        // A web view's role is local but its frame and children come from WebKit.
+        let answers = ["AXRole", "AXPosition", "AXChildren"].iter().all(|attr| {
+            let (rc, value) = self.copy_raw(attr);
+            if !value.is_null() {
+                unsafe { CFRelease(value) };
+            }
+            rc != AX_ERROR_CANNOT_COMPLETE
+        });
+        // The short timeout must not outlive the probe: later reads would give up early.
+        unsafe { AXUIElementSetMessagingTimeout(self.0, 0.0) };
+        answers
     }
 
     /// The AX element for an application by pid.

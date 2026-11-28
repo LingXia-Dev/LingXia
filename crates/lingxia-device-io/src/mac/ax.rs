@@ -3,7 +3,7 @@
 //! one process run — which is what the query→act flow needs. Rects are in global
 //! points (top-left origin), matching the rest of the backend.
 
-use super::axui::{AxEl, require_trusted};
+use super::axui::{AxEl, SendEl, on_caller, require_trusted};
 use super::window_ops::ax_window_for_id;
 use super::{parse_window_id, window_record};
 use crate::error::{Error, Result};
@@ -11,20 +11,33 @@ use crate::model::{Ack, AxNode, AxQuery, Rect};
 
 const DEFAULT_MAX_NODES: usize = 2000;
 
+/// How long a main-thread read waits on an element before leaving it to the caller.
+const MAIN_THREAD_PATIENCE_SECS: f32 = 0.25;
+
+/// Whether reads of this window must hop to the main thread: it is this process's own,
+/// and the caller is not already on the main thread.
+fn hops_to_main(window_id: &str) -> Result<bool> {
+    let own =
+        window_record(parse_window_id(window_id)?).is_some_and(|w| w.pid == std::process::id());
+    Ok(own && unsafe { libc::pthread_main_np() } == 0)
+}
+
+/// Whether this process shows windows, so a system-wide hit test may land in it. One that
+/// does off the main thread aborts in AppKit; a hop for another app's window costs nothing,
+/// and a windowless CLI has no main queue to hop to.
+fn has_own_windows() -> bool {
+    let pid = std::process::id();
+    super::windows(&Default::default()).is_ok_and(|windows| windows.iter().any(|w| w.pid == pid))
+}
+
 /// Runs `work` on the main thread when the window is this process's own: AX answers an
 /// in-process query on the calling thread, and AppKit and WebKit allow only the main one.
-fn on_owner_thread<T: Send>(
-    window_id: Option<&str>,
-    work: impl FnOnce() -> Result<T> + Send,
-) -> Result<T> {
-    let own = match window_id {
-        Some(id) => {
-            window_record(parse_window_id(id)?).is_some_and(|w| w.pid == std::process::id())
-        }
-        // A screen point may land on any app's window, this one's included.
-        None => true,
-    };
-    if !own || unsafe { libc::pthread_main_np() } != 0 {
+fn on_owner_thread<T: Send>(window_id: &str, work: impl FnOnce() -> Result<T> + Send) -> Result<T> {
+    on_main_if(hops_to_main(window_id)?, work)
+}
+
+fn on_main_if<T: Send>(hop: bool, work: impl FnOnce() -> Result<T> + Send) -> Result<T> {
+    if !hop {
         return work();
     }
     let mut work = Some(work);
@@ -100,7 +113,68 @@ fn node_data(el: &AxEl, id: String) -> AxNode {
     }
 }
 
-fn build_tree(el: &AxEl, id: String, depth: Option<u32>, count: &mut usize, max: usize) -> AxNode {
+/// A subtree the main-thread read left for the caller: `at` is where it belongs in a flat
+/// read, `depth` what remains of a tree read's depth.
+struct Elsewhere {
+    id: String,
+    at: usize,
+    depth: Option<u32>,
+    el: SendEl,
+}
+
+/// Whether to leave `el` for the caller; `elsewhere` is set only for a main-thread read.
+fn leave_for_caller(
+    el: &AxEl,
+    id: &str,
+    at: usize,
+    depth: Option<u32>,
+    elsewhere: &mut Option<&mut Vec<Elsewhere>>,
+) -> bool {
+    let Some(list) = elsewhere.as_deref_mut() else {
+        return false;
+    };
+    if el.answers_within(MAIN_THREAD_PATIENCE_SECS) {
+        return false;
+    }
+    list.push(Elsewhere {
+        id: id.to_string(),
+        at,
+        depth,
+        el: SendEl(el.clone_ref()),
+    });
+    true
+}
+
+fn placeholder(id: String) -> AxNode {
+    AxNode {
+        id,
+        role: String::new(),
+        name: String::new(),
+        value: None,
+        enabled: false,
+        focused: false,
+        rect: Rect {
+            x: 0,
+            y: 0,
+            w: 0,
+            h: 0,
+        },
+        actions: Vec::new(),
+        children: Vec::new(),
+    }
+}
+
+fn build_tree(
+    el: &AxEl,
+    id: String,
+    depth: Option<u32>,
+    count: &mut usize,
+    max: usize,
+    elsewhere: &mut Option<&mut Vec<Elsewhere>>,
+) -> AxNode {
+    if leave_for_caller(el, &id, 0, depth, elsewhere) {
+        return placeholder(id);
+    }
     let mut node = node_data(el, id.clone());
     *count += 1;
     if depth == Some(0) || *count >= max {
@@ -116,6 +190,7 @@ fn build_tree(el: &AxEl, id: String, depth: Option<u32>, count: &mut usize, max:
             depth.map(|d| d - 1),
             count,
             max,
+            elsewhere,
         ));
     }
     node
@@ -127,8 +202,9 @@ fn collect_flat(
     count: &mut usize,
     max: usize,
     out: &mut Vec<(AxNode, AxEl)>,
+    elsewhere: &mut Option<&mut Vec<Elsewhere>>,
 ) {
-    if *count >= max {
+    if *count >= max || leave_for_caller(el, &id, out.len(), None, elsewhere) {
         return;
     }
     let node = node_data(el, id.clone());
@@ -139,49 +215,114 @@ fn collect_flat(
         if *count >= max {
             break;
         }
-        collect_flat(&child, format!("{id}/{idx}"), count, max, out);
+        collect_flat(&child, format!("{id}/{idx}"), count, max, out, elsewhere);
     }
 }
 
-pub fn tree(window_id: &str, depth: Option<u32>, max_nodes: Option<usize>) -> Result<AxNode> {
-    on_owner_thread(Some(window_id), || tree_here(window_id, depth, max_nodes))
+fn find_mut<'a>(node: &'a mut AxNode, id: &str) -> Option<&'a mut AxNode> {
+    if node.id == id {
+        return Some(node);
+    }
+    node.children
+        .iter_mut()
+        .find_map(|child| find_mut(child, id))
 }
 
-fn tree_here(window_id: &str, depth: Option<u32>, max_nodes: Option<usize>) -> Result<AxNode> {
-    require_trusted()?;
-    let root = ax_window_for_id(window_id)?;
-    let mut count = 0;
-    Ok(build_tree(
-        &root,
-        "ax:0".to_string(),
-        depth,
-        &mut count,
-        max_nodes.unwrap_or(DEFAULT_MAX_NODES),
-    ))
+pub fn tree(window_id: &str, depth: Option<u32>, max_nodes: Option<usize>) -> Result<AxNode> {
+    let max = max_nodes.unwrap_or(DEFAULT_MAX_NODES);
+    let split = hops_to_main(window_id)?;
+    let (mut root, left, mut count) = on_owner_thread(window_id, || {
+        require_trusted()?;
+        let window = ax_window_for_id(window_id)?;
+        let mut left = Vec::new();
+        let mut elsewhere = split.then_some(&mut left);
+        let mut count = 0;
+        let root = build_tree(
+            &window,
+            "ax:0".into(),
+            depth,
+            &mut count,
+            max,
+            &mut elsewhere,
+        );
+        Ok((root, left, count))
+    })?;
+    for part in left {
+        let subtree = build_tree(
+            &part.el.0,
+            part.id.clone(),
+            part.depth,
+            &mut count,
+            max,
+            &mut None,
+        );
+        if let Some(slot) = find_mut(&mut root, &part.id) {
+            *slot = subtree;
+        }
+    }
+    Ok(root)
 }
 
 pub fn hit_test(x: i32, y: i32) -> Result<AxNode> {
-    on_owner_thread(None, || {
+    let id = format!("ax:@{x},{y}");
+    let hop = has_own_windows() && unsafe { libc::pthread_main_np() } == 0;
+    let (node, left) = on_main_if(hop, || {
         require_trusted()?;
-        let sys = AxEl::system_wide()?;
-        let el = sys.element_at(x as f32, y as f32)?;
-        Ok(node_data(&el, format!("ax:@{x},{y}")))
-    })
+        let el = AxEl::system_wide()?.element_at(x as f32, y as f32)?;
+        if hop && !el.answers_within(MAIN_THREAD_PATIENCE_SECS) {
+            return Ok((None, Some(SendEl(el))));
+        }
+        Ok((Some(node_data(&el, id.clone())), None))
+    })?;
+    match (node, left) {
+        (Some(node), _) => Ok(node),
+        (None, Some(el)) => Ok(node_data(&el.0, id)),
+        (None, None) => unreachable!("the read returns a node or an element"),
+    }
 }
 
-fn flat(window_id: &str) -> Result<Vec<(AxNode, AxEl)>> {
-    require_trusted()?;
-    let root = ax_window_for_id(window_id)?;
-    let mut out = Vec::new();
-    let mut count = 0;
-    collect_flat(
-        &root,
-        "ax:0".to_string(),
-        &mut count,
-        DEFAULT_MAX_NODES,
-        &mut out,
-    );
-    Ok(out)
+/// The window's flat tree with live elements, `true` beside each one another process
+/// serves. This process's own elements are read on the main thread; any that keep it
+/// waiting are read afterwards on the calling thread and spliced back in tree order.
+fn flat(window_id: &str) -> Result<Vec<(AxNode, SendEl, bool)>> {
+    let split = hops_to_main(window_id)?;
+    let (local, left, mut count) = on_owner_thread(window_id, || {
+        require_trusted()?;
+        let root = ax_window_for_id(window_id)?;
+        let mut out = Vec::new();
+        let mut left = Vec::new();
+        let mut elsewhere = split.then_some(&mut left);
+        let mut count = 0;
+        collect_flat(
+            &root,
+            "ax:0".into(),
+            &mut count,
+            DEFAULT_MAX_NODES,
+            &mut out,
+            &mut elsewhere,
+        );
+        let out: Vec<(AxNode, SendEl)> = out.into_iter().map(|(n, el)| (n, SendEl(el))).collect();
+        Ok((out, left, count))
+    })?;
+    let mut all: Vec<(AxNode, SendEl, bool)> =
+        local.into_iter().map(|(n, el)| (n, el, false)).collect();
+    // Back to front, so each recorded position still holds when its subtree goes in.
+    for part in left.into_iter().rev() {
+        let mut sub = Vec::new();
+        collect_flat(
+            &part.el.0,
+            part.id,
+            &mut count,
+            DEFAULT_MAX_NODES,
+            &mut sub,
+            &mut None,
+        );
+        all.splice(
+            part.at..part.at,
+            sub.into_iter().map(|(n, el)| (n, SendEl(el), true)),
+        );
+    }
+    Ok(all)
 }
 
 pub fn query(window_id: &str, q: &AxQuery, all: bool, index: Option<usize>) -> Result<Vec<AxNode>> {
@@ -208,28 +349,28 @@ pub fn query(window_id: &str, q: &AxQuery, all: bool, index: Option<usize>) -> R
     }
 }
 
-/// The flat tree's node data, read where the window's owner allows.
 fn flat_nodes(window_id: &str) -> Result<Vec<AxNode>> {
-    on_owner_thread(Some(window_id), || {
-        Ok(flat(window_id)?.into_iter().map(|(n, _)| n).collect())
-    })
+    Ok(flat(window_id)?.into_iter().map(|(n, ..)| n).collect())
 }
 
-/// Match exactly one live element and act on it, where the window's owner allows.
-fn act(window_id: &str, q: &AxQuery, action: impl FnOnce(AxEl) -> Result<()> + Send) -> Result<()> {
-    on_owner_thread(Some(window_id), || action(resolve_one(window_id, q)?))
-}
-
-/// Resolve exactly one live element for an action (atomic match-and-act).
-fn resolve_one(window_id: &str, q: &AxQuery) -> Result<AxEl> {
-    let mut matches: Vec<AxEl> = flat(window_id)?
+/// Match exactly one live element and act on it (atomic match-and-act). An element this
+/// process serves is changed on the main thread; one another process serves, here.
+fn act(window_id: &str, q: &AxQuery, action: impl FnOnce(AxEl) -> Result<()>) -> Result<()> {
+    let mut matches: Vec<(SendEl, bool)> = flat(window_id)?
         .into_iter()
-        .filter(|(n, _)| q.is_empty() || q.matches(n))
-        .map(|(_, el)| el)
+        .filter(|(n, ..)| q.is_empty() || q.matches(n))
+        .map(|(_, el, elsewhere)| (el, elsewhere))
         .collect();
     match matches.len() {
         0 => Err(Error::NotFound("no accessibility node matched".into())),
-        1 => Ok(matches.remove(0)),
+        1 => {
+            let (el, elsewhere) = matches.remove(0);
+            if elsewhere {
+                on_caller(|| action(el.0))
+            } else {
+                action(el.0)
+            }
+        }
         n => Err(Error::Ambiguous(format!(
             "{n} nodes matched; narrow the query"
         ))),
