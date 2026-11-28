@@ -797,7 +797,7 @@ final class DockedBrowser: NSObject {
         let symbol = maximized
             ? "arrow.down.right.and.arrow.up.left"
             : "arrow.up.left.and.arrow.down.right"
-        let label = maximized ? "Restore panel" : "Maximize panel"
+        let label = L10n.string(maximized ? "lx_aside_restore" : "lx_aside_maximize")
         maximizeButton.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)?
             .withSymbolConfiguration(.init(pointSize: 11, weight: .medium))
         maximizeButton.toolTip = label

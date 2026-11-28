@@ -374,7 +374,7 @@ private final class LingXiaTerminalTabChromeView: NSView {
         layer?.masksToBounds = false
         setContentHuggingPriority(.defaultLow, for: .horizontal)
         setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        toolTip = "Double-click to rename"
+        toolTip = L10n.string("lx_terminal_rename_hint")
 
         closeButton.target = self
         closeButton.action = #selector(closeTab)
@@ -652,7 +652,7 @@ private final class LingXiaTerminalAddTabButton: LingXiaTerminalRailIconButton {
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         applySymbol(systemName: "plus", fallbackTitle: "+")
-        toolTip = "New Terminal Tab"
+        toolTip = L10n.string("lx_terminal_new_tab")
     }
 
     required init?(coder: NSCoder) {
@@ -677,10 +677,10 @@ private final class LingXiaTerminalZoomButton: LingXiaTerminalRailIconButton {
         self.zoomed = zoomed
         if zoomed {
             applySymbol(systemName: "arrow.down.right.and.arrow.up.left", fallbackTitle: "[]")
-            toolTip = "Restore Terminal Size"
+            toolTip = L10n.string("lx_terminal_restore_size")
         } else {
             applySymbol(systemName: "arrow.up.left.and.arrow.down.right", fallbackTitle: "[ ]")
-            toolTip = "Zoom Terminal to Full Window"
+            toolTip = L10n.string("lx_terminal_zoom")
         }
     }
 }

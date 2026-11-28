@@ -26,11 +26,13 @@ browser:
   import_bookmarks: "Import Bookmarks"
   bookmark_html_filter: "Bookmark HTML"
 
-# Aside slot tab menu (the per-tab "···" and right-click menu)
+# Aside slot tab strip and its per-tab "···" / right-click menu
 aside:
   tab_menu: "Tab options"
+  close_tab: "Close {name}"
+  page_tabs: "Page tabs"
 
-# Terminal panel (native Windows shell terminal)
+# Terminal panel (desktop shell terminal)
 terminal:
   title: "Terminal"
   copy: "Copy"
@@ -45,9 +47,18 @@ terminal:
   change_title: "Change Tab Title…"
   reset: "Reset Terminal"
   read_only: "Terminal Read-only"
+  rename_hint: "Double-click to rename"
+  zoom: "Zoom Terminal to Full Window"
+  restore_size: "Restore Terminal Size"
 
 sidebar:
   expand: "Expand sidebar"
   collapse: "Collapse sidebar"
+  group_collapse: "Collapse group"
+  more_actions: "More actions"
   # Joins a sidebar action's name and its value in tooltips ("Brand: Acme").
   action_value_separator: ": "
+
+# Desktop navigation bar of a page
+navbar:
+  home: "Home"

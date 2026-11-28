@@ -26,11 +26,13 @@ browser:
   import_bookmarks: "导入书签"
   bookmark_html_filter: "书签 HTML"
 
-# Aside slot tab menu (the per-tab "···" and right-click menu)
+# Aside slot tab strip and its per-tab "···" / right-click menu
 aside:
   tab_menu: "标签选项"
+  close_tab: "关闭 {name}"
+  page_tabs: "页面标签"
 
-# Terminal panel (native Windows shell terminal)
+# Terminal panel (desktop shell terminal)
 terminal:
   title: "终端"
   copy: "复制"
@@ -45,9 +47,18 @@ terminal:
   change_title: "修改标题…"
   reset: "重置终端"
   read_only: "终端只读"
+  rename_hint: "双击重命名"
+  zoom: "终端铺满窗口"
+  restore_size: "还原终端大小"
 
 sidebar:
   expand: "展开侧栏"
   collapse: "收起侧栏"
+  group_collapse: "收起分组"
+  more_actions: "更多操作"
   # Joins a sidebar action's name and its value in tooltips ("Brand: Acme").
   action_value_separator: "："
+
+# Desktop navigation bar of a page
+navbar:
+  home: "首页"

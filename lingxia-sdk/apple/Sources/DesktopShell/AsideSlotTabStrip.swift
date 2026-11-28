@@ -96,8 +96,9 @@ final class AsideSlotTabStripView: NSView {
         collapseButton.image = LxIcon.image(
             named: "icon_aside_collapse", size: CGSize(width: 15, height: 15))
         collapseButton.contentTintColor = LxAppHostTheme.mutedForeground
-        collapseButton.toolTip = "Collapse panel"
-        collapseButton.setAccessibilityLabel("Collapse panel")
+        let collapseLabel = L10n.string("lx_aside_collapse")
+        collapseButton.toolTip = collapseLabel
+        collapseButton.setAccessibilityLabel(collapseLabel)
         collapseButton.target = self
         collapseButton.action = #selector(collapseTapped)
         addSubview(collapseButton)
@@ -247,7 +248,7 @@ final class AsideSlotTabStripView: NSView {
         let symbol = maximized
             ? "arrow.down.right.and.arrow.up.left"
             : "arrow.up.left.and.arrow.down.right"
-        let label = maximized ? "Restore panel" : "Maximize panel"
+        let label = L10n.string(maximized ? "lx_aside_restore" : "lx_aside_maximize")
         maximizeButton.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)?
             .withSymbolConfiguration(.init(pointSize: 11, weight: .medium))
         maximizeButton.toolTip = label
@@ -372,7 +373,7 @@ private final class AsideSlotTabItemView: NSView {
         closeButton.contentTintColor = LxAppHostTheme.mutedForeground
         closeButton.target = self
         closeButton.action = #selector(closeTapped)
-        closeButton.setAccessibilityLabel("Close \(tab.title)")
+        closeButton.setAccessibilityLabel(L10n.string("lx_aside_close_tab", tab.title))
 
         moreButton.translatesAutoresizingMaskIntoConstraints = false
         moreButton.isBordered = false

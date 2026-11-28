@@ -2790,6 +2790,28 @@ test('rejects stable-root mutations without changing the host model', {
 });
 
 /** An enabled, on-screen AX node named `match` inside the host window. */
+// The page bar's back button, in the host's display language.
+const BACK_NAMES = ['Back', '返回'] as const;
+
+// The side panel strip's controls, named in the host's display language.
+const SLOT_CONTROL_NAMES = {
+  maximize: ['Maximize', '最大化'],
+  restore: ['Restore', '还原'],
+  collapse: ['Collapse Side Panel', '收起侧边面板'],
+} as const;
+
+async function visibleSlotControl(
+  desktop: DesktopDriver,
+  host: DesktopWindowInfo,
+  control: keyof typeof SLOT_CONTROL_NAMES,
+): Promise<DesktopAxNode | undefined> {
+  for (const name of SLOT_CONTROL_NAMES[control]) {
+    const node = await visibleHostAxNode(desktop, host, `name:${name}`);
+    if (node?.name === name) return node;
+  }
+  return undefined;
+}
+
 async function visibleHostAxNode(
   desktop: DesktopDriver,
   host: DesktopWindowInfo,
@@ -2814,6 +2836,19 @@ async function visibleHostAxNode(
  * title as its name ("Feedback" holds "Back").
  */
 async function exactHostAxNode(
+  desktop: DesktopDriver,
+  host: DesktopWindowInfo,
+  role: string,
+  labels: string | readonly string[],
+): Promise<DesktopAxNode | undefined> {
+  for (const label of typeof labels === 'string' ? [labels] : labels) {
+    const node = await exactHostAxNodeNamed(desktop, host, role, label);
+    if (node) return node;
+  }
+  return undefined;
+}
+
+async function exactHostAxNodeNamed(
   desktop: DesktopDriver,
   host: DesktopWindowInfo,
   role: string,
@@ -2985,7 +3020,7 @@ test('keeps an aside lxapp page stack and its floats inside the aside', {
       'Chat page top at the aside stack root',
     );
     if (platform === 'macos') {
-      expect(await exactHostAxNode(desktop, host, 'button', 'Back').then((node) => (
+      expect(await exactHostAxNode(desktop, host, 'button', BACK_NAMES).then((node) => (
         node !== undefined && inRightAside(host!, node.rect)
       ))).toBeFalsy();
     }
@@ -3004,7 +3039,7 @@ test('keeps an aside lxapp page stack and its floats inside the aside', {
       }, 'aside navigation bar title');
       expect(inRightAside(host, title.rect)).toBeTruthy();
       const back = await waitForValue(async () => {
-        const node = await exactHostAxNode(desktop, host!, 'button', 'Back');
+        const node = await exactHostAxNode(desktop, host!, 'button', BACK_NAMES);
         return node && inRightAside(host!, node.rect) ? node : undefined;
       }, 'aside navigation bar Back button');
       await desktop.ax.invoke({ window: host.id, match: `id:${back.id}` });
@@ -3116,7 +3151,8 @@ test('keeps an aside lxapp page stack and its floats inside the aside', {
     }, 'main back to the baseline after closing the second main');
     if (platform === 'macos') {
       const close = await waitForValue(async () => {
-        const node = await visibleHostAxNode(desktop, host!, 'Close LingXia Showcase (WebView)');
+        const node = await visibleHostAxNode(desktop, host!, 'Close LingXia Showcase (WebView)')
+          ?? await visibleHostAxNode(desktop, host!, '关闭 LingXia Showcase (WebView)');
         return node?.role === 'button' && node.enabled && inRightAside(host!, node.rect)
           ? node
           : undefined;
@@ -3268,7 +3304,7 @@ test('maximizes an aside over a main that keeps its frame and restores it on eve
 
     const maximize = async (phase: string) => {
       const button = await waitForValue(
-        () => visibleHostAxNode(desktop, host!, 'name:Maximize panel'),
+        () => visibleSlotControl(desktop, host!, 'maximize'),
         `Maximize control (${phase})`,
       );
       await desktop.ax.invoke({ window: host!.id, match: `id:${button.id}` });
@@ -3332,7 +3368,7 @@ test('maximizes an aside over a main that keeps its frame and restores it on eve
     // The same control restores.
     await maximize('control');
     const restore = await waitForValue(
-      () => visibleHostAxNode(desktop, host!, 'name:Restore panel'),
+      () => visibleSlotControl(desktop, host!, 'restore'),
       'Restore control',
     );
     await desktop.ax.invoke({ window: host.id, match: `id:${restore.id}` });
@@ -3358,7 +3394,7 @@ test('maximizes an aside over a main that keeps its frame and restores it on eve
     // Collapse leaves a restore handle at the edge; it brings the aside back
     // with its page.
     const collapse = await waitForValue(
-      () => visibleHostAxNode(desktop, host!, 'name:Collapse panel'),
+      () => visibleSlotControl(desktop, host!, 'collapse'),
       'Collapse control',
     );
     await desktop.ax.invoke({ window: host.id, match: `id:${collapse.id}` });
@@ -4036,12 +4072,16 @@ test('opens a browser aside beside a docked, maximized and collapsed Chat aside 
     // The slot controls by exact name. AX ids are child positions, and the panel strip
     // gains a tab as the browser aside joins, so an id read a moment earlier can name
     // another button: press by name, again until the layout shows it took.
-    const control = async (name: string) => {
-      const nodes = await desktop.ax.query({ window: host!.id, match: `name:${name}`, all: true })
-        .catch(() => [] as DesktopAxNode[]);
-      return nodes.find((node) => node.name === name && node.rect.w > 0);
+    const control = async (names: string | readonly string[]) => {
+      for (const name of typeof names === 'string' ? [names] : names) {
+        const nodes = await desktop.ax.query({ window: host!.id, match: `name:${name}`, all: true })
+          .catch(() => [] as DesktopAxNode[]);
+        const node = nodes.find((candidate) => candidate.name === name && candidate.rect.w > 0);
+        if (node) return node;
+      }
+      return undefined;
     };
-    const press = async (name: string, took: () => Promise<true | undefined>, label: string) => {
+    const press = async (name: string | readonly string[], took: () => Promise<true | undefined>, label: string) => {
       await waitForValue(async () => {
         if (await took()) return true;
         const node = await control(name);
@@ -4052,7 +4092,7 @@ test('opens a browser aside beside a docked, maximized and collapsed Chat aside 
         return took();
       }, label);
     };
-    const canDriveSlot = (await control('Maximize panel')) != null;
+    const canDriveSlot = (await control(SLOT_CONTROL_NAMES.maximize)) != null;
 
     const openBeside = async (phase: string, edge: BrowserAsideEdge) => {
       const key = `${namespace}-${phase}`;
@@ -4097,7 +4137,7 @@ test('opens a browser aside beside a docked, maximized and collapsed Chat aside 
         const slot = chatAsideSlot(await app.surfaceLayout());
         return slot?.activeChild === 'lingxia-showcase-web' ? true : undefined;
       }, 'Chat the active tab of the panel');
-      await press('Maximize panel', async () => {
+      await press(SLOT_CONTROL_NAMES.maximize, async () => {
         const slot = chatAsideSlot(await app.surfaceLayout());
         return slot?.maximized && slot.overlay ? true : undefined;
       }, 'Chat aside maximized');
@@ -4107,7 +4147,7 @@ test('opens a browser aside beside a docked, maximized and collapsed Chat aside 
         const slot = chatAsideSlot(await app.surfaceLayout());
         return slot?.maximized ? true : undefined;
       }, 'Chat still maximized after the browser aside');
-      await press('Restore panel', async () => {
+      await press(SLOT_CONTROL_NAMES.restore, async () => {
         const slot = chatAsideSlot(await app.surfaceLayout());
         return slot?.visible && !slot.maximized && !slot.overlay ? true : undefined;
       }, 'Chat aside restored');
@@ -4116,7 +4156,7 @@ test('opens a browser aside beside a docked, maximized and collapsed Chat aside 
       // Collapse the side panel. A browser tab opened now joins the same
       // panel, and content arriving in a collapsed slot brings it back
       // rather than landing out of sight; Chat stays alive as its other tab.
-      await press('Collapse panel', async () => {
+      await press(SLOT_CONTROL_NAMES.collapse, async () => {
         const slot = chatAsideSlot(await app.surfaceLayout());
         return slot?.collapsed ? true : undefined;
       }, 'Chat aside collapsed');
@@ -4237,7 +4277,7 @@ async function pressMainBack(
     return;
   }
   const back = await waitForValue(async () => {
-    const node = await exactHostAxNode(desktop, host, 'button', 'Back');
+    const node = await exactHostAxNode(desktop, host, 'button', BACK_NAMES);
     return node && !inRightAside(host, node.rect) ? node : undefined;
   }, 'main navigation Back button');
   await desktop.ax.invoke({ window: host.id, match: `id:${back.id}` });

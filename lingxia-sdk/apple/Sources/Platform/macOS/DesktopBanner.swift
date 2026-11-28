@@ -340,7 +340,7 @@ private final class BannerView: NSView {
     }
 
     private static var closeImage: NSImage {
-        let symbol = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Close")
+        let symbol = NSImage(systemSymbolName: "xmark", accessibilityDescription: L10n.string("lx_common_close"))
             ?? NSImage()
         return symbol.withSymbolConfiguration(
             NSImage.SymbolConfiguration(pointSize: 9, weight: .medium)

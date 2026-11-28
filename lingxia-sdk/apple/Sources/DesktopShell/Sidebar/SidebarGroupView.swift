@@ -381,7 +381,7 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
         // (clicking the app name switches + expands; the chevron collapses too).
         // Hidden when the lxapp has no tabBar items (nothing to collapse).
         chevronIndicator.translatesAutoresizingMaskIntoConstraints = false
-        chevronIndicator.image = NSImage(systemSymbolName: "chevron.down", accessibilityDescription: "Collapse")
+        chevronIndicator.image = NSImage(systemSymbolName: "chevron.down", accessibilityDescription: L10n.string("lx_sidebar_group_collapse"))
         chevronIndicator.imageScaling = .scaleProportionallyDown
         chevronIndicator.isBordered = false
         chevronIndicator.bezelStyle = .regularSquare
@@ -400,7 +400,7 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
 
         // Close button (hidden by default, shown on hover)
         closeButton.translatesAutoresizingMaskIntoConstraints = false
-        closeButton.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Close")
+        closeButton.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: L10n.string("lx_common_close"))
         closeButton.isBordered = false
         closeButton.bezelStyle = .regularSquare
         closeButton.imagePosition = .imageOnly
@@ -851,7 +851,7 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
     /// a quarter. Stays a template so the button tints it.
     /// The sidebar rows' "···" glyph, vertical.
     static func verticalEllipsisImage() -> NSImage? {
-        guard let base = NSImage(systemSymbolName: "ellipsis", accessibilityDescription: "More actions")?
+        guard let base = NSImage(systemSymbolName: "ellipsis", accessibilityDescription: L10n.string("lx_sidebar_more_actions"))?
             .withSymbolConfiguration(.init(pointSize: 11, weight: .bold))
         else {
             return nil

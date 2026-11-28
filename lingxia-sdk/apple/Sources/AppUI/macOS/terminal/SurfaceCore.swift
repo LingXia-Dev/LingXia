@@ -294,7 +294,7 @@ private final class LingXiaTerminalSearchBar: NSVisualEffectView, NSSearchFieldD
         shadow?.shadowOffset = NSSize(width: 0, height: -4)
         shadow?.shadowColor = NSColor.black.withAlphaComponent(0.28)
 
-        field.placeholderString = "Search"
+        field.placeholderString = L10n.string("lx_terminal_search")
         field.delegate = self
         field.sendsSearchStringImmediately = true
         field.target = self

@@ -2071,9 +2071,9 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         sidebarRevealButton.bezelStyle = .regularSquare
         sidebarRevealButton.imagePosition = .imageOnly
         sidebarRevealButton.imageScaling = .scaleProportionallyDown
-        sidebarRevealButton.image = NSImage(systemSymbolName: "chevron.right", accessibilityDescription: "Show sidebar")
+        sidebarRevealButton.image = NSImage(systemSymbolName: "chevron.right", accessibilityDescription: L10n.string("lx_sidebar_expand"))
         sidebarRevealButton.contentTintColor = LxAppHostTheme.mutedForeground
-        sidebarRevealButton.toolTip = "Show sidebar"
+        sidebarRevealButton.toolTip = L10n.string("lx_sidebar_expand")
         sidebarRevealButton.target = self
         sidebarRevealButton.action = #selector(sidebarRevealButtonClicked)
         sidebarRevealButton.isHidden = true

@@ -100,7 +100,7 @@ final class AsideTabBarView: NSView {
             separator.heightAnchor.constraint(equalToConstant: 1),
         ])
         setAccessibilityRole(.tabGroup)
-        setAccessibilityLabel("Tabs")
+        setAccessibilityLabel(L10n.string("lx_aside_page_tabs"))
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
