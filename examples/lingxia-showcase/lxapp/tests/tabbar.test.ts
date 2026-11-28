@@ -174,10 +174,10 @@ test('every tab page ends its content above the tab bar', { covers: ['view:scrol
   const view = t.app.view;
   const { inset } = await bars(t);
   const controls = 'button, input, select, textarea, checkbox, switch, slider, [role="button"], [role="link"]';
-  // The bar this platform shows: Surface is a desktop tab. Tabs are told apart by icon, whatever the language.
+  // The bar this platform shows: Desktop is a desktop-only tab. Tabs are told apart by icon, whatever the language.
   const known: Record<string, [string, string]> = {
     home: ['home', 'home-page'], api: ['api', 'api-page'], lab: ['view', 'view-index'], perf: ['perf-lab', 'perf-lab'],
-    todo: ['todo', 'todo-page'], surface: ['surface', 'surface-page'],
+    todo: ['todo', 'todo-page'], desktop: ['desktop', 'desktop-page'],
   };
   const shown = ((await t.app.info()).tabBar?.items ?? []).map((item) => {
     const icon = /tab-([a-z]+)\.svg$/.exec(item.iconPath ?? '')?.[1] ?? '';

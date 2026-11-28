@@ -31,7 +31,7 @@ export type ShowcasePage = (typeof SHOWCASE_PAGE_EXPECTATIONS)[number]['page'];
 
 export const SHOWCASE_PAGE_TITLES: Record<ShowcasePage, string> = {
   home: 'Home',
-  surface: 'Surface',
+  surface: 'Opened Page',
   feedback: 'Feedback',
   api: 'API',
   cloud: 'Cloud',

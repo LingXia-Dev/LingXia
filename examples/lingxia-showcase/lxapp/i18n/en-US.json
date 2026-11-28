@@ -723,6 +723,86 @@
     "defaultMessage": "Yes",
     "description": "A yes/no value."
   },
+  "desktop.app": {
+    "defaultMessage": "Another app beside this one",
+    "description": "Desktop card title."
+  },
+  "desktop.appLine": {
+    "defaultMessage": "Open Showcase Web in the aside, running next to this app.",
+    "description": "Desktop card line."
+  },
+  "desktop.appearance": {
+    "defaultMessage": "Light and dark",
+    "description": "Desktop card title."
+  },
+  "desktop.appearanceLine": {
+    "defaultMessage": "Switch the appearance and watch every window follow.",
+    "description": "Desktop card line."
+  },
+  "desktop.aside": {
+    "defaultMessage": "A web page beside this one",
+    "description": "Desktop card title."
+  },
+  "desktop.asideLine": {
+    "defaultMessage": "Open a web page in the aside, next to this page.",
+    "description": "Desktop card line."
+  },
+  "desktop.float": {
+    "defaultMessage": "A floating panel",
+    "description": "Desktop card title."
+  },
+  "desktop.floatLine": {
+    "defaultMessage": "Open a page in a panel over this one.",
+    "description": "Desktop card line."
+  },
+  "desktop.intro": {
+    "defaultMessage": "What only a desktop can do: more windows, floating panels, pages side by side, and the terminal.",
+    "description": "One line under the Desktop page's title."
+  },
+  "desktop.open": {
+    "defaultMessage": "Open",
+    "description": "Button on a Desktop demo card."
+  },
+  "desktop.openFailed": {
+    "defaultMessage": "This could not be opened here.",
+    "description": "Toast when a Desktop demo fails to open."
+  },
+  "desktop.said": {
+    "defaultMessage": "The page sent: {message}",
+    "description": "What the opened page sent back before closing; message = its text."
+  },
+  "desktop.tab": {
+    "defaultMessage": "A browser tab",
+    "description": "Desktop card title."
+  },
+  "desktop.tabLine": {
+    "defaultMessage": "Open a web page in a new browser tab.",
+    "description": "Desktop card line."
+  },
+  "desktop.terminal": {
+    "defaultMessage": "The terminal",
+    "description": "Desktop card title."
+  },
+  "desktop.terminalLine": {
+    "defaultMessage": "Open the built-in terminal.",
+    "description": "Desktop card line."
+  },
+  "desktop.toDark": {
+    "defaultMessage": "Switch to dark",
+    "description": "Desktop appearance button while light."
+  },
+  "desktop.toLight": {
+    "defaultMessage": "Switch to light",
+    "description": "Desktop appearance button while dark."
+  },
+  "desktop.window": {
+    "defaultMessage": "A new window",
+    "description": "Desktop card title."
+  },
+  "desktop.windowLine": {
+    "defaultMessage": "Open a page in its own window you can move and resize.",
+    "description": "Desktop card line."
+  },
   "device.brand": {
     "defaultMessage": "Brand",
     "description": "Text on the device page."
@@ -4123,9 +4203,25 @@
     "defaultMessage": "Appearance",
     "description": "Surface page row: the light or dark scheme this page renders in."
   },
+  "surface.close": {
+    "defaultMessage": "Close",
+    "description": "Button: close this window or panel."
+  },
+  "surface.dark": {
+    "defaultMessage": "Dark",
+    "description": "The page renders dark."
+  },
   "surface.fromOpener": {
-    "defaultMessage": "From opener",
-    "description": "Text on the surface page."
+    "defaultMessage": "From the opener",
+    "description": "Section title: messages the opening page sent."
+  },
+  "surface.fromOpenerLine": {
+    "defaultMessage": "Messages the page that opened this one has sent.",
+    "description": "Section line."
+  },
+  "surface.hide": {
+    "defaultMessage": "Hide",
+    "description": "Button: hide this window or panel."
   },
   "surface.hidePreservesThisCounter": {
     "defaultMessage": "Hide preserves this counter; close resets it on re-open.",
@@ -4139,21 +4235,41 @@
     "defaultMessage": "Increment",
     "description": "Text on the surface page."
   },
-  "surface.inspectTheQueryString": {
-    "defaultMessage": "Inspect the query string and send a message to the opener.",
-    "description": "Text on the surface page."
+  "surface.introFloat": {
+    "defaultMessage": "This page was opened as a floating panel. Close it, or hide it and reopen it from the Desktop tab.",
+    "description": "Intro of the opened page when it is a floating panel."
+  },
+  "surface.introPage": {
+    "defaultMessage": "This page was opened on top of another. Go back to leave it.",
+    "description": "Intro of the opened page when pushed onto the page stack."
+  },
+  "surface.introWindow": {
+    "defaultMessage": "This page was opened as a window. Close it, or hide it and reopen it from the Desktop tab.",
+    "description": "Intro of the opened page when it is a window."
   },
   "surface.lastEvent": {
     "defaultMessage": "Last event",
     "description": "Text on the surface page."
   },
+  "surface.light": {
+    "defaultMessage": "Light",
+    "description": "The page renders light."
+  },
   "surface.message": {
-    "defaultMessage": "Message",
-    "description": "Text on the surface page."
+    "defaultMessage": "Reply",
+    "description": "Section title: send a message back to the opener."
+  },
+  "surface.messageLine": {
+    "defaultMessage": "Send a message to the page that opened this one, then close.",
+    "description": "Section line."
   },
   "surface.messageToParentPage": {
     "defaultMessage": "Message to parent page",
     "description": "Text on the surface page."
+  },
+  "surface.none": {
+    "defaultMessage": "None",
+    "description": "Placeholder when there is no value."
   },
   "surface.onhide": {
     "defaultMessage": "onHide",
@@ -4167,17 +4283,29 @@
     "defaultMessage": "Page lifecycle",
     "description": "Text on the surface page."
   },
+  "surface.pageLifecycleLine": {
+    "defaultMessage": "Hiding and showing this page fires these hooks.",
+    "description": "Section line."
+  },
   "surface.queryString": {
-    "defaultMessage": "Query string",
-    "description": "Text on the surface page."
+    "defaultMessage": "Opened with",
+    "description": "Section title: the parameters the page was opened with."
+  },
+  "surface.queryStringLine": {
+    "defaultMessage": "The parameters the opener passed to this page.",
+    "description": "Section line."
   },
   "surface.received": {
     "defaultMessage": "Received",
     "description": "Text on the surface page."
   },
   "surface.selfActions": {
-    "defaultMessage": "Self actions",
-    "description": "Text on the surface page."
+    "defaultMessage": "Hide or close",
+    "description": "Section title."
+  },
+  "surface.selfActionsLine": {
+    "defaultMessage": "Hiding keeps this page as it is; closing ends it.",
+    "description": "Section line."
   },
   "surface.sendThenClose": {
     "defaultMessage": "Send then close",
@@ -4427,16 +4555,16 @@
     "defaultMessage": "API",
     "description": "Tab bar label."
   },
+  "tab.desktop": {
+    "defaultMessage": "Desktop",
+    "description": "Tab bar label of the Desktop tab, shown only on desktop."
+  },
   "tab.home": {
     "defaultMessage": "Home",
     "description": "Tab bar label."
   },
   "tab.perfLab": {
     "defaultMessage": "Perf",
-    "description": "Tab bar label."
-  },
-  "tab.surface": {
-    "defaultMessage": "Surface",
     "description": "Tab bar label."
   },
   "tab.todo": {
@@ -4462,6 +4590,10 @@
   "title.cloud": {
     "defaultMessage": "Cloud",
     "description": "Navigation bar title of the cloud page."
+  },
+  "title.desktop": {
+    "defaultMessage": "Desktop",
+    "description": "Navigation bar title of the Desktop page."
   },
   "title.device": {
     "defaultMessage": "Device",
@@ -4544,8 +4676,8 @@
     "description": "Navigation bar title of the stream page."
   },
   "title.surface": {
-    "defaultMessage": "Surface",
-    "description": "Navigation bar title of the surface page."
+    "defaultMessage": "Opened Page",
+    "description": "Navigation bar title of the page the Desktop demos open."
   },
   "title.system": {
     "defaultMessage": "System",

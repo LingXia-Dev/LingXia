@@ -1,7 +1,7 @@
 {
   "appId": "lingxia-showcase",
   "appName": "LingXia Showcase",
-  "version": "1.7.12",
+  "version": "1.7.13",
   "minRuntime": "0.31.0",
   "languages": [
     "en-US",
@@ -23,6 +23,10 @@
     {
       "name": "surface",
       "path": "pages/surface/index"
+    },
+    {
+      "name": "desktop",
+      "path": "pages/desktop/index"
     },
     {
       "name": "list-and-detail",
@@ -245,10 +249,10 @@
       },
       {
         "text": {
-          "message": "tab.surface"
+          "message": "tab.desktop"
         },
-        "page": "surface",
-        "iconPath": "public/tab-surface.svg",
+        "page": "desktop",
+        "iconPath": "public/tab-desktop.svg",
         "showOn": [
           "desktop"
         ]

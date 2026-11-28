@@ -62,8 +62,7 @@ test('exchange messages over the port navigateTo returns', {
   // `surface`, and Windows CI has taken >10s to create that WebView and fire
   // onReady (the page was already current). Match the other cold-nav specs.
   await waitForCurrentPage(app, 'surface', 30_000);
-  // `surface` is also a desktop tab page, so bind the pushed instance (the
-  // current page) rather than select it by name.
+  // Bind the pushed instance (the current page): another `surface` may be open as a window.
   const surface = (await app.page()).view;
   await surface.testId('surface-page').waitFor({ state: 'visible', timeout: 30_000 });
   const port = await eventually(

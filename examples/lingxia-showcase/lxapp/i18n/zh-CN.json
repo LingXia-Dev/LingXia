@@ -542,6 +542,66 @@
   "common.yes": {
     "defaultMessage": "是"
   },
+  "desktop.app": {
+    "defaultMessage": "并排另一个应用"
+  },
+  "desktop.appLine": {
+    "defaultMessage": "在侧栏中打开 Showcase Web，与本应用同时运行。"
+  },
+  "desktop.appearance": {
+    "defaultMessage": "浅色与深色"
+  },
+  "desktop.appearanceLine": {
+    "defaultMessage": "切换外观，所有窗口随之变化。"
+  },
+  "desktop.aside": {
+    "defaultMessage": "并排网页"
+  },
+  "desktop.asideLine": {
+    "defaultMessage": "在侧栏中打开网页，与本页并排。"
+  },
+  "desktop.float": {
+    "defaultMessage": "浮动面板"
+  },
+  "desktop.floatLine": {
+    "defaultMessage": "在本页上方的面板中打开页面。"
+  },
+  "desktop.intro": {
+    "defaultMessage": "只有桌面才能做到：多个窗口、浮动面板、并排页面和终端。"
+  },
+  "desktop.open": {
+    "defaultMessage": "打开"
+  },
+  "desktop.openFailed": {
+    "defaultMessage": "此处无法打开。"
+  },
+  "desktop.said": {
+    "defaultMessage": "页面发来：{message}"
+  },
+  "desktop.tab": {
+    "defaultMessage": "浏览器标签页"
+  },
+  "desktop.tabLine": {
+    "defaultMessage": "在新的浏览器标签页中打开网页。"
+  },
+  "desktop.terminal": {
+    "defaultMessage": "终端"
+  },
+  "desktop.terminalLine": {
+    "defaultMessage": "打开内置终端。"
+  },
+  "desktop.toDark": {
+    "defaultMessage": "切换到深色"
+  },
+  "desktop.toLight": {
+    "defaultMessage": "切换到浅色"
+  },
+  "desktop.window": {
+    "defaultMessage": "新窗口"
+  },
+  "desktop.windowLine": {
+    "defaultMessage": "在可移动、可调整大小的独立窗口中打开页面。"
+  },
   "device.brand": {
     "defaultMessage": "品牌"
   },
@@ -3092,8 +3152,20 @@
   "surface.appearance": {
     "defaultMessage": "外观"
   },
+  "surface.close": {
+    "defaultMessage": "关闭"
+  },
+  "surface.dark": {
+    "defaultMessage": "深色"
+  },
   "surface.fromOpener": {
     "defaultMessage": "来自打开者"
+  },
+  "surface.fromOpenerLine": {
+    "defaultMessage": "打开本页的页面发来的消息。"
+  },
+  "surface.hide": {
+    "defaultMessage": "隐藏"
   },
   "surface.hidePreservesThisCounter": {
     "defaultMessage": "隐藏会保留计数；关闭后重新打开会重置。"
@@ -3104,17 +3176,32 @@
   "surface.increment": {
     "defaultMessage": "加一"
   },
-  "surface.inspectTheQueryString": {
-    "defaultMessage": "查看查询字符串，并向打开者发送消息。"
+  "surface.introFloat": {
+    "defaultMessage": "此页面以浮动面板打开。可以关闭它，或隐藏后从“桌面”标签页重新打开。"
+  },
+  "surface.introPage": {
+    "defaultMessage": "此页面打开在另一个页面之上。返回即可离开。"
+  },
+  "surface.introWindow": {
+    "defaultMessage": "此页面以窗口打开。可以关闭它，或隐藏后从“桌面”标签页重新打开。"
   },
   "surface.lastEvent": {
     "defaultMessage": "最近事件"
   },
+  "surface.light": {
+    "defaultMessage": "浅色"
+  },
   "surface.message": {
-    "defaultMessage": "消息"
+    "defaultMessage": "回复"
+  },
+  "surface.messageLine": {
+    "defaultMessage": "向打开本页的页面发送消息，然后关闭。"
   },
   "surface.messageToParentPage": {
     "defaultMessage": "发给父页面的消息"
+  },
+  "surface.none": {
+    "defaultMessage": "无"
   },
   "surface.onhide": {
     "defaultMessage": "onHide"
@@ -3125,14 +3212,23 @@
   "surface.pageLifecycle": {
     "defaultMessage": "页面生命周期"
   },
+  "surface.pageLifecycleLine": {
+    "defaultMessage": "隐藏和显示本页会触发这些回调。"
+  },
   "surface.queryString": {
-    "defaultMessage": "查询字符串"
+    "defaultMessage": "打开参数"
+  },
+  "surface.queryStringLine": {
+    "defaultMessage": "打开者传给本页的参数。"
   },
   "surface.received": {
     "defaultMessage": "已收到"
   },
   "surface.selfActions": {
-    "defaultMessage": "自身操作"
+    "defaultMessage": "隐藏或关闭"
+  },
+  "surface.selfActionsLine": {
+    "defaultMessage": "隐藏会保留本页当前状态；关闭则结束它。"
   },
   "surface.sendThenClose": {
     "defaultMessage": "发送并关闭"
@@ -3320,14 +3416,14 @@
   "tab.api": {
     "defaultMessage": "接口"
   },
+  "tab.desktop": {
+    "defaultMessage": "桌面"
+  },
   "tab.home": {
     "defaultMessage": "首页"
   },
   "tab.perfLab": {
     "defaultMessage": "性能"
-  },
-  "tab.surface": {
-    "defaultMessage": "窗口"
   },
   "tab.todo": {
     "defaultMessage": "待办"
@@ -3346,6 +3442,9 @@
   },
   "title.cloud": {
     "defaultMessage": "云服务"
+  },
+  "title.desktop": {
+    "defaultMessage": "桌面"
   },
   "title.device": {
     "defaultMessage": "设备"
@@ -3408,7 +3507,7 @@
     "defaultMessage": "流"
   },
   "title.surface": {
-    "defaultMessage": "窗口"
+    "defaultMessage": "打开的页面"
   },
   "title.system": {
     "defaultMessage": "系统"

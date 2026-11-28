@@ -1,0 +1,8 @@
+{
+  "pageOrientation": "auto",
+  "navigationBar": {
+    "title": {
+      "message": "title.desktop"
+    }
+  }
+}

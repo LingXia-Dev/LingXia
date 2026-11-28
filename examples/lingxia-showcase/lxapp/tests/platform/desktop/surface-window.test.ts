@@ -575,11 +575,13 @@ test('the product appearance switches every window together', {
   t.defer(() => closeKeyedSurface(app, key));
   await openWindow(app, 'system', key);
   const { view: other } = await waitForSurfacePage(app, key, 0);
-  await expect(other.testId('surface-appearance')).toHaveText('light');
+  // The run is in en-US: the row names the scheme in words.
+  const word = { light: 'Light', dark: 'Dark' } as const;
+  await expect(other.testId('surface-appearance')).toHaveText(word.light);
 
   for (const look of ['dark', 'light'] as const) {
     await app.logic.eval(({ lx }, look) => lx.host.appearancePreference.set(look), look);
-    await expect(other.testId('surface-appearance'), `the other window in ${look}`).toHaveText(look);
+    await expect(other.testId('surface-appearance'), `the other window in ${look}`).toHaveText(word[look]);
     await expect(main, `the main window in ${look}`).toHaveAttribute('data-state', new RegExp(`theme=${look}$`));
   }
 });

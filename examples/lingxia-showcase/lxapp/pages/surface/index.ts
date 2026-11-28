@@ -13,6 +13,9 @@ export default definePage({
     // Messages the opener pushed down through its PageSurface / PageMessagePort.
     inboundCount: 0,
     lastInbound: "",
+    /** How this page is shown: as a window or float it was opened with `lx.surface.open`. */
+    placement: "page" as "page" | "window" | "float",
+    hasOpener: false,
   },
   setup(page) {
     let offInbound = [] as (() => void)[];
@@ -81,7 +84,11 @@ export default definePage({
           ? entries.map(({ key, value }) => `${key}=${value}`).join("&")
           : "";
 
-        page.update(d => { d.queryString = queryString; });
+        page.update(d => {
+          d.queryString = queryString;
+          d.placement = page.surface?.realized ?? "page";
+          d.hasOpener = page.opener !== undefined;
+        });
         helpers.listenInbound();
       },
       onUnload() {
