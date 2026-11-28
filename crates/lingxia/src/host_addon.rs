@@ -116,7 +116,18 @@ pub struct Host<A: HostAddon + 'static>(Arc<A>);
 
 impl<A: HostAddon + 'static> Host<A> {
     #[doc(hidden)]
-    pub fn __acquire() -> crate::Result<Self> {
+    pub fn __acquire(invocation: &crate::host::HostInvocationContext) -> crate::Result<Self> {
+        #[cfg(feature = "testing")]
+        if let Some(addon) = invocation.lxapp().__test_value::<A>() {
+            return Ok(Self(addon));
+        }
+        #[cfg(not(feature = "testing"))]
+        let _ = invocation;
+        Self::registered()
+    }
+
+    /// The addon `lingxia::host!` registered.
+    fn registered() -> crate::Result<Self> {
         HOSTS
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -201,12 +212,18 @@ macro_rules! host {
                 #[allow(unexpected_cfgs)]
                 #[cfg(feature = "devtools")]
                 $crate::register_host_addon(::std::boxed::Box::new(__LingxiaDevSession));
-                fn install_routes() {
-                    __lingxia_native::install();
-                    $(::$krate::__lingxia_install();)*
-                }
                 let addon: $addon = $value;
-                $crate::__register_host(addon, install_routes)
+                $crate::__register_host(addon, __lingxia_install_routes)
+            });
+        }
+
+        /// This crate's routes, then each listed crate's; `lingxia::test_host!` installs them too.
+        #[doc(hidden)]
+        pub fn __lingxia_install_routes() {
+            static INSTALLED: ::std::sync::Once = ::std::sync::Once::new();
+            INSTALLED.call_once(|| {
+                __lingxia_native::install();
+                $(::$krate::__lingxia_install_routes();)*
             });
         }
 
@@ -448,9 +465,9 @@ mod host_tests {
     #[test]
     fn a_route_reaches_the_registered_addon_by_its_type() {
         __register_host(CountingHost { limit: 7 }, || {});
-        let host = Host::<CountingHost>::__acquire().expect("registered addon");
+        let host = Host::<CountingHost>::registered().expect("registered addon");
         assert_eq!(host.limit, 7);
-        let missing = Host::<UnregisteredHost>::__acquire()
+        let missing = Host::<UnregisteredHost>::registered()
             .err()
             .expect("an addon no host! registered");
         assert_eq!(missing.code(), "E_NOT_FOUND");

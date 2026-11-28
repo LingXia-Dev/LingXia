@@ -46,7 +46,7 @@ tokio = { workspace = true }
 tungstenite = { version = "0.30", optional = true, default-features = false, features = ["handshake", "rustls-tls-webpki-roots"] }
 
 [target.'cfg(target_vendor = "apple")'.dev-dependencies]
-swift-bridge = "0.1.59"
+lingxia-platform = { workspace = true, features = ["testing"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 lingxia-automation = { workspace = true, optional = true, features = ["runtime"] }

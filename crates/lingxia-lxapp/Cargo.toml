@@ -19,6 +19,8 @@ automation = []
 dev-bundles = []
 # Test-only constructors for exercising native caller matrices across crates.
 test-utils = []
+# Rust route tests: a real session per test. Turned on only by `lingxia/testing`.
+testing = []
 # Attribute Logic and transfer traffic to its lxapp in Rong's network
 # observer. Development hosts only (the automation test runtime).
 network-observer = [
@@ -121,7 +123,7 @@ rong_http = { workspace = true, default-features = false, features = ["tls-aws-l
 rong_rt = { workspace = true, default-features = false, features = ["tls-aws-lc"] }
 
 [target.'cfg(target_vendor = "apple")'.dev-dependencies]
-swift-bridge = "0.1.59"
+lingxia-platform = { workspace = true, features = ["testing"] }
 
 [dev-dependencies]
 tempfile = "3"

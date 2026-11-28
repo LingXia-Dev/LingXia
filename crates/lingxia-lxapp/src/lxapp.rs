@@ -1355,6 +1355,9 @@ pub struct LxApp {
 
     /// `LxAppState<T>` values, dropped where Logic is terminated.
     pub(crate) lxapp_states: crate::host::LxAppStates,
+    /// Values a test session provides in place of host-wide ones.
+    #[cfg(feature = "testing")]
+    pub(crate) test_values: Mutex<Vec<Arc<dyn std::any::Any + Send + Sync>>>,
 }
 
 /// Unique id for a single LxApp runtime session within the process.
@@ -1573,6 +1576,20 @@ impl LxApp {
             .get()
             .and_then(Weak::upgrade)
             .expect("LxApp Arc binding missing")
+    }
+
+    /// The value of type `T` a test session provided, if any.
+    #[doc(hidden)]
+    #[cfg(feature = "testing")]
+    pub fn __test_value<T: std::any::Any + Send + Sync>(&self) -> Option<Arc<T>> {
+        let values = self
+            .test_values
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        values
+            .iter()
+            .rev()
+            .find_map(|value| Arc::clone(value).downcast::<T>().ok())
     }
 
     pub(crate) fn bind_arc(self: &Arc<Self>) {
@@ -2474,6 +2491,8 @@ impl LxApp {
             document_start_scripts: Mutex::new(Vec::new()),
             page_scripts: Mutex::new(Vec::new()),
             lxapp_states: Default::default(),
+            #[cfg(feature = "testing")]
+            test_values: Mutex::new(Vec::new()),
         }
     }
 
@@ -2544,7 +2563,7 @@ impl LxApp {
         Ok(app)
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "testing"))]
     pub(crate) fn new_with_session_class_for_test(
         appid: String,
         runtime: Arc<Platform>,
@@ -2564,7 +2583,7 @@ impl LxApp {
 
     /// Approve public network and every privilege class, as home / default would.
     /// Test apps skip `setup`, so their grant would otherwise deny.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "testing"))]
     pub(crate) fn approve_unrestricted_permissions_for_test(&mut self) {
         self.host_permissions =
             permissions::HostPermissions::start(&self.appid, self.release_type.into(), true);

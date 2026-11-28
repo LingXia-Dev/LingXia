@@ -6,9 +6,6 @@
 
 extern crate self as lingxia;
 
-#[cfg(all(test, target_vendor = "apple"))]
-#[path = "../../lingxia-platform/tests/support/apple_host_stubs.rs"]
-mod apple_host_stubs;
 
 mod address_bar;
 mod bookmarks;
@@ -114,7 +111,7 @@ lingxia_native_macros::routes!();
 
 #[doc(hidden)]
 pub fn register_route_inventory() {
-    __lingxia_install();
+    __lingxia_install_routes();
 }
 
 #[doc(hidden)]

@@ -10,6 +10,8 @@ categories = ["web-programming", "api-bindings"]
 
 [features]
 default = ["standard"]
+# Route tests (`lingxia::test_host!`): a dev-dependency feature; `lingxia build` refuses it.
+testing = ["lxapp/testing", "lingxia-platform/testing"]
 standard = ["lxapp/standard", "lxapp/rejection-tracking", "dep:lingxia-logic"]
 automation = ["dep:lingxia-automation", "dep:base64"]
 # Sessionless local-OS automation is an explicit host capability; the base JS
@@ -116,6 +118,13 @@ base64 = { workspace = true }
 [build-dependencies]
 swift-bridge-build = "0.1.59"
 napi-build-ohos = "1.2.0"
+
+[target.'cfg(target_vendor = "apple")'.dev-dependencies]
+lingxia-platform = { workspace = true, features = ["testing"] }
+
+[[test]]
+name = "test_host"
+required-features = ["testing"]
 
 [dev-dependencies]
 anyhow = "1.0"

@@ -39,7 +39,8 @@ pub fn route_defaults(input: TokenStream) -> TokenStream {
 }
 
 /// `lingxia::routes!()` at a library crate's root: includes the registry its `build.rs`
-/// writes and exports the `__lingxia_install` a host's `host!(…, routes = [..])` calls.
+/// writes and exports the `__lingxia_install_routes` that `host!(…, routes = [..])` and
+/// `lingxia::test_host!` call.
 #[proc_macro]
 pub fn routes(input: TokenStream) -> TokenStream {
     if !input.is_empty() {
@@ -54,7 +55,7 @@ pub fn routes(input: TokenStream) -> TokenStream {
         include!(concat!(env!("OUT_DIR"), "/lingxia_native_handlers.rs"));
 
         #[doc(hidden)]
-        pub fn __lingxia_install() {
+        pub fn __lingxia_install_routes() {
             static INSTALLED: ::std::sync::Once = ::std::sync::Once::new();
             INSTALLED.call_once(__lingxia_native::install);
         }
@@ -441,7 +442,11 @@ impl Plan {
                     let ident = format_ident!("__lingxia_host_{index}");
                     let ty = quote! { ::lingxia::Host<#addon_ty> };
                     let ty: Type = syn::parse_quote!(#ty);
-                    prelude.push(self.bind(&ident, &ty, quote! { <#ty>::__acquire() }));
+                    prelude.push(self.bind(
+                        &ident,
+                        &ty,
+                        quote! { <#ty>::__acquire(&__lingxia_invocation) },
+                    ));
                     call_args.push(quote! { #ident });
                 }
                 Param::PageState(state_ty) => {
@@ -706,7 +711,7 @@ mod tests {
             "{out}"
         );
         assert!(
-            out.contains("<::lingxia::Host<App>>::__acquire()?"),
+            out.contains("<::lingxia::Host<App>>::__acquire(&__lingxia_invocation)?"),
             "{out}"
         );
         assert!(

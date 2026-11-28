@@ -23,6 +23,9 @@ mod macros;
 mod device;
 mod lxapp_state;
 pub(crate) use lxapp_state::LxAppStates;
+#[cfg(feature = "testing")]
+#[doc(hidden)]
+pub mod testing;
 pub use lxapp_state::{FromLxApp, LxAppState};
 pub mod page_state;
 pub use page_state::{PageCallGuard, PageState, clear_page_state, track_page_call};

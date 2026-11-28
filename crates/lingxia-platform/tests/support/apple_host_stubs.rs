@@ -1,7 +1,7 @@
-//! Link-only Swift host substitutes for standalone Rust unit-test binaries.
+//! Link-only Swift host substitutes for standalone Rust test binaries.
 //! Route metadata retains handlers that reference the host even when tests do
-//! not invoke them. Unmodeled host calls fail immediately. Include this module
-//! only under `cfg(all(test, target_vendor = "apple"))`.
+//! not invoke them. Unmodeled host calls fail immediately. Compiled only with
+//! this crate's `testing` feature on Apple targets.
 
 use swift_bridge::string::{RustStr, RustString};
 
@@ -24,7 +24,7 @@ macro_rules! host_stub {
 // Opt-in headless lifecycle model. Other tests still fail on unexpected UI calls.
 thread_local! { static HEADLESS_LIFECYCLE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) }; }
 #[allow(dead_code)]
-pub(crate) fn headless_lifecycle() -> impl Drop {
+pub fn headless_lifecycle() -> impl Drop {
     struct Reset;
     impl Drop for Reset {
         fn drop(&mut self) {

@@ -1,6 +1,3 @@
-#[cfg(all(test, target_vendor = "apple"))]
-#[path = "../../lingxia-platform/tests/support/apple_host_stubs.rs"]
-mod apple_host_stubs;
 pub mod page;
 
 mod automation;

@@ -19,10 +19,6 @@
 
 extern crate self as lingxia;
 
-#[cfg(all(test, target_vendor = "apple"))]
-#[path = "../../lingxia-platform/tests/support/apple_host_stubs.rs"]
-mod apple_host_stubs;
-
 pub use host_addon::Host;
 pub use host_addon::{__register_host, HostAddon, register_host_addon};
 pub use lingxia_native_macros::FromLxApp;
@@ -153,6 +149,9 @@ pub mod product_cli;
 /// Host app metadata, state-path helpers, and lifecycle helpers.
 pub mod app;
 mod terminal_automation;
+/// Route tests on plain `cargo test`: [`test_host!`] gives a [`testing::TestHost`].
+#[cfg(feature = "testing")]
+pub mod testing;
 pub use app::{home_app_id, lingxia_id, product_version};
 pub use lxapp::lingxia_surface::SizeClass;
 /// Where an lxapp is presented (main or aside) and whether the user can see

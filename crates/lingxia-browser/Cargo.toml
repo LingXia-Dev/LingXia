@@ -35,4 +35,4 @@ lingxia-webview = { workspace = true, features = ["test-support"] }
 lxapp = { workspace = true, default-features = false, features = ["test-utils"] }
 
 [target.'cfg(target_vendor = "apple")'.dev-dependencies]
-swift-bridge = "0.1.59"
+lingxia-platform = { workspace = true, features = ["testing"] }

@@ -43,7 +43,7 @@ lingxia-proxy = { workspace = true, features = ["rule-list-routing"], optional =
 tempfile = "3"
 
 [target.'cfg(target_vendor = "apple")'.dev-dependencies]
-swift-bridge = "0.1.59"
+lingxia-platform = { workspace = true, features = ["testing"] }
 
 [build-dependencies]
 lingxia-native-codegen = { workspace = true }

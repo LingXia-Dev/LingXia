@@ -4,6 +4,12 @@
 
 use std::io::Read;
 
+/// Link-only Swift host substitutes, so a Rust test binary links on Apple targets.
+#[cfg(all(feature = "testing", target_vendor = "apple"))]
+#[doc(hidden)]
+#[path = "../tests/support/apple_host_stubs.rs"]
+pub mod apple_host_stubs;
+
 /// Asset file entry with reader for streaming content
 pub struct AssetFileEntry<'a> {
     pub path: String,
