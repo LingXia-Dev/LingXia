@@ -65,8 +65,8 @@ capabilities:
 #       package: '@lingxia/terminal-settings'
 
 # Paths relative to the host project root; image/mark must be PNG.
+# The splash ground is the image's edge colour; without an image, the theme's canvas.
 # splash:
-#   background: "#171C22"
 #   image: design/splash.png
 #   mark: design/splash-mark.png
 #   minDuration: 600

@@ -185,8 +185,10 @@ impl IosPlatform {
         let splash = config
             .lingxia_config
             .as_ref()
-            .and_then(|c| c.splash.as_ref())
-            .map(|splash| crate::splash::ResolvedSplash::resolve(&config.project_root, splash))
+            .and_then(|c| Some((c.splash.as_ref()?, c.theme.as_ref().and_then(|t| t.id()))))
+            .map(|(splash, theme_id)| {
+                crate::splash::ResolvedSplash::resolve(&config.project_root, splash, theme_id)
+            })
             .transpose()?;
         let bundle_config = AppBundleConfig {
             bundle_id,
@@ -195,7 +197,7 @@ impl IosPlatform {
             swift_product_name,
             deployment_target,
             info_plist_path: info_plist,
-            splash_background: splash.as_ref().map(|s| s.background().to_string()),
+            splash_ground: splash.as_ref().map(|s| s.ground().clone()),
             product_version: app_config.product_version.clone(),
         };
 
@@ -412,8 +414,16 @@ impl Platform for IosPlatform {
             .and_then(|c| c.splash.as_ref());
         let resources_for_compile = match splash_config {
             Some(splash_config) => {
-                let resolved =
-                    crate::splash::ResolvedSplash::resolve(&config.project_root, splash_config)?;
+                let theme_id = config
+                    .lingxia_config
+                    .as_ref()
+                    .and_then(|c| c.theme.as_ref())
+                    .and_then(|t| t.id());
+                let resolved = crate::splash::ResolvedSplash::resolve(
+                    &config.project_root,
+                    splash_config,
+                    theme_id,
+                )?;
                 // Also install the images as plain bundle resources: the
                 // runtime overlay reads those, so it survives an actool
                 // failure that would leave the compiled catalog missing.

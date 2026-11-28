@@ -24,7 +24,9 @@
 //!   background image, and a blanked icon slot, synced into the committed
 //!   entry module.
 //!
-//! One face, drawn in every appearance — see the `splash:` reference for why.
+//! The art is one face in every appearance. The ground is the art's edge
+//! colour; without art, the host theme's `canvas`, light and dark, so the
+//! launch lands on the first page's own floor.
 //!
 //! The resource names are looked up at runtime by the SDK splash overlay, so
 //! generation here is the single source of truth for them.
@@ -50,9 +52,8 @@ pub const ANDROID_SPLASH_THEME: &str = "Theme.LingXia.Splash";
 /// bucket can flip it without redeclaring the style.
 pub const ANDROID_LIGHT_BARS_RES: &str = "lingxia_splash_light_bars";
 
-/// The ground in the asset catalog, for the SDK overlay's fallback lookup.
-/// One universal entry: the fixed face must resolve identically in every
-/// appearance.
+/// The ground in the asset catalog, light and dark, for the SDK overlay's
+/// fallback lookup.
 pub const APPLE_COLOR_ASSET: &str = "LingXiaSplashBackground";
 /// The launch storyboard in the app, named by `UILaunchStoryboardName`.
 pub const APPLE_LAUNCH_STORYBOARD: &str = "LingXiaLaunchScreen";
@@ -67,16 +68,28 @@ const HARMONY_MARK_RES: &str = "lingxia_splash_mark";
 const HARMONY_BLANK_RES: &str = "lingxia_splash_blank";
 const HARMONY_IMAGE_RES: &str = "lingxia_splash";
 
-/// The launch face, resolved against the project root: images loaded, colors
-/// normalized to `#RRGGBB`. The ground, and the two images drawn on it.
+/// The launch ground: the host theme's canvas in each appearance, as `#RRGGBB`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Ground {
+    pub light: String,
+    pub dark: String,
+}
+
+/// The launch face, resolved against the project root: images loaded, the
+/// ground taken from the host theme. The ground, and the two images drawn on it.
 pub struct ResolvedSplash {
     image: Option<DynamicImage>,
     mark: Option<DynamicImage>,
-    background: String,
+    ground: Ground,
 }
 
 impl ResolvedSplash {
-    pub fn resolve(project_root: &Path, config: &SplashConfig) -> Result<Self> {
+    /// `theme_id` is `lingxia.yaml`'s `theme:`, naming one of `themes/<id>.json`.
+    pub fn resolve(
+        project_root: &Path,
+        config: &SplashConfig,
+        theme_id: Option<&str>,
+    ) -> Result<Self> {
         let open = |rel: &Option<String>, what: &str| -> Result<Option<DynamicImage>> {
             match rel {
                 Some(rel) => {
@@ -89,17 +102,25 @@ impl ResolvedSplash {
             }
         };
 
+        let image = open(&config.image, "image")?;
+        // Art fills the screen, so the ground has to be its own edge or the art lands as a flash.
+        let ground = match image.as_ref().and_then(edge_color) {
+            Some(edge) => Ground {
+                light: edge.clone(),
+                dark: edge,
+            },
+            None => host_ground(project_root, theme_id)?,
+        };
         Ok(Self {
-            image: open(&config.image, "image")?,
+            image,
             mark: open(&config.mark, "mark")?,
-            background: normalize_hex_rgb(&config.background)
-                .with_context(|| "Invalid splash.background".to_string())?,
+            ground,
         })
     }
 
     /// The ground every launch frame is painted with.
-    pub fn background(&self) -> &str {
-        &self.background
+    pub fn ground(&self) -> &Ground {
+        &self.ground
     }
 
     pub fn has_image(&self) -> bool {
@@ -109,6 +130,56 @@ impl ResolvedSplash {
     pub fn has_mark(&self) -> bool {
         self.mark.is_some()
     }
+}
+
+/// The dominant colour of the image's outer border, as `#RRGGBB`; `None` when the border is
+/// transparent. Colours are bucketed so noise and gradients still yield one ground.
+fn edge_color(image: &DynamicImage) -> Option<String> {
+    use std::collections::HashMap;
+    let rgba = image.to_rgba8();
+    let (w, h) = rgba.dimensions();
+    if w == 0 || h == 0 {
+        return None;
+    }
+    let band = (w.min(h) / 50).max(1);
+    let mut buckets: HashMap<[u8; 3], (u64, [u64; 3])> = HashMap::new();
+    for (x, y, pixel) in rgba.enumerate_pixels() {
+        let edge = x < band || y < band || x >= w - band || y >= h - band;
+        let [r, g, b, a] = pixel.0;
+        if !edge || a < 128 {
+            continue;
+        }
+        let entry = buckets.entry([r >> 4, g >> 4, b >> 4]).or_default();
+        entry.0 += 1;
+        for (sum, value) in entry.1.iter_mut().zip([r, g, b]) {
+            *sum += u64::from(value);
+        }
+    }
+    let (count, sums) = buckets.into_values().max_by_key(|(count, _)| *count)?;
+    let [r, g, b] = sums.map(|sum| (sum / count) as u8);
+    Some(format!("#{r:02X}{g:02X}{b:02X}"))
+}
+
+/// The host theme's canvas, light and dark; the built-in theme's without one.
+fn host_ground(project_root: &Path, theme_id: Option<&str>) -> Result<Ground> {
+    let pack = match crate::theme::host_theme(project_root, theme_id)? {
+        Some(pack) => pack,
+        None => crate::theme::load(None)?,
+    };
+    let canvas = |appearance| -> Result<String> {
+        let prefs = lingxia_theme::Prefs {
+            appearance,
+            ..Default::default()
+        };
+        let theme = lingxia_theme::resolve(&pack, &prefs)
+            .map_err(|error| anyhow!("the host theme does not resolve: {error}"))?;
+        normalize_hex_rgb(&theme.color(lingxia_theme::Role::Canvas).hex())
+            .context("the host theme's canvas is the launch ground, so it must be opaque")
+    };
+    Ok(Ground {
+        light: canvas(lingxia_theme::Appearance::Light)?,
+        dark: canvas(lingxia_theme::Appearance::Dark)?,
+    })
 }
 
 /// Normalize `#RGB` / `#RRGGBB` to uppercase `#RRGGBB`. Alpha is rejected —
@@ -182,7 +253,8 @@ fn write_if_changed(dest: &Path, content: &[u8]) -> Result<bool> {
 /// deliberately not staged — on API 31+ the icon slot belongs to the real app
 /// icon, whose launcher-zoom morph the OS composes.
 ///
-/// One bucket, so the frame is the same picture in every appearance.
+/// The art in one bucket; the ground and bar lightness in `values` and
+/// `values-night`, which the style's references resolve per appearance.
 pub fn stage_android_res(splash: &ResolvedSplash, res_dir: &Path) -> Result<()> {
     if let Some(image) = &splash.image {
         save_png(
@@ -200,13 +272,27 @@ pub fn stage_android_res(splash: &ResolvedSplash, res_dir: &Path) -> Result<()> 
     </style>
 </resources>
 "#,
-        background = splash.background,
-        light_bars = is_light_ground(&splash.background)?,
+        background = splash.ground.light,
+        light_bars = is_light_ground(&splash.ground.light)?,
         bars = android_bar_items(),
     );
     let values_path = res_dir.join("values/lingxia_splash.xml");
     fs::create_dir_all(values_path.parent().unwrap())?;
     fs::write(&values_path, values)?;
+    // Values only: a second style declaration here would be a duplicate, not an override.
+    let night = format!(
+        r#"<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="{ANDROID_COLOR_RES}">{background}</color>
+    <bool name="{ANDROID_LIGHT_BARS_RES}">{light_bars}</bool>
+</resources>
+"#,
+        background = splash.ground.dark,
+        light_bars = is_light_ground(&splash.ground.dark)?,
+    );
+    let night_path = res_dir.join("values-night/lingxia_splash.xml");
+    fs::create_dir_all(night_path.parent().unwrap())?;
+    fs::write(&night_path, night)?;
 
     // API 31+: the system splash window takes over the launch frame and cannot
     // render the cover, so what belongs in its icon slot depends on whether a
@@ -366,15 +452,11 @@ fn apple_launch_variant(splash: &ResolvedSplash) -> &'static str {
 /// overlay does and what HarmonyOS's start window does with
 /// `startWindowBackgroundImageFit: Cover`.
 pub fn install_apple_launch_screen(app_bundle: &Path, splash: &ResolvedSplash) -> Result<()> {
-    // Solid, so any size stretches to the same picture.
-    const GROUND_PX: u32 = 16;
-    let [r, g, b, _] = crate::appicon::parse_hex_color(splash.background())?;
-    let ground = DynamicImage::ImageRgb8(image::RgbImage::from_pixel(
-        GROUND_PX,
-        GROUND_PX,
-        image::Rgb([r, g, b]),
-    ));
-    save_png(&ground, &app_bundle.join(APPLE_BUNDLE_GROUND))?;
+    // The light ground; the catalog's image set of the same name adds the dark one.
+    save_png(
+        &ground_png(&splash.ground.light)?,
+        &app_bundle.join(APPLE_BUNDLE_GROUND),
+    )?;
     let variant = apple_launch_variant(splash);
     if variant == "mark"
         && let Some(mark) = &splash.mark
@@ -402,6 +484,17 @@ pub fn install_apple_launch_screen(app_bundle: &Path, splash: &ResolvedSplash) -
     plist::to_file_xml(&path, &info).context("Failed to write Info.plist for the launch face")
 }
 
+/// A small solid image of `hex_rgb`, which any size stretches to the same picture.
+fn ground_png(hex_rgb: &str) -> Result<DynamicImage> {
+    const GROUND_PX: u32 = 16;
+    let [r, g, b, _] = crate::appicon::parse_hex_color(hex_rgb)?;
+    Ok(DynamicImage::ImageRgb8(image::RgbImage::from_pixel(
+        GROUND_PX,
+        GROUND_PX,
+        image::Rgb([r, g, b]),
+    )))
+}
+
 /// Write an embedded directory's files under `dest`, relative to `root`.
 fn write_embedded_dir(dir: &include_dir::Dir<'_>, root: &Path, dest: &Path) -> Result<()> {
     fs::create_dir_all(dest)?;
@@ -416,23 +509,51 @@ fn write_embedded_dir(dir: &include_dir::Dir<'_>, root: &Path, dest: &Path) -> R
     Ok(())
 }
 
-/// Only the ground colour: the launch face itself is a bundle resource the
-/// storyboard names, so `actool` failing costs the app its icon and nothing
-/// else. The colour stays in the catalog for the SDK overlay's fallback
-/// lookup on hosts whose Info.plist predates the raw value.
+/// Only the ground, light and dark: the colour for the SDK overlay's fallback
+/// lookup, and the storyboard's ground image, which the catalog resolves per
+/// appearance ahead of the loose light copy. If `actool` fails, the launch
+/// keeps the light ground and the app loses only its icon.
 fn inject_apple_splash_assets(xcassets_dir: &Path, splash: &ResolvedSplash) -> Result<()> {
+    let dark = json!([{"appearance": "luminosity", "value": "dark"}]);
     let colorset_dir = xcassets_dir.join(format!("{APPLE_COLOR_ASSET}.colorset"));
     fs::create_dir_all(&colorset_dir)?;
     let colorset_contents = json!({
-        "colors": [{
-            "idiom": "universal",
-            "color": apple_color_components(splash.background())?,
-        }],
+        "colors": [
+            {"idiom": "universal", "color": apple_color_components(&splash.ground.light)?},
+            {
+                "idiom": "universal",
+                "appearances": dark,
+                "color": apple_color_components(&splash.ground.dark)?,
+            },
+        ],
         "info": {"author": "lingxia", "version": 1},
     });
     fs::write(
         colorset_dir.join("Contents.json"),
         serde_json::to_string_pretty(&colorset_contents)?,
+    )?;
+
+    let name = APPLE_BUNDLE_GROUND.trim_end_matches(".png");
+    let imageset_dir = xcassets_dir.join(format!("{name}.imageset"));
+    fs::create_dir_all(&imageset_dir)?;
+    save_png(
+        &ground_png(&splash.ground.light)?,
+        &imageset_dir.join("light.png"),
+    )?;
+    save_png(
+        &ground_png(&splash.ground.dark)?,
+        &imageset_dir.join("dark.png"),
+    )?;
+    let imageset_contents = json!({
+        "images": [
+            {"idiom": "universal", "filename": "light.png"},
+            {"idiom": "universal", "filename": "dark.png", "appearances": dark},
+        ],
+        "info": {"author": "lingxia", "version": 1},
+    });
+    fs::write(
+        imageset_dir.join("Contents.json"),
+        serde_json::to_string_pretty(&imageset_contents)?,
     )?;
     Ok(())
 }
@@ -482,9 +603,13 @@ pub fn sync_harmony_splash(splash: &ResolvedSplash, harmony_dir: &Path) -> Resul
     let mut changed = false;
 
     changed |= sync_harmony_face(splash, &resources_dir)?;
-    // A `dark` bucket would be a second face; clear whatever a previous build
-    // left there so the qualifier falls back to `base` in every appearance.
-    changed |= clear_harmony_dark_face(&resources_dir)?;
+    // The art stays one face, so the `dark` bucket carries only the ground.
+    changed |= clear_harmony_dark_art(&resources_dir)?;
+    changed |= upsert_harmony_color(
+        &resources_dir.join("dark/element/color.json"),
+        HARMONY_COLOR_RES,
+        &splash.ground.dark,
+    )?;
 
     // The OS frame carries the launch art itself. It can, because the art is
     // build-time: the frame the OS composes before the process exists and the
@@ -569,21 +694,17 @@ fn sync_harmony_face(splash: &ResolvedSplash, resources_dir: &Path) -> Result<bo
     changed |= upsert_harmony_color(
         &resources_dir.join("base/element/color.json"),
         HARMONY_COLOR_RES,
-        &splash.background,
+        &splash.ground.light,
     )?;
     Ok(changed)
 }
 
-/// Remove whatever a build that still staged a dark face left behind.
-fn clear_harmony_dark_face(resources_dir: &Path) -> Result<bool> {
+/// Remove dark art a build left behind, so the art falls back to `base`.
+fn clear_harmony_dark_art(resources_dir: &Path) -> Result<bool> {
     let mut changed = false;
     for res in [HARMONY_IMAGE_RES, HARMONY_MARK_RES] {
         changed |= remove_if_present(&resources_dir.join(format!("dark/media/{res}.png")))?;
     }
-    changed |= remove_harmony_color(
-        &resources_dir.join("dark/element/color.json"),
-        HARMONY_COLOR_RES,
-    )?;
     Ok(changed)
 }
 
@@ -622,28 +743,6 @@ fn upsert_harmony_color(path: &Path, name: &str, value: &str) -> Result<bool> {
         colors.push(json!({"name": name, "value": value}));
     }
 
-    let serialized = format!("{}\n", serde_json::to_string_pretty(&root)?);
-    write_if_changed(path, serialized.as_bytes())
-}
-
-/// Drop one `{name, value}` entry from a Harmony color.json, leaving the rest
-/// of the file — and the file itself — alone.
-fn remove_harmony_color(path: &Path, name: &str) -> Result<bool> {
-    if !path.exists() {
-        return Ok(false);
-    }
-    let content =
-        fs::read_to_string(path).with_context(|| format!("Failed to read {}", path.display()))?;
-    let mut root: Value = serde_json::from_str(&content)
-        .with_context(|| format!("Failed to parse {}", path.display()))?;
-    let Some(colors) = root.get_mut("color").and_then(Value::as_array_mut) else {
-        return Ok(false);
-    };
-    let before = colors.len();
-    colors.retain(|entry| entry.get("name").and_then(Value::as_str) != Some(name));
-    if colors.len() == before {
-        return Ok(false);
-    }
     let serialized = format!("{}\n", serde_json::to_string_pretty(&root)?);
     write_if_changed(path, serialized.as_bytes())
 }
@@ -729,7 +828,10 @@ mod tests {
         ResolvedSplash {
             image: with_cover.then(art),
             mark: None,
-            background: "#130CA2".to_string(),
+            ground: Ground {
+                light: "#130CA2".into(),
+                dark: "#0B0B10".into(),
+            },
         }
     }
 
@@ -737,7 +839,10 @@ mod tests {
         ResolvedSplash {
             image: Some(art()),
             mark: Some(art()),
-            background: "#F4F2ED".to_string(),
+            ground: Ground {
+                light: "#F4F2ED".into(),
+                dark: "#17181C".into(),
+            },
         }
     }
 
@@ -878,15 +983,133 @@ mod tests {
         )));
     }
 
-    /// One bucket: a night copy would be a second face, and for the style a
-    /// duplicate declaration rather than an override, which AGP treats as a
-    /// build error.
+    /// The ground follows the appearance through `values-night`, values only:
+    /// a second style declaration would be a duplicate, which AGP rejects.
     #[test]
-    fn android_stages_one_bucket_only() {
+    fn android_night_bucket_carries_only_the_dark_ground() {
         let dir = tempfile::tempdir().unwrap();
         stage_android_res(&splash_with_mark(), dir.path()).unwrap();
 
-        assert!(!dir.path().join("values-night").exists());
+        let night = fs::read_to_string(dir.path().join("values-night/lingxia_splash.xml")).unwrap();
+        assert!(night.contains(&format!(
+            "<color name=\"{ANDROID_COLOR_RES}\">#17181C</color>"
+        )));
+        assert!(night.contains(&format!(
+            "<bool name=\"{ANDROID_LIGHT_BARS_RES}\">false</bool>"
+        )));
+        assert!(!night.contains("<style"));
         assert!(!dir.path().join("drawable-night-nodpi").exists());
+    }
+
+    /// The catalog resolves the ground per appearance: the colour, and the image the storyboard names.
+    #[test]
+    fn apple_catalog_carries_both_grounds() {
+        let dir = tempfile::tempdir().unwrap();
+        inject_apple_splash_assets(dir.path(), &splash_with_mark()).unwrap();
+
+        let read = |path: &str| -> Value {
+            serde_json::from_str(&fs::read_to_string(dir.path().join(path)).unwrap()).unwrap()
+        };
+        let colors = read(&format!("{APPLE_COLOR_ASSET}.colorset/Contents.json"));
+        assert_eq!(colors["colors"][0]["color"]["components"]["red"], "0xF4");
+        assert_eq!(colors["colors"][1]["appearances"][0]["value"], "dark");
+        assert_eq!(colors["colors"][1]["color"]["components"]["red"], "0x17");
+        let images = read("LingXiaSplashGround.imageset/Contents.json");
+        assert_eq!(images["images"][1]["appearances"][0]["value"], "dark");
+        assert!(
+            dir.path()
+                .join("LingXiaSplashGround.imageset/dark.png")
+                .is_file()
+        );
+    }
+
+    /// Harmony's `dark` bucket gets the dark ground and no art, so the art falls back to `base`.
+    #[test]
+    fn harmony_dark_bucket_carries_only_the_ground() {
+        let dir = tempfile::tempdir().unwrap();
+        let resources = dir.path().join("entry/src/main/resources");
+        fs::create_dir_all(resources.join("dark/media")).unwrap();
+        fs::write(
+            resources.join(format!("dark/media/{HARMONY_IMAGE_RES}.png")),
+            b"x",
+        )
+        .unwrap();
+        fs::write(
+            dir.path().join("entry/src/main/module.json5"),
+            r#"{"module": {"mainElement": "Entry", "abilities": [{"name": "Entry"}]}}"#,
+        )
+        .unwrap();
+
+        assert!(sync_harmony_splash(&splash_with_mark(), dir.path()).unwrap());
+
+        let color = |bucket: &str| -> Value {
+            let path = resources.join(format!("{bucket}/element/color.json"));
+            serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap()
+        };
+        assert_eq!(color("base")["color"][0]["value"], "#F4F2ED");
+        assert_eq!(color("dark")["color"][0]["value"], "#17181C");
+        assert!(
+            !resources
+                .join(format!("dark/media/{HARMONY_IMAGE_RES}.png"))
+                .exists()
+        );
+    }
+
+    /// Without `themes/`, the ground is the built-in theme's canvas, and dark differs from light.
+    #[test]
+    fn the_ground_is_the_host_theme_canvas() {
+        let dir = tempfile::tempdir().unwrap();
+        let built_in = host_ground(dir.path(), None).unwrap();
+        assert_ne!(built_in.light, built_in.dark);
+
+        fs::create_dir_all(dir.path().join(crate::theme::HOST_THEMES_DIR)).unwrap();
+        fs::write(
+            dir.path().join("themes/brand.json"),
+            r##"{"name": "brand", "version": 1, "accent": {"seed": "#0f9d58", "derive": true}}"##,
+        )
+        .unwrap();
+        let ground = host_ground(dir.path(), Some("brand")).unwrap();
+        assert!(ground.light.starts_with('#') && ground.light.len() == 7);
+        assert!(host_ground(dir.path(), Some("missing")).is_err());
+    }
+
+    /// The ground is the art's border: mostly teal with a lighter vignette and a stray pixel.
+    #[test]
+    fn the_ground_of_art_is_its_dominant_edge_colour() {
+        let mut art = RgbaImage::from_pixel(100, 200, image::Rgba([0x0E, 0x4D, 0x4A, 255]));
+        for x in 0..20 {
+            art.put_pixel(x, 0, image::Rgba([0xF0, 0xF0, 0xF0, 255]));
+        }
+        art.put_pixel(50, 100, image::Rgba([255, 0, 0, 255]));
+        assert_eq!(
+            edge_color(&DynamicImage::ImageRgba8(art)).as_deref(),
+            Some("#0E4D4A")
+        );
+        let clear = RgbaImage::new(10, 10);
+        assert_eq!(edge_color(&DynamicImage::ImageRgba8(clear)), None);
+    }
+
+    /// With art the ground is the art's edge in both appearances; without, the theme's canvas.
+    #[test]
+    fn art_sets_the_ground_in_both_appearances() {
+        let dir = tempfile::tempdir().unwrap();
+        let teal = RgbaImage::from_pixel(8, 8, image::Rgba([0x0E, 0x4D, 0x4A, 255]));
+        teal.save(dir.path().join("splash.png")).unwrap();
+        let config = |image: Option<&str>| SplashConfig {
+            image: image.map(str::to_owned),
+            mark: None,
+            min_duration: None,
+        };
+        let with_art =
+            ResolvedSplash::resolve(dir.path(), &config(Some("splash.png")), None).unwrap();
+        assert_eq!(
+            with_art.ground(),
+            &Ground {
+                light: "#0E4D4A".into(),
+                dark: "#0E4D4A".into()
+            }
+        );
+        let bare = ResolvedSplash::resolve(dir.path(), &config(None), None).unwrap();
+        assert_eq!(bare.ground(), &host_ground(dir.path(), None).unwrap());
     }
 }

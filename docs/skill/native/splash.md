@@ -46,4 +46,4 @@ impl lingxia::HostAddon for AppHostAddon {
   works from any phase. The store is app data, so art survives offline.
 
 Ship packaged art as host [`assets`](../app/project.md#assets), not bytes in the
-native library. The background colour is fixed at build time.
+native library. The ground is the art's edge colour (else the theme's `canvas`), fixed at build time.

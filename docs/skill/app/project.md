@@ -315,11 +315,11 @@ A generated launch screen, held until the home page renders, then faded out.
 
 - `image` — PNG, full-screen aspect-fill; also the OS launch frame where the
   platform allows.
-- `background` — `#RRGGBB`, **required**: the ground of the OS launch frame,
-  so use the art's ground colour.
 - `mark` — PNG centred by the OS frame when there is no `image`.
 - `minDuration` — ms from process start (default 600).
-- One face for every appearance; there is no dark variant.
+- The ground is the dominant colour of the `image`'s border, in both
+  appearances. Without an `image`, it is the host theme's `canvas`, light
+  and dark. Give the art a flat edge.
 
 A campaign screen after launch: [Launch screen](../native/splash.md).
 

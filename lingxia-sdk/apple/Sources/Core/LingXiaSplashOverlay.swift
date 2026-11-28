@@ -23,8 +23,8 @@ private let splashLog = OSLog(subsystem: "LingXia", category: "Splash")
 /// `LingXiaSplashMark` mark); when the color is absent the overlay is
 /// disabled entirely.
 ///
-/// One face, drawn in every appearance: only one picture can be identical to
-/// a frame the OS composed before this process existed.
+/// The art is one face in every appearance; the ground is its edge colour, or
+/// without art the host theme's canvas for the appearance the OS frame drew.
 @MainActor
 enum LingXiaSplashOverlay {
     private static let timeoutSeconds: TimeInterval = 6
@@ -247,13 +247,16 @@ enum LingXiaSplashOverlay {
         bundleImage("LingXiaSplashMark")
     }
 
-    /// Background color from Info.plist (always written when `splash:` is
-    /// configured), falling back to the asset-catalog color for a host whose
-    /// plist predates it.
+    /// The ground from Info.plist (the art's edge, else the host theme's
+    /// canvas, light and dark), else the asset-catalog colour.
+    /// Dynamic, so it is the ground the OS launch frame drew in this appearance.
     private static func resolveBackground() -> UIColor? {
-        if let hex = Bundle.main.object(forInfoDictionaryKey: "LingXiaSplashBackground") as? String,
-           let color = UIColor(lingXiaHex: hex) {
-            return color
+        let info = Bundle.main
+        if let lightHex = info.object(forInfoDictionaryKey: "LingXiaSplashBackground") as? String,
+           let light = UIColor(lingXiaHex: lightHex) {
+            let dark = (info.object(forInfoDictionaryKey: "LingXiaSplashBackgroundDark") as? String)
+                .flatMap { UIColor(lingXiaHex: $0) } ?? light
+            return UIColor { traits in traits.userInterfaceStyle == .dark ? dark : light }
         }
         return UIColor(named: "LingXiaSplashBackground")
     }

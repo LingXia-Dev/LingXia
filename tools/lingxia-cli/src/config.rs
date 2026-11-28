@@ -149,11 +149,6 @@ impl UpdateSigningConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SplashConfig {
-    /// Background color, `#RRGGBB` — the ground of the OS launch frame, and
-    /// what shows behind the art. The only required field: no code runs
-    /// before that frame, so only build-time config can brand it. Pick the
-    /// art's own ground, so the frame reads as the art's entrance.
-    pub background: String,
     /// The launch art (PNG), path relative to the project root. Rendered
     /// full-screen (aspect-fill) as the app's first frame on every cold
     /// start, and carried by the OS launch frame itself where the platform

@@ -868,7 +868,13 @@ fn prepare_res_overlay(android_root: &Path, config: &BuildConfig) -> Result<ResO
 
     let mut has_splash = false;
     if let Some(splash_config) = splash_config {
-        let resolved = crate::splash::ResolvedSplash::resolve(&config.project_root, splash_config)?;
+        let theme_id = config
+            .lingxia_config
+            .as_ref()
+            .and_then(|c| c.theme.as_ref())
+            .and_then(|t| t.id());
+        let resolved =
+            crate::splash::ResolvedSplash::resolve(&config.project_root, splash_config, theme_id)?;
         crate::splash::stage_android_res(&resolved, &staging_res)?;
         has_splash = true;
     }

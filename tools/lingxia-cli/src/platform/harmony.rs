@@ -82,8 +82,14 @@ impl Platform for HarmonyPlatform {
         // Harmony renders the start window from committed module resources, so
         // splash generation syncs them in place rather than staging an overlay.
         if let Some(splash_config) = lingxia_config.and_then(|config| config.splash.as_ref()) {
-            let resolved =
-                crate::splash::ResolvedSplash::resolve(&config.project_root, splash_config)?;
+            let theme_id = lingxia_config
+                .and_then(|config| config.theme.as_ref())
+                .and_then(|theme| theme.id());
+            let resolved = crate::splash::ResolvedSplash::resolve(
+                &config.project_root,
+                splash_config,
+                theme_id,
+            )?;
             if crate::splash::sync_harmony_splash(&resolved, &harmony_dir)? {
                 println!(
                     "{} Synced Harmony splash start-window resources",

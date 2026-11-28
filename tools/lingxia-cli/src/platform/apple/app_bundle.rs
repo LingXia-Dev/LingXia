@@ -24,11 +24,11 @@ pub struct AppBundleConfig {
     pub deployment_target: String,
     /// Path to custom Info.plist (merged with generated one)
     pub info_plist_path: Option<PathBuf>,
-    /// Splash background color (`#RRGGBB`). Present when `splash:` is
-    /// configured, and written to Info.plist so the runtime overlay always
-    /// has the ground. The OS launch face itself is installed into the built
-    /// bundle by `splash::install_apple_launch_screen`.
-    pub splash_background: Option<String>,
+    /// The splash ground, light and dark, from the host theme's canvas. Present
+    /// when `splash:` is configured, and written to Info.plist so the runtime
+    /// overlay always has it. The OS launch face itself is installed into the
+    /// built bundle by `splash::install_apple_launch_screen`.
+    pub splash_ground: Option<crate::splash::Ground>,
     /// `app.productVersion` — written as CFBundleShortVersionString plus a
     /// derived CFBundleVersion after any custom Info.plist is merged.
     pub product_version: String,
@@ -363,8 +363,15 @@ let package = Package(
             "UILaunchScreen".into(),
             plist::Value::Dictionary(plist::Dictionary::new()),
         );
-        if let Some(background) = &config.splash_background {
-            info.insert("LingXiaSplashBackground".into(), background.clone().into());
+        if let Some(ground) = &config.splash_ground {
+            info.insert(
+                "LingXiaSplashBackground".into(),
+                ground.light.clone().into(),
+            );
+            info.insert(
+                "LingXiaSplashBackgroundDark".into(),
+                ground.dark.clone().into(),
+            );
         }
 
         // Merge with custom Info.plist if provided
@@ -601,7 +608,7 @@ mod tests {
             swift_product_name: "myapp".into(),
             deployment_target: "17.0".into(),
             info_plist_path: None,
-            splash_background: None,
+            splash_ground: None,
             product_version: "0.2.5".into(),
         };
         let app =
@@ -678,7 +685,7 @@ mod tests {
             swift_product_name: "Demo".to_string(),
             deployment_target: "17.0".to_string(),
             info_plist_path: Some(custom_path),
-            splash_background: None,
+            splash_ground: None,
             product_version: "1.2.3".to_string(),
         };
         AppBundler::generate_info_plist(&package, &app, &config).expect("generate plist");
