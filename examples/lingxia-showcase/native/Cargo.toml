@@ -68,6 +68,12 @@ lingxia-native-codegen = "0.30.0"
 napi-ohos = "1.2"
 napi-derive-ohos = "1.2"
 
+# Full debug info made every crate variant several times larger; line tables keep backtraces.
+[profile.dev]
+debug = "line-tables-only"
+[profile.dev.package."*"]
+debug = false
+
 # Release profile: optimize for size
 [profile.release]
 opt-level = 'z'

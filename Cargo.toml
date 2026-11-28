@@ -216,6 +216,12 @@ rong_worker = { git = "https://github.com/LingXia-Dev/Rong.git", rev = "5cbf5695
 taffy = { path = "third_party/taffy" }
 portable-pty = { git = "https://github.com/LingXia-Dev/wezterm.git", rev = "59d0fb89c54a77c12afe2561dc6969d8dc55fc4f", package = "portable-pty" }
 
+# Full debug info made every crate variant several times larger; line tables keep backtraces.
+[profile.dev]
+debug = "line-tables-only"
+[profile.dev.package."*"]
+debug = false
+
 # Renderer hot path: fast enough in debug builds that gesture and spring timing stay trustworthy.
 [profile.dev.package.lingxia-view]
 opt-level = 2
