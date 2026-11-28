@@ -878,6 +878,9 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
 
         let isSelected = !morePresented && item.cachedIndex == selectedIndex
         let isVerticalRail = config.position == 1 || config.position == 2
+        // VoiceOver and automation read the selected tab from the control's own state.
+        button.isSelected = isSelected
+        button.accessibilityLabel = item.text.toString()
 
         if !item.icon_path.toString().isEmpty {
             let iconView = createUIKitIcon(item: item, index: index, isSelected: isSelected)
