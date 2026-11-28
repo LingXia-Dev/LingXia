@@ -491,6 +491,8 @@ export function createWorld(options = {}) {
       }
       if (seeded !== undefined) {
         value = evalResults.get(seeded);
+        // A seeded function answers as the host would, given the eval's budget.
+        if (typeof value === "function") value = await value({ timeoutMs });
         if (value instanceof Error) throw value;
       }
       // Mirror the runtime: with `captureCalls` the result is wrapped and

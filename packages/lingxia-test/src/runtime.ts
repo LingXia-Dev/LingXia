@@ -1063,6 +1063,15 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
       stuck ??= { what, work, spec: true };
       revokeGrant(grant, `"${record.full_name}" was abandoned (${what})`);
     };
+    // A body that returned with only fixture evals still running is waited
+    // out, not abandoned: each eval ends by its own deadline, after which
+    // nothing of the spec runs, so only this spec fails and the run goes on.
+    const outwaitEvals = async (): Promise<boolean> => {
+      if (pendingOf(record.full_name).length > 0) return false;
+      if (!await fixture.outwaitEvals(WEDGED_DEFER_BUDGET_MS)) return false;
+      forceRelaunchNext = true;
+      return true;
+    };
     const bodyPromise = (async () => {
       // Each spec starts with fresh mock handler state, before its hooks.
       phase = "beforeEach";
@@ -1153,7 +1162,8 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
         // The first error wins; calls the body left running are stopped
         // before cleanup all the same.
         if (fixture.unsettledCalls().length > 0 && !timedOut && !fixture.aborted &&
-            !await fixture.stopUnsettled(winner.err instanceof Error ? winner.err : new Error(String(winner.err)), WEDGED_DEFER_BUDGET_MS)) {
+            !await fixture.stopUnsettled(winner.err instanceof Error ? winner.err : new Error(String(winner.err)), WEDGED_DEFER_BUDGET_MS) &&
+            !await outwaitEvals()) {
           abandon("fixture calls its body did not await", stuckWork());
         }
         if (timedOut || fixture.aborted) {
@@ -1182,7 +1192,7 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
           status = "failed";
           error = new Error(unawaitedMessage(item.title, unsettled));
           fixture.failurePhase = "body";
-          if (!await fixture.stopUnsettled(error as Error, WEDGED_DEFER_BUDGET_MS)) {
+          if (!await fixture.stopUnsettled(error as Error, WEDGED_DEFER_BUDGET_MS) && !await outwaitEvals()) {
             abandon("fixture calls its body did not await", stuckWork());
           }
         }

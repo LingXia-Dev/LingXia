@@ -88,7 +88,10 @@ and produces a client-side partial report.
 - **Contamination stops the run**: tests execute sequentially in one fresh JS context per run. Once
   any body, cleanup hook, or tracked in-flight fixture call is abandoned, the runner halts the run,
   revokes the context (`E_AUTOMATION_PRIVILEGE` on all driver calls), and marks remaining cases not
-  run. Stray assertions from late continuations route to a `late_assertion` diagnostic. Retries
+  run. One exception: a body that returned with only fixture evals (`t.app.logic.eval`,
+  `view.eval`, `page.data`) still running is waited out, since the host times each out at the
+  budget it was sent with; that spec fails, the next test starts from a relaunch, and the run
+  goes on. Stray assertions from late continuations route to a `late_assertion` diagnostic. Retries
   require a file-scoped `test.reset` hook because new contexts do not reset product state.
 - **Attempt authority**: each executed test opens a host attempt token tagging its routes, run
   scenarios, test-clock leases, and opt-in dialog watches. After user `afterEach` and LIFO

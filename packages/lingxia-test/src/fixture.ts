@@ -166,6 +166,8 @@ export class LiveFixture implements Fixture {
   private readonly openActions = new Set<StepRecord>();
   /** Fixture calls that have started and not settled; see `track`. */
   private readonly inFlight = new Set<InFlightCall>();
+  /** When the evals sent so far end at the latest: the host times each out at its budget. */
+  private evalsEndBy = 0;
   cleanupUntil = 0;
   cleanupActive = false;
   /**
@@ -924,6 +926,20 @@ export class LiveFixture implements Fixture {
   }
 
   /**
+   * Wait out the evals the spec left running. Each ends by its own deadline,
+   * so the wait is bounded; anything else in flight is not waited for.
+   * Resolves `true` once nothing of the fixture's is in flight.
+   */
+  async outwaitEvals(graceMs: number): Promise<boolean> {
+    if (this.inFlight.size === 0) return true;
+    if (!this.pendingCalls().every((work) => work.kind === "eval")) return false;
+    for (const entry of this.inFlight) entry.promise?.catch(() => {});
+    const until = this.evalsEndBy + graceMs;
+    while (this.inFlight.size > 0 && Date.now() < until) await sleep(20);
+    return this.inFlight.size === 0;
+  }
+
+  /**
    * Fixture calls that have not returned, e.g. a hung `t.app.logic.eval` a
    * timed-out body still awaits. Unlike the trace rows, this includes calls
    * made from silenced retry loops.
@@ -1505,6 +1521,7 @@ export class LiveFixture implements Fixture {
   private withEvalBudget<T extends { timeoutMs?: number }>(options: T, name: string): T {
     const budget = Math.floor(Math.min(options.timeoutMs ?? MAX_EVAL_BUDGET_MS, this.budgetRoom()));
     if (budget < 1) throw new TimeoutError(`${name} was not dispatched: its action budget expired`);
+    this.evalsEndBy = Math.max(this.evalsEndBy, Date.now() + budget);
     return { ...options, timeoutMs: budget };
   }
 

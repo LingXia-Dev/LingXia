@@ -113,6 +113,39 @@ test("a hung raw-driver eval cannot be taken back: it is named and the run stops
   assert.match(stopped.message, /^"hung eval" left its timed-out body pending: eval rawAutomation\(\)\.lxapp\(\)\.eval\(\) \(started \d+ms into the test\)\. The run stopped: .*eval rawAutomation\(\)\.lxapp\(\)\.eval\(\) .* is still running after 2000ms/);
 });
 
+// The host times an eval out natively, outside the spec's tracked timers.
+const hostSetTimeout = globalThis.setTimeout;
+
+/** A Logic eval the host answers only when its budget runs out, as `E_EVAL_TIMEOUT`. */
+function evalAnsweredAtItsDeadline(world, script) {
+  world.setEval(script, ({ timeoutMs }) => new Promise((_, reject) => {
+    hostSetTimeout(() => reject(Object.assign(new Error("lxapp eval timed out"), { code: "E_EVAL_TIMEOUT" })), timeoutMs);
+  }));
+}
+
+test("a spec that leaves a Logic eval running fails alone: the eval is waited out and the run continues", async () => {
+  const world = createWorld();
+  evalAnsweredAtItsDeadline(world, "slow eval");
+  const { events } = installFakeHost(world);
+  let nextRan = false;
+
+  lxTest("leaves a logic eval pending", { timeout: 4_000, forensics: false }, async (t) => {
+    void t.app.logic.eval({ timeout: 2_500 }, () => "slow eval");
+  });
+  lxTest("runs after it", async (t) => {
+    nextRan = true;
+    await t.app.info();
+  });
+
+  const report = await run();
+  assert.deepEqual(report.cases.map((c) => c.status), ["failed", "passed"]);
+  assert.equal(nextRan, true);
+  assert.equal(report.partial, false);
+  assert.match(report.cases[0].error.message, /returned while 1 fixture call was still running .*\n  logic\.eval /);
+  assert.equal(events.filter((e) => e.type === "diagnostic" && e.phase === "run_stopped").length, 0,
+    JSON.stringify(events.filter((e) => e.type === "diagnostic")));
+});
+
 test("when recovery fails, the rest are not run and the reason names the stuck work and the fix", async () => {
   const world = createWorld();
   const { events } = installFakeHost(world);
