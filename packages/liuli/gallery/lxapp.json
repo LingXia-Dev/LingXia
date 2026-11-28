@@ -105,6 +105,8 @@
     { "name": "split", "path": "pages/split/index" },
     { "name": "qrcode", "path": "pages/qrcode/index" },
     { "name": "overflow-list", "path": "pages/overflow-list/index" },
+    { "name": "citation", "path": "pages/citation/index" },
+    { "name": "conversation-scroll-button", "path": "pages/conversation-scroll-button/index" },
     { "name": "stat", "path": "pages/stat/index" },
     { "name": "sparkline", "path": "pages/sparkline/index" },
     { "name": "bar-chart", "path": "pages/bar-chart/index" },

@@ -16,7 +16,7 @@ const categories: Record<string, string[]> = {
   'category-navigation': ['tabs', 'nav-list', 'breadcrumb', 'pagination', 'stepper', 'link', 'page-control', 'tree-list', 'top-bar'],
   'category-feedback': ['badge', 'progress-bar', 'banner', 'empty-state', 'skeleton', 'toast', 'circular-progress', 'status-dot'],
   'category-overlays': ['dialog', 'dropdown-menu', 'tooltip', 'info-tip', 'bottom-sheet', 'action-sheet', 'popover', 'drawer', 'hover-card', 'context-menu', 'command-palette', 'tour'],
-  'category-content': ['card', 'item', 'details', 'avatar', 'icon', 'table', 'markdown', 'metadata-list', 'section', 'divider', 'kbd', 'timer', 'code', 'timestamp', 'message-bubble', 'list-detail', 'split', 'qrcode', 'overflow-list'],
+  'category-content': ['card', 'item', 'details', 'avatar', 'icon', 'table', 'markdown', 'metadata-list', 'section', 'divider', 'kbd', 'timer', 'code', 'timestamp', 'message-bubble', 'list-detail', 'split', 'qrcode', 'overflow-list', 'citation', 'conversation-scroll-button'],
   'category-charts': ['stat', 'sparkline', 'bar-chart', 'line-chart', 'pie-chart', 'chart'],
   'category-media': ['video-player', 'video-controls', 'carousel', 'thumbnail', 'lightbox', 'web-view'],
   'category-documents': ['jinshu-view', 'jinshu-editor', 'jinshu-diff', 'jinshu-outline'],

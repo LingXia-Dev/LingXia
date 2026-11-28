@@ -301,5 +301,29 @@
   },
   "@liuli.datePresets": {
     "defaultMessage": "快捷范围"
+  },
+  "@liuli.toolCall.state": {
+    "defaultMessage": "{label}，{status, select, running {进行中} done {已完成} failed {失败} denied {已拒绝} other {等待你的答复}}{hasMeta, select, yes {，{meta}} other {}}"
+  },
+  "@liuli.toolCall.failed": {
+    "defaultMessage": "失败"
+  },
+  "@liuli.toolCall.allow": {
+    "defaultMessage": "允许"
+  },
+  "@liuli.toolCall.deny": {
+    "defaultMessage": "拒绝"
+  },
+  "@liuli.toolCall.denied": {
+    "defaultMessage": "已拒绝"
+  },
+  "@liuli.citation.sources": {
+    "defaultMessage": "来源"
+  },
+  "@liuli.citation.source": {
+    "defaultMessage": "来源 {number}：{title}{hasSite, select, yes {，{site}} other {}}"
+  },
+  "@liuli.conversation.latest": {
+    "defaultMessage": "{count, plural, =0 {跳到最新消息} other {跳到最新消息，# 条新消息}}"
   }
 }

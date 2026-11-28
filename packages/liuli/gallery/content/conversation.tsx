@@ -1,6 +1,7 @@
 import { List, useLocal, useView } from '@lingxia/view';
 import { Avatar } from '@liulidesign/core/Avatar';
 import { Composer } from '@liulidesign/core/Composer';
+import { ConversationScrollButton, useConversationScroll } from '@liulidesign/core/ConversationScrollButton';
 import { Divider } from '@liulidesign/core/Divider';
 import { IconButton } from '@liulidesign/core/IconButton';
 import { MessageBubble } from '@liulidesign/core/MessageBubble';
@@ -28,6 +29,7 @@ export function Content() {
   const draft = useLocal('draft', '');
   const last = useLocal('last', '');
   const list = entries.value;
+  const scroll = useConversationScroll(list.length);
   // On a phone the page gives it its height, less the keyboard; beside the gallery's sidebar it sits in a scroll and brings its own.
   const isWide = useView().env.sizeClass === 'regular';
   // A bubble joins the one beside it when the same person wrote both.
@@ -50,12 +52,14 @@ export function Content() {
           </view>
           <IconButton label="Conversation details" icon="info" size="sm" onClick={() => last.set('Opened the conversation details')} />
         </view>
+        <view className="grow basis-0 min-h-0">
         <List
           aria-label="Messages with Kai Chen"
           items={list}
           getKey={entry => entry.id}
-          // The newest message is kept in view, as each one arrives.
-          anchor={{ index: Math.max(0, list.length - 1), align: 'end', seq: list.length }}
+          // The newest message is kept in view as each one arrives, unless the reader is further up.
+          anchor={scroll.anchor}
+          onScrollEdge={scroll.onScrollEdge}
           renderItem={(entry, index) => {
             if (entry.kind === 'day') return <Divider label={entry.label} className="py-2" />;
             const [before, after] = [list[index - 1], list[index + 1]];
@@ -79,6 +83,8 @@ export function Content() {
           }}
           className="grow basis-0 min-h-0 px-3 pt-3 overscroll-contain"
         />
+        <ConversationScrollButton scroll={scroll} data-testid="latest" />
+        </view>
         <view className="px-3 py-2 border-t border-line bg-surface">
           <Composer bind={draft} label="Message to Kai Chen" placeholder="Message Kai" onSubmit={send} startContent={<IconButton label="Attach a file" icon="attach" onClick={() => last.set('Opened the file picker')} />} data-testid="composer" />
         </view>

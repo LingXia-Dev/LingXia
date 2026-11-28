@@ -43,6 +43,12 @@ export const codeRecipe = {
     base: 'self-stretch overflow-x-auto p-3',
     /** Tints reach the block's sides, so the inline padding moves onto the columns. */
     lined: 'self-stretch overflow-x-auto py-3',
+    // An edge the lines run on under fades: past the end at rest, past both mid-scroll.
+    more: {
+      end: 'mask-[linear-gradient(to_left,transparent_0,#000_1.5rem)] rtl:mask-[linear-gradient(to_right,transparent_0,#000_1.5rem)]',
+      start: 'mask-[linear-gradient(to_right,transparent_0,#000_1.5rem)] rtl:mask-[linear-gradient(to_left,transparent_0,#000_1.5rem)]',
+      both: 'mask-[linear-gradient(to_right,transparent_0,#000_1.5rem),linear-gradient(to_left,transparent_0,#000_1.5rem)]',
+    },
   },
   /**
    * Numbers, signs and code side by side over the tints. Every column and every tint row is 1.5 of the

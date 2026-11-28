@@ -103,3 +103,57 @@ test('the send button is concentric with the box: its corner is the box\'s less 
   assert.deepEqual([box.props.radius, box.props.paddingTop], [14, 6]);
   assert.equal(send.props.radius, box.props.radius - box.props.paddingTop, 'derived from the box, so a pack with other corners stays concentric');
 });
+
+test('Triggers: a word starting with @ lists people at the caret, narrowed by what follows; Return puts the active one in', async () => {
+  const screen = await renderExample('Composer/Composer', 'Triggers');
+  const field = () => screen.getByTestId('prompt');
+  screen.type(field(), 'Ask @k');
+  screen.selectText(field(), 6);
+  screen.getByTestId('prompt-suggestion-kai');
+  assert.throws(() => screen.getByTestId('prompt-suggestion-noor'), 'only the matches');
+  screen.key(field(), 'Enter');
+  assert.equal(field().props.inputValue, 'Ask @Kai Chen ');
+});
+
+test('Triggers: the arrow keys move through the list; Escape closes it until the caret leaves the word', async () => {
+  const screen = await renderExample('Composer/Composer', 'Triggers');
+  const field = () => screen.getByTestId('prompt');
+  screen.type(field(), '/');
+  screen.selectText(field(), 1);
+  screen.getByTestId('prompt-suggestion-summarize');
+  screen.key(field(), 'ArrowDown');
+  // The editor keeps focus and points a screen reader at the suggestion the arrows reached.
+  const reached = screen.getByTestId('prompt-suggestion-translate').props.elementId;
+  assert.equal(field().props.ariaActiveDescendant, reached);
+  assert.equal(field().props.ariaControls, reached.replace(/-1$/, ''));
+  screen.key(field(), 'Enter');
+  assert.equal(field().props.inputValue, '/translate ');
+  assert.equal(field().props.ariaActiveDescendant, undefined, 'nothing to point at once the list closes');
+  screen.type(field(), 'x /');
+  screen.selectText(field(), 3);
+  screen.key(field(), 'Escape');
+  assert.throws(() => screen.getByTestId('prompt-suggestion-summarize'), 'closed');
+});
+
+test('Triggers: a command can act instead of inserting; a / inside a word opens nothing', async () => {
+  const screen = await renderExample('Composer/Composer', 'Triggers');
+  const field = () => screen.getByTestId('prompt');
+  screen.type(field(), '/cl');
+  screen.selectText(field(), 3);
+  screen.press(screen.getByTestId('prompt-suggestion-clear'));
+  assert.equal(field().props.inputValue, '');
+  screen.getByText('Started a new conversation');
+  screen.type(field(), 'and/or');
+  screen.selectText(field(), 4);
+  assert.throws(() => screen.getByTestId('prompt-suggestion-summarize'));
+});
+
+test('Triggers: the end actions sit before the send button, in its place', async () => {
+  const screen = await renderExample('Composer/Composer', 'Triggers');
+  const send = screen.getByTestId('prompt-send');
+  const dictate = screen.getByTestId('dictate');
+  const row = screen.queryAll(node => (node.children ?? []).includes(dictate))[0];
+  assert.ok(row.children.indexOf(dictate) < row.children.indexOf(send), 'before send, in one row');
+  screen.press(dictate);
+  screen.getByText('Listening');
+});

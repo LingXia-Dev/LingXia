@@ -5,10 +5,10 @@
 One message of a conversation. Status: preview.
 
 ```ts
-import { MessageBubble, MessageReasoning } from '@liulidesign/core/MessageBubble';
+import { MessageBubble, MessageReasoning, MessageToolCall } from '@liulidesign/core/MessageBubble';
 ```
 
-MessageBubble draws one message: the user's own at the end edge in the accent's soft step, anyone else's at the start on a quiet tint, with a name and a face over the first of a run. Under it goes a line the app writes, the time or how the message stands, and for one that failed a way to send it again. A conversation is the View's list of these with a Composer under it; the Conversation pattern shows them together. MessageReasoning folds how an assistant got to its answer into one line above the message.
+MessageBubble draws one message: the user's own at the end edge in the accent's soft step, anyone else's at the start on a quiet tint, with a name and a face over the first of a run. Under it goes a line the app writes, the time or how the message stands, and for one that failed a way to send it again. A conversation is the View's list of these with a Composer under it; the Conversation pattern shows them together. MessageReasoning folds how an assistant got to its answer into one line above the message, and MessageToolCall each step it took with a tool: a line with where the run stands, its details behind it, and Allow and Deny while the step waits on the user.
 
 ## Examples
 
@@ -84,6 +84,43 @@ export function Reasoning() {
 }
 ```
 
+### An assistant's tool steps: done, failed, running, and one waiting to be allowed
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { CodeBlock } from '@liulidesign/core/Code';
+import { MessageToolCall } from '@liulidesign/core/MessageBubble';
+
+/** An assistant's steps with tools: done, failed and running fold to a line; one that deletes files waits to be allowed, then is done or denied. */
+export function ToolCalls() {
+  const answer = useLocal<'waiting' | 'allowed' | 'denied'>('waiting');
+  return (
+    <view className="gap-0.5">
+      <MessageToolCall label="Searched the notes for 'packing list'" status="done" meta="3 results" hasAvatarSpace data-testid="searched">
+        <text>Packing list (Saturday), Tent checklist, Ferry times</text>
+      </MessageToolCall>
+      <MessageToolCall label="npm test" status="failed" meta="4.2 s" isDefaultOpen hasAvatarSpace data-testid="tests">
+        <CodeBlock label="Test output" code={'FAIL  src/trip.test.ts\n  ferry › lands before the rain\n    expected 14:10, got 16:40'} />
+      </MessageToolCall>
+      <MessageToolCall label="Reading the forecast for Saturday" status="running" hasAvatarSpace data-testid="forecast" />
+      {answer.value === 'waiting'
+        ? (
+          <MessageToolCall
+            label="Delete 3 old drafts in Notes"
+            status="waiting"
+            approval={{ allowLabel: 'Delete 3 drafts', isDestructive: true, onAllow: () => answer.set('allowed'), onDeny: () => answer.set('denied') }}
+            hasAvatarSpace
+            data-testid="delete"
+          >
+            <text>{'Trip ideas (old)\nTent checklist (copy)\nUntitled note'}</text>
+          </MessageToolCall>
+        )
+        : <MessageToolCall label="Delete 3 old drafts in Notes" status={answer.value === 'allowed' ? 'done' : 'denied'} hasAvatarSpace data-testid="delete" />}
+    </view>
+  );
+}
+```
+
 ## Props
 
 | Prop | Type | Default | Description |
@@ -116,6 +153,22 @@ export function Reasoning() {
 | `className` | `string` |  |  |
 | `data-testid` | `string` |  | On the toggle; the text gets `<testid>-text`. |
 
+## MessageToolCall props
+
+| Prop | Type | Default | Description |
+| --- | --- | --- | --- |
+| `status` (required) | `"denied" \| "done" \| "failed" \| "running" \| "waiting"` |  |  |
+| `approval` | `MessageToolCallApproval` |  | The two answers, shown under the line with the details open while it waits. |
+| `label` (required) | `string` |  | What the tool does or did, in one line: "Searched the web for tide times", "npm test". |
+| `meta` | `string` |  | A short fact after the label: "2.4 s", "3 results". |
+| `children` | `Child` |  | The details, shown while open: its arguments and what it returned, as a CodeBlock, a Markdown or text. Without them the line does not open. |
+| `hasAvatarSpace` | `boolean` | `false` | Keeps an avatar's width empty before it, so it lines up with the bubbles of a run. |
+| `isDefaultOpen` | `boolean` | `false` | Open on first render, uncontrolled. |
+| `isOpen` | `boolean` |  | Controlled open state; pass `onOpenChange` with it. |
+| `onOpenChange` | `((isOpen: boolean) => void)` |  |  |
+| `className` | `string` |  |  |
+| `data-testid` | `string` |  | On the line; the details get `<testid>-details`, the answers `<testid>-allow` and `<testid>-deny`. |
+
 ## Anatomy
 
 | Part | Element | Required | Description |
@@ -128,26 +181,31 @@ export function Reasoning() {
 | meta | `<view>` | no | The line under the bubble: time, state, and the retry action. |
 | reasoningToggle | `<button>` | no | MessageReasoning's one line: a button named by `label`, with a spinner while `isStreaming`. |
 | reasoningText | `<text>` | no | The reasoning, behind a rule at the start; it can be selected. |
+| toolLine | `<button>` | no | MessageToolCall's line: the mark for where it stands, the label, "Failed" or "Denied" in words, the meta; a button when it has details. |
+| toolDetails | `<view>` | no | Its details, behind the same rule as the reasoning; open while the step waits. |
+| toolAnswers | `<view>` | no | Deny, then Allow, while it waits. |
 
 ## What an app may override
 
 - `className`: classes merged after the recipe's, so they win.
 - `className` on MessageReasoning: classes merged after the recipe's, so they win.
+- `className` on MessageToolCall: classes merged after the recipe's, so they win.
 - The recipe, `messageBubbleRecipe` from `@liulidesign/core/MessageBubble/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
 - Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-caption`, `--text-footnote`, `--text-body`, `--radius-control`, `--radius-container`, `--radius-checkbox`.
-- Colour roles it paints with, set by the theme pack: `accent-soft`, `danger`, `focus`, `line`, `on-accent-soft`, `text`, `text-muted`.
+- Colour roles it paints with, set by the theme pack: `accent`, `accent-soft`, `danger`, `focus`, `line`, `on-accent-soft`, `text`, `text-muted`.
 
 ## Accessibility
 
 - Pattern: none.
 - Name: none; its content is read.
 - Description: none.
-- States: expanded (from MessageReasoning: isOpen, or isDefaultOpen and the presses since); busy (from MessageReasoning: isStreaming).
-- Enter or Space: Opens and closes a MessageReasoning.
+- States: expanded (from MessageReasoning: isOpen, or isDefaultOpen and the presses since); busy (from MessageReasoning: isStreaming; MessageToolCall: status running); expanded (from MessageToolCall with details: isOpen, or isDefaultOpen and the presses since).
+- Enter or Space: Opens and closes a MessageReasoning, or a MessageToolCall that has details.
 - Press target: .
 - It is read in order: the name, the message, then the line under it. Put the list in the View's list so a screen reader steps message by message.
 - A failed message says so in words and with an error mark under the bubble, not with colour alone.
 - The side tells whose it is to the eye; say it in `author` for the ear, or name the list by who is speaking.
+- A tool step is named by its label and where it stands ("npm test, failed"), so the mark is never the only sign.
 
 | Contrast | Pair | Minimum | Light | Dark |
 | --- | --- | --- | --- | --- |
@@ -156,6 +214,8 @@ export function Reasoning() {
 | meta | `text-muted` on `canvas` | 4.5:1 | 5.50:1 | 7.33:1 |
 | reasoning, its line and its text | `text-muted` on `canvas` | 4.5:1 | 5.50:1 | 7.33:1 |
 | failure words | `danger` on `canvas` | 4.5:1 | 4.87:1 | 5.98:1 |
+| a waiting tool step's mark | `accent` on `canvas` | 3:1 | 5.25:1 | 6.83:1 |
+| a waiting tool step's label | `text` on `canvas` | 4.5:1 | 15.19:1 | 15.31:1 |
 
 Ratios are computed from @lingxia/view/theme and rounded down.
 
@@ -163,6 +223,8 @@ Ratios are computed from @lingxia/view/theme and rounded down.
 
 - Do: Write `meta` in full: "Not sent", "Sending", a time.
 - Do: Join the bubbles of one person's run and name the run once.
+- Do: Label a tool step by what it does, in the user's words: "Searched the web for tide times", not the tool's name.
+- Do: Name what allowing does when it cannot be undone: `allowLabel` "Delete 3 files" with `isDestructive`.
 - Don't: Colour bubbles per person; side and name tell them apart.
 - Don't: Put a whole form in a bubble; a bubble holds a message, a picture or a file.
 

@@ -10,9 +10,11 @@ export const doc: ComponentDoc = {
     'Composer is one surface holding the text and its buttons. While the draft fits on one line it is a single row: attach, text, send. Past one line the text takes the full width, growing to five lines and then scrolling, and the buttons sit under it. ' +
     'The send button wakes when there is something to send. ' +
     'The keyboard\'s send key sends too; with a hardware keyboard Shift and Return add a line. The app sends the text and empties the draft. ' +
-    'It sits at the bottom of a conversation, where the page keeps it above the keyboard.',
-  keywords: ['composer', 'message input', 'chat input', 'reply', 'send', 'comment box'],
+    'It sits at the bottom of a conversation, where the page keeps it above the keyboard. ' +
+    '`endActions` puts the app\'s buttons before send, a voice button or a model picker. `triggers` open a list at the caret when a word starts with their character, `/` for commands or `@` for people: what follows narrows it, the arrow keys move through it and Return or a press puts the suggestion in the draft.',
+  keywords: ['composer', 'message input', 'chat input', 'reply', 'send', 'comment box', 'slash command', 'mention', 'prompt'],
   propsType: 'ComposerProps',
+  otherPropsTypes: ['ComposerTrigger', 'ComposerSuggestion'],
   recipe: { map: 'composerRecipe', parts: 'composerParts' },
   anatomy: [
     { part: 'root', required: true, description: 'The surface, and under it the reason while disabled.' },
@@ -22,6 +24,8 @@ export const doc: ComponentDoc = {
     { part: 'field', required: true, description: 'The text\'s place: between the buttons, or the full width over them.' },
     { part: 'editor', required: true, description: 'The text, named by `label`, one to five lines.' },
     { part: 'send', required: true, description: 'An IconButton named by `sendLabel`; disabled while the draft is empty, loading while sending.' },
+    { part: 'end', required: false, description: 'The app\'s `endActions` and the send button, together in its place.' },
+    { part: 'suggestions', required: false, description: 'A trigger\'s list at the caret, a menu\'s panel; the active suggestion is marked as a hovered item is.' },
   ],
   accessibility: {
     pattern: null,
@@ -34,7 +38,10 @@ export const doc: ComponentDoc = {
     keyboard: [
       { keys: 'Return', effect: 'Sends, with a hardware keyboard' },
       { keys: 'Shift and Return', effect: 'Adds a line' },
-      { keys: 'Tab', effect: 'From the field to the send button' },
+      { keys: 'Tab', effect: 'From the field to the end actions and the send button' },
+      { keys: 'Up and Down arrows', effect: 'With a trigger\'s list open, move through it' },
+      { keys: 'Return', effect: 'With a trigger\'s list open, puts the active suggestion in the draft' },
+      { keys: 'Escape', effect: 'Closes a trigger\'s list until the caret leaves the word' },
     ],
     target: { md: 40 },
     contrast: [],
@@ -62,6 +69,7 @@ export const doc: ComponentDoc = {
     { name: 'WithAttach', title: 'A draft past one line' },
     { name: 'Attached', title: 'With attachments' },
     { name: 'Stoppable', title: 'A stop button while sending' },
+    { name: 'Triggers', title: 'Commands and people at the caret, and a voice button' },
   ],
   gaps: [],
   limits: [
@@ -84,6 +92,7 @@ export const doc: ComponentDoc = {
         { name: 'StateSending', title: 'Sending: the button is busy, the draft stays' },
         { name: 'Stoppable', title: 'Sending what can be stopped: the button is Stop' },
         { name: 'StateDisabled', title: 'Disabled, with the reason' },
+        { name: 'Triggers', title: 'An assistant\'s composer: / for commands and @ for people at the caret, a voice button before send' },
       ],
     },
   },

@@ -1,4 +1,4 @@
-import type { MessageSide } from './MessageBubble';
+import type { MessageSide, MessageToolCallStatus } from './MessageBubble';
 
 export const messageBubbleParts = {
   root: 'view',
@@ -18,6 +18,14 @@ export const messageBubbleParts = {
   reasoningChevron: 'vector',
   reasoningBox: 'view',
   reasoningText: 'text',
+  tool: 'view',
+  toolLine: 'button',
+  toolMark: 'vector',
+  toolLabel: 'text',
+  toolWord: 'text',
+  toolMeta: 'text',
+  toolDetails: 'view',
+  toolAnswers: 'view',
 } as const;
 
 /**
@@ -94,5 +102,39 @@ export const messageBubbleRecipe = {
   },
   reasoningText: {
     base: 'mt-1 mb-2 ps-3 border-s-2 border-line text-footnote text-muted break-words select-text',
+  },
+  /** MessageToolCall: the reasoning's quiet line, with a mark for where the run stands; its details open behind the same rule. */
+  tool: {
+    // The column's width less the avatar space, so a long step ends in an ellipsis rather than past the edge.
+    base: 'self-stretch max-w-130',
+    /** The avatar's width (32) and the gap after it (8). */
+    afterAvatar: 'ms-10',
+  },
+  toolLine: {
+    base: 'flex-row items-center gap-1.5 self-start max-w-full min-h-8 -mx-2 px-2 text-muted',
+    toggle: 'rounded-control transition-colors duration-fast ease-standard hover:bg-text/4 active:bg-text/7 focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2',
+  },
+  /** Done and denied stay quiet; a failure is in the danger colour; a wait is in the accent. */
+  toolMark: {
+    base: 'size-3.5 shrink-0',
+    status: { done: 'text-muted', failed: 'text-danger', denied: 'text-muted', waiting: 'text-accent' } satisfies Record<Exclude<MessageToolCallStatus, 'running'>, string>,
+  },
+  toolLabel: {
+    base: 'shrink min-w-0 truncate text-footnote',
+    waiting: 'text-text font-medium',
+  },
+  /** Where it stands in words, after the label: a failure or a refusal is never told by the mark alone. */
+  toolWord: {
+    failed: 'shrink-0 text-footnote font-medium text-danger',
+    denied: 'shrink-0 text-footnote font-medium',
+  },
+  toolMeta: {
+    base: 'shrink-0 text-caption tabular-nums',
+  },
+  toolDetails: {
+    base: 'mt-1 mb-2 ps-3 border-s-2 border-line gap-2 text-footnote text-muted',
+  },
+  toolAnswers: {
+    base: 'flex-row flex-wrap gap-2 mt-1 mb-2 ps-3.5',
   },
 } as const;

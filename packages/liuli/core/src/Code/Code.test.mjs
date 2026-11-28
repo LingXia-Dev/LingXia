@@ -192,3 +192,15 @@ test('every syntax colour reads at 4.5:1 on the block and on each line tint, lig
         assert.ok(value >= 4.5, `${role} on ${ground.pair[1]}, ${appearance}: ${value.toFixed(2)}`);
       }
 });
+
+test('a sideways scroll fades each edge its lines run on under, and none while they fit', async () => {
+  const screen = await renderExample('Code/Code', 'Command');
+  const scroll = () => screen.getByTestId('install').children[1];
+  const masked = () => Object.keys(scroll().props).filter(key => /mask/i.test(key)).map(key => JSON.stringify(scroll().props[key]));
+  assert.deepEqual(masked(), [], 'at rest with both edges reached');
+  screen.fire(scroll(), 'onScrollEdge', JSON.stringify({ edge: 'end', at: false }));
+  const end = masked();
+  assert.equal(end.length, 1);
+  screen.fire(scroll(), 'onScrollEdge', JSON.stringify({ edge: 'start', at: false }));
+  assert.notDeepEqual(masked(), end, 'mid-scroll: both edges');
+});

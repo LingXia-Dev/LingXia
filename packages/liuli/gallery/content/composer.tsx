@@ -1,5 +1,5 @@
 // Generated from the doc file by scripts/generate.mjs; do not edit.
-import { Reply, RowWithAttach, WithAttach, Attached, StateSending, Stoppable, StateDisabled } from '../../core/src/Composer/Composer.examples';
+import { Reply, RowWithAttach, WithAttach, Attached, StateSending, Stoppable, StateDisabled, Triggers } from '../../core/src/Composer/Composer.examples';
 import { Lead, PageSection, Stage } from '../shared/Layout';
 
 export function Content() {
@@ -26,6 +26,9 @@ export function Content() {
         </Stage>
         <Stage caption={"Disabled, with the reason"} bare>
           <StateDisabled />
+        </Stage>
+        <Stage caption={"An assistant's composer: / for commands and @ for people at the caret, a voice button before send"} bare>
+          <Triggers />
         </Stage>
       </PageSection>
     </>

@@ -5,10 +5,16 @@ export const composerParts = {
   start: 'view',
   field: 'view',
   editor: 'textarea',
+  end: 'view',
   send: 'IconButton',
   measure: 'view',
   line: 'text',
   reason: 'text',
+  suggestions: 'view',
+  suggestionList: 'view',
+  suggestion: 'button',
+  suggestionLabel: 'text',
+  suggestionDescription: 'text',
 } as const;
 
 /**
@@ -44,9 +50,16 @@ export const composerRecipe = {
   editor: {
     base: 'self-stretch p-0 bg-transparent text-body text-text placeholder:text-muted disabled:text-faint',
   },
+  /** The app's end actions and the send button, together in the send button's place. */
+  end: {
+    base: 'col-start-3 flex-row items-center gap-1',
+    stacked: 'order-3',
+  },
   send: {
     // Concentric with the box: the pack's container corner less the 6 px padding.
-    base: 'col-start-3 rounded-[calc(var(--radius-container)-6px)]',
+    base: 'rounded-[calc(var(--radius-container)-6px)]',
+    /** Alone, it takes the end place itself. */
+    alone: 'col-start-3',
     stacked: 'order-3',
   },
   measure: {
@@ -56,5 +69,23 @@ export const composerRecipe = {
   /** Why it is disabled, under the composer. */
   reason: {
     base: 'text-footnote text-muted',
+  },
+  /** A trigger's list, over the text at the caret: a menu's panel. */
+  suggestions: {
+    base: 'w-64 mb-1.5 p-1 rounded-container border border-line bg-surface-overlay shadow-raised transition duration-fast ease-standard starting:opacity-0 exit:opacity-0',
+  },
+  suggestionList: {
+    base: 'gap-0.5',
+  },
+  /** The active one is marked as a hovered menu item is, and a pointer can press any. */
+  suggestion: {
+    base: 'flex-row items-baseline gap-2 min-h-9 px-2.5 py-1.5 rounded-control text-start hover:bg-text/5 active:bg-text/8',
+    active: 'bg-text/8',
+  },
+  suggestionLabel: {
+    base: 'shrink-0 text-body text-text',
+  },
+  suggestionDescription: {
+    base: 'shrink min-w-0 text-footnote text-muted truncate',
   },
 } as const;

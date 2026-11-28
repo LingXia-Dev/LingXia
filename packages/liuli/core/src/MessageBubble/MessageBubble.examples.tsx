@@ -1,7 +1,8 @@
 import { useLocal } from '@lingxia/view';
 import { Avatar } from '../Avatar/Avatar';
 import { Button } from '../Button/Button';
-import { MessageBubble, MessageReasoning } from './MessageBubble';
+import { CodeBlock } from '../Code/Code';
+import { MessageBubble, MessageReasoning, MessageToolCall } from './MessageBubble';
 
 /** An assistant's answer with how it got there folded above it; the second is still thinking. */
 export function Reasoning() {
@@ -59,6 +60,35 @@ export function Specimen() {
     <view className="w-36 gap-1">
       <MessageBubble text="Saturday?" />
       <MessageBubble side="end" text="Yes!" />
+    </view>
+  );
+}
+
+/** An assistant's steps with tools: done, failed and running fold to a line; one that deletes files waits to be allowed, then is done or denied. */
+export function ToolCalls() {
+  const answer = useLocal<'waiting' | 'allowed' | 'denied'>('waiting');
+  return (
+    <view className="gap-0.5">
+      <MessageToolCall label="Searched the notes for 'packing list'" status="done" meta="3 results" hasAvatarSpace data-testid="searched">
+        <text>Packing list (Saturday), Tent checklist, Ferry times</text>
+      </MessageToolCall>
+      <MessageToolCall label="npm test" status="failed" meta="4.2 s" isDefaultOpen hasAvatarSpace data-testid="tests">
+        <CodeBlock label="Test output" code={'FAIL  src/trip.test.ts\n  ferry › lands before the rain\n    expected 14:10, got 16:40'} />
+      </MessageToolCall>
+      <MessageToolCall label="Reading the forecast for Saturday" status="running" hasAvatarSpace data-testid="forecast" />
+      {answer.value === 'waiting'
+        ? (
+          <MessageToolCall
+            label="Delete 3 old drafts in Notes"
+            status="waiting"
+            approval={{ allowLabel: 'Delete 3 drafts', isDestructive: true, onAllow: () => answer.set('allowed'), onDeny: () => answer.set('denied') }}
+            hasAvatarSpace
+            data-testid="delete"
+          >
+            <text>{'Trip ideas (old)\nTent checklist (copy)\nUntitled note'}</text>
+          </MessageToolCall>
+        )
+        : <MessageToolCall label="Delete 3 old drafts in Notes" status={answer.value === 'allowed' ? 'done' : 'denied'} hasAvatarSpace data-testid="delete" />}
     </view>
   );
 }

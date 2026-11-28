@@ -46,7 +46,7 @@ that directory.
 ## Components
 
 <!-- components:start -->
-85 components. Import any of them from `@liulidesign/core`, or from its own path; a second component in a row (`AvatarGroup`, `Spinner`) has a path of its own too:
+87 components. Import any of them from `@liulidesign/core`, or from its own path; a second component in a row (`AvatarGroup`, `Spinner`) has a path of its own too:
 
 | Import | Exports | What it is |
 | --- | --- | --- |
@@ -124,11 +124,13 @@ that directory.
 | `@liulidesign/core/Timer` | formatTimer, Timer | A length of time in steady digits |
 | `@liulidesign/core/Code` | Code, CodeBlock | Code as it was written, in a sentence or as a block |
 | `@liulidesign/core/Timestamp` | formatTimestamp, Timestamp | When something happened, in the words people use |
-| `@liulidesign/core/MessageBubble` | MessageBubble, MessageReasoning | One message of a conversation |
+| `@liulidesign/core/MessageBubble` | MessageBubble, MessageReasoning, MessageToolCall | One message of a conversation |
 | `@liulidesign/core/ListDetail` | ListDetailList, ListDetailDetail, ListDetail | A list and the detail of the row chosen in it: side by side on a wide screen, one over the other on a phone |
 | `@liulidesign/core/Split` | Split | The main content and a companion beside it: side by side on a wide screen, one above the other on a half-open fold, stacked or in a sheet on a phone |
 | `@liulidesign/core/QRCode` | fitsQRCode, qrCodeSVG, QRCode | A code a phone camera reads |
 | `@liulidesign/core/OverflowList` | OverflowList | A line of items that keeps to one row, folding what does not fit into one element |
+| `@liulidesign/core/Citation` | CitationGroup, Citation | Where an answer's claims come from |
+| `@liulidesign/core/ConversationScrollButton` | useConversationScroll, ConversationScrollButton | Back to the newest message |
 | `@liulidesign/core/VideoPlayer` | VideoPlayer | A video with its controls, over the picture or under it, and full screen |
 | `@liulidesign/core/VideoControls` | VideoControls | Play, seek, mute, speed, quality and full screen for a useVideo player |
 | `@liulidesign/core/Carousel` | Carousel | A few pages to swipe through, one at a time |

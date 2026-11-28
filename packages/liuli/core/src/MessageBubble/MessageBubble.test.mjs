@@ -40,3 +40,30 @@ test('Reasoning: one line that opens and closes its text; while streaming it rep
   assert.equal(thinking.props.stateExpanded, 0);
   assert.ok(thinking.props.stateBusy ?? thinking.props.busy ?? thinking.props.accessibilityBusy, 'busy while streaming');
 });
+
+test('ToolCalls: each step is named by its label and where it stands; one with details opens, one waiting asks to be allowed', async () => {
+  const screen = await renderExample('MessageBubble/MessageBubble', 'ToolCalls');
+  const searched = screen.getByTestId('searched');
+  assert.deepEqual([searched.props.accessibilityLabel, searched.props.stateExpanded], ["Searched the notes for 'packing list', done, 3 results", 0]);
+  screen.press(searched);
+  assert.equal(screen.getByTestId('searched').props.stateExpanded, 1);
+  const tests = screen.getByTestId('tests');
+  assert.equal(tests.props.accessibilityLabel, 'npm test, failed, 4.2 s');
+  screen.getByText('Failed');
+  const forecast = screen.getByTestId('forecast');
+  assert.equal(forecast.props.stateExpanded, undefined, 'no details, so nothing to open');
+  assert.ok(forecast.props.stateBusy ?? forecast.props.busy ?? forecast.props.accessibilityBusy, 'busy while running');
+  assert.equal(screen.getByTestId('delete').props.accessibilityLabel, 'Delete 3 old drafts in Notes, waiting for your answer');
+  screen.getByTestId('delete-details');
+  assert.equal(textOf(screen.getByTestId('delete-allow')), 'Delete 3 drafts');
+  screen.press(screen.getByTestId('delete-deny'));
+  assert.equal(screen.getByTestId('delete').props.accessibilityLabel, 'Delete 3 old drafts in Notes, denied');
+  screen.getByText('Denied');
+  assert.throws(() => screen.getByTestId('delete-allow'), 'answered, the buttons go');
+});
+
+test('ToolCalls: in Chinese, the state is read in the page\'s language', async () => {
+  const screen = await renderExample('MessageBubble/MessageBubble', 'ToolCalls', { env: { language: 'zh-CN' } });
+  assert.equal(screen.getByTestId('tests').props.accessibilityLabel, 'npm test，失败，4.2 s');
+  assert.equal(textOf(screen.getByTestId('delete-deny')), '拒绝');
+});

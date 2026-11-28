@@ -402,5 +402,37 @@
   "@liuli.datePresets": {
     "defaultMessage": "Quick ranges",
     "description": "Name of the row of preset spans (\"Last 7 days\") over a date range calendar."
+  },
+  "@liuli.toolCall.state": {
+    "defaultMessage": "{label}, {status, select, running {running} done {done} failed {failed} denied {denied} other {waiting for your answer}}{hasMeta, select, yes {, {meta}} other {}}",
+    "description": "Accessible name of an assistant's tool step: its line, where it stands, and its short fact (`meta`) when it has one."
+  },
+  "@liuli.toolCall.failed": {
+    "defaultMessage": "Failed",
+    "description": "Shown after a tool step that failed."
+  },
+  "@liuli.toolCall.allow": {
+    "defaultMessage": "Allow",
+    "description": "Button that lets an assistant run a tool step it asked about."
+  },
+  "@liuli.toolCall.deny": {
+    "defaultMessage": "Deny",
+    "description": "Button that refuses a tool step an assistant asked about."
+  },
+  "@liuli.toolCall.denied": {
+    "defaultMessage": "Denied",
+    "description": "Shown after a tool step the user refused."
+  },
+  "@liuli.citation.sources": {
+    "defaultMessage": "Sources",
+    "description": "Accessible name of the row of sources under a cited answer."
+  },
+  "@liuli.citation.source": {
+    "defaultMessage": "Source {number}: {title}{hasSite, select, yes {, {site}} other {}}",
+    "description": "Accessible name of one source's pill under a cited answer."
+  },
+  "@liuli.conversation.latest": {
+    "defaultMessage": "{count, plural, =0 {Jump to the latest message} one {Jump to the latest message, # new} other {Jump to the latest message, # new}}",
+    "description": "Button that scrolls a conversation back to its newest message; `count` is how many arrived out of view."
   }
 }

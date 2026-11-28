@@ -8,7 +8,7 @@ Where a message is written and sent. Status: preview.
 import { Composer } from '@liulidesign/core/Composer';
 ```
 
-Composer is one surface holding the text and its buttons. While the draft fits on one line it is a single row: attach, text, send. Past one line the text takes the full width, growing to five lines and then scrolling, and the buttons sit under it. The send button wakes when there is something to send. The keyboard's send key sends too; with a hardware keyboard Shift and Return add a line. The app sends the text and empties the draft. It sits at the bottom of a conversation, where the page keeps it above the keyboard.
+Composer is one surface holding the text and its buttons. While the draft fits on one line it is a single row: attach, text, send. Past one line the text takes the full width, growing to five lines and then scrolling, and the buttons sit under it. The send button wakes when there is something to send. The keyboard's send key sends too; with a hardware keyboard Shift and Return add a line. The app sends the text and empties the draft. It sits at the bottom of a conversation, where the page keeps it above the keyboard. `endActions` puts the app's buttons before send, a voice button or a model picker. `triggers` open a list at the caret when a word starts with their character, `/` for commands or `@` for people: what follows narrows it, the arrow keys move through it and Return or a press puts the suggestion in the draft.
 
 ## Examples
 
@@ -142,6 +142,54 @@ export function Stoppable() {
 }
 ```
 
+### Commands and people at the caret, and a voice button
+
+```tsx
+import { useLocal } from '@lingxia/view';
+import { IconButton } from '@liulidesign/core/IconButton';
+import { Composer } from '@liulidesign/core/Composer';
+
+/** An assistant's composer: `/` lists commands and `@` people at the caret, and a voice button sits before send. */
+export function Triggers() {
+  const draft = useLocal('prompt', '');
+  const said = useLocal('said', '');
+  return (
+    <view className="gap-2">
+      <Composer
+        bind={draft}
+        label="Message the assistant"
+        placeholder="Ask anything, / for commands, @ for people"
+        onSubmit={text => { said.set(`Sent "${text}"`); draft.set(''); }}
+        endActions={<IconButton label="Dictate" icon="microphone" variant="ghost" onClick={() => said.set('Listening')} data-testid="dictate" />}
+        triggers={[
+          {
+            char: '/',
+            label: 'Commands',
+            items: [
+              { value: 'summarize', label: 'summarize', description: 'Sum up the conversation' },
+              { value: 'translate', label: 'translate', description: 'Into another language' },
+              { value: 'clear', label: 'clear', description: 'Start a new conversation', insert: '' },
+            ],
+            onChoose: suggestion => { if (suggestion.value === 'clear') said.set('Started a new conversation'); },
+          },
+          {
+            char: '@',
+            label: 'People',
+            items: [
+              { value: 'ana', label: 'Ana Lima', description: 'Design' },
+              { value: 'kai', label: 'Kai Chen', description: 'Trips' },
+              { value: 'noor', label: 'Noor Haddad', description: 'Finance' },
+            ],
+          },
+        ]}
+        data-testid="prompt"
+      />
+      {said.value !== '' && <text role="status" className="text-footnote text-muted">{said.value}</text>}
+    </view>
+  );
+}
+```
+
 ## Props
 
 | Prop | Type | Default | Description |
@@ -157,13 +205,33 @@ export function Stoppable() {
 | `sendLabel` | `string` |  | The send button\'s name: "Send". Defaults to "Send" in the page's language. |
 | `isSending` | `boolean` | `false` | The send button shows a spinner and takes no press, or becomes the stop button with `onStop`; the draft stays editable. |
 | `startContent` | `Child` |  | Before the text, or under it at the start once the draft takes more than a line: an IconButton that attaches a file or a picture. |
+| `endActions` | `Child` |  | Before the send button: IconButtons for the voice, a model or the mode to send in. |
+| `triggers` | `readonly ComposerTrigger[]` |  | Lists that open at the caret when a word starts with their character, `/` or `@`: the arrow keys move through one, Return or a press puts the suggestion in the draft. |
 | `attachments` | `Child` |  | What is attached, shown inside the composer over the text: Tokens or Thumbnails, each with its own way to remove it. |
 | `isDisabled` | `boolean` | `false` |  |
 | `disabledMessage` | `string` |  | Why it is disabled, shown under the field: "Only members can reply." |
 | `className` | `string` |  |  |
-| `data-testid` | `string` |  | On the field; the send button gets `<testid>-send`. |
+| `data-testid` | `string` |  | On the field; the send button gets `<testid>-send`, a trigger's list `<testid>-suggestions`, a suggestion `<testid>-suggestion-<value>`. |
 
 - `bind` | `value` + `onChange`: props from one side only.
+
+## ComposerTrigger props
+
+| Prop | Type | Default | Description |
+| --- | --- | --- | --- |
+| `char` (required) | `string` |  | The character that opens the list at the start of a word: `/` for commands, `@` for people. |
+| `label` (required) | `string` |  | Names the list for assistive tech: "Commands", "People". |
+| `items` (required) | `readonly ComposerSuggestion[] \| ((query: string) => readonly ComposerSuggestion[])` |  | The suggestions, matched by label against what was typed after the trigger; or a function of that text, for a list the app narrows itself. |
+| `onChoose` | `((suggestion: ComposerSuggestion) => void)` |  | Runs after a suggestion goes into the draft. |
+
+## ComposerSuggestion props
+
+| Prop | Type | Default | Description |
+| --- | --- | --- | --- |
+| `value` (required) | `string` |  | Tells it from the others. |
+| `label` (required) | `string` |  | What the list shows and what is matched against what follows the trigger: "summarize", "Ana Lima". |
+| `description` | `string` |  | A quieter line beside the label: what a command does, a person's role. |
+| `insert` | `string` | `the trigger, the label and a space: "@Ana Lima "` | What replaces the trigger and the typed text. |
 
 ## Anatomy
 
@@ -176,13 +244,15 @@ export function Stoppable() {
 | field | `<view>` | yes | The text's place: between the buttons, or the full width over them. |
 | editor | `<textarea>` | yes | The text, named by `label`, one to five lines. |
 | send | `<IconButton>` | yes | An IconButton named by `sendLabel`; disabled while the draft is empty, loading while sending. |
+| end | `<view>` | no | The app's `endActions` and the send button, together in its place. |
+| suggestions | `<view>` | no | A trigger's list at the caret, a menu's panel; the active suggestion is marked as a hovered item is. |
 
 ## What an app may override
 
 - `className`: classes merged after the recipe's, so they win.
 - The recipe, `composerRecipe` from `@liulidesign/core/Composer/recipe`: the classes of each part, to style an element of your own to match. The component does not read a changed copy.
-- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-footnote`, `--text-body`, `--radius-container`.
-- Colour roles it paints with, set by the theme pack: `accent`, `line-strong`, `surface`, `text`, `text-faint`, `text-muted`.
+- Scale tokens it reads, set in the app's stylesheet under `@theme`: `--text-footnote`, `--text-body`, `--shadow-raised`, `--radius-control`, `--radius-container`.
+- Colour roles it paints with, set by the theme pack: `accent`, `line`, `line-strong`, `surface`, `surface-overlay`, `text`, `text-faint`, `text-muted`.
 
 ## Accessibility
 
@@ -192,7 +262,10 @@ export function Stoppable() {
 - States: disabled (from isDisabled; the send button also while the draft is empty); busy (from isSending, on the send button, unless `onStop` makes it the stop button).
 - Return: Sends, with a hardware keyboard.
 - Shift and Return: Adds a line.
-- Tab: From the field to the send button.
+- Tab: From the field to the end actions and the send button.
+- Up and Down arrows: With a trigger's list open, move through it.
+- Return: With a trigger's list open, puts the active suggestion in the draft.
+- Escape: Closes a trigger's list until the caret leaves the word.
 - Press target: md 40 px.
 - The field is named by `label` and the button by `sendLabel`; neither name is drawn.
 - The send button is unavailable while there is nothing to send, and reports busy while sending.

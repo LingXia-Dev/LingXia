@@ -154,10 +154,14 @@ export function CodeBlock(props: CodeBlockProps) {
     if (kinds[index] === 'header') return [{ text: line + end, isHeader: true }];
     return colored[index].map(run => ({ text: run.text, token: run.kind }));
   });
+  // Lines that run on under an edge fade there, so a cut line reads as more to scroll to.
+  const edges = useLocal<{ start: boolean; end: boolean }>('edges', { start: true, end: true });
+  const under = !edges.value.start && !edges.value.end ? 'both' : !edges.value.start ? 'start' : !edges.value.end ? 'end' : undefined;
+  const sideways = { onScrollEdge: ({ edge, at }: { edge: 'start' | 'end'; at: boolean }) => edges.set({ ...edges.value, [edge]: at }) };
   const marks = (each: (kind: LineKind, index: number) => string) =>
     kinds.map((kind, index) => [{ text: `${each(kind, index)}${index < lines.length - 1 ? '\n' : ''}`, mark: kind }]);
   const body = isLined ? (
-    <scroll className={r.scroll.lined}>
+    <scroll className={cx(r.scroll.lined, under && r.scroll.more[under])} {...sideways}>
       <view className={r.lines.base}>
         <view aria-hidden className={r.tints.base}>
           {kinds.map((kind, index) => (
@@ -172,7 +176,7 @@ export function CodeBlock(props: CodeBlockProps) {
   ) : isWrapped ? (
     <view className={r.wrap.base}>{codeColumn(text, codeLines)}</view>
   ) : (
-    <scroll className={r.scroll.base}>
+    <scroll className={cx(r.scroll.base, under && r.scroll.more[under])} {...sideways}>
       {codeColumn(text, codeLines)}
     </scroll>
   );

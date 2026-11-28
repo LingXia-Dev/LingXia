@@ -340,7 +340,10 @@ export const entries: GalleryEntry[] = [
       "chat input",
       "reply",
       "send",
-      "comment box"
+      "comment box",
+      "slash command",
+      "mention",
+      "prompt"
     ]
   },
   {
@@ -1203,7 +1206,12 @@ export const entries: GalleryEntry[] = [
       "reply",
       "reasoning",
       "thinking",
-      "assistant"
+      "assistant",
+      "tool",
+      "tool call",
+      "step",
+      "approval",
+      "agent"
     ]
   },
   {
@@ -1268,6 +1276,39 @@ export const entries: GalleryEntry[] = [
       "priority plus",
       "toolbar overflow",
       "tags"
+    ]
+  },
+  {
+    "name": "Citation",
+    "page": "citation",
+    "category": "content",
+    "summary": "Where an answer's claims come from",
+    "keywords": [
+      "citation",
+      "source",
+      "reference",
+      "footnote",
+      "grounding",
+      "cite",
+      "assistant",
+      "answer",
+      "link"
+    ]
+  },
+  {
+    "name": "ConversationScrollButton",
+    "page": "conversation-scroll-button",
+    "category": "content",
+    "summary": "Back to the newest message",
+    "keywords": [
+      "scroll to bottom",
+      "jump to latest",
+      "new messages",
+      "conversation",
+      "chat",
+      "follow",
+      "streaming",
+      "unread"
     ]
   },
   {
@@ -1639,7 +1680,7 @@ export const galleryCategories: GalleryCategory[] = [
     "icon": "rows",
     "description": "Cards, rows and tables",
     "page": "category-content",
-    "count": 19
+    "count": 21
   },
   {
     "id": "charts",

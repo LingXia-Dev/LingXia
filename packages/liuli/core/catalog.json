@@ -4634,6 +4634,226 @@
       }
     },
     {
+      "name": "Citation",
+      "import": "@liulidesign/core/Citation",
+      "exports": [
+        "CitationGroup",
+        "Citation"
+      ],
+      "category": "content",
+      "status": "preview",
+      "since": "2026-11-27",
+      "summary": "Where an answer's claims come from",
+      "description": "CitationGroup holds an answer and the sources it rests on. A Citation puts a source's number after the claim it backs, among the words of a `<text>`; resting a pointer on it, focusing it or tapping it shows the source's card: its title, where it is from and the words it was cited for. Under the answer the sources sit as numbered pills, and a pill opens its source through `onOpen`. Numbers follow the order of `sources`, so the same source keeps its number wherever it is cited.",
+      "keywords": [
+        "citation",
+        "source",
+        "reference",
+        "footnote",
+        "grounding",
+        "cite",
+        "assistant",
+        "answer",
+        "link"
+      ],
+      "props": [
+        {
+          "name": "sources",
+          "type": "readonly CitationSource[]",
+          "required": true,
+          "description": "The sources, in the order they are numbered."
+        },
+        {
+          "name": "children",
+          "type": "Child",
+          "required": true,
+          "description": "The cited content: `<text>` with a Citation after each claim, a Markdown, a MessageBubble's text."
+        },
+        {
+          "name": "onOpen",
+          "type": "(source: CitationSource) => void",
+          "required": true,
+          "description": "Runs when a source's pill is pressed: the app opens the page or the document."
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "required": false,
+          "description": "Names the row of sources for assistive tech. Defaults to \"Sources\" in the page's language."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": "On the group; a pill gets `<testid>-source-<id>`, a mark `<testid>-mark-<id>`, a card `<testid>-card-<id>`."
+        }
+      ],
+      "otherProps": {
+        "Citation": [
+          {
+            "name": "source",
+            "type": "string",
+            "required": true,
+            "description": "The `id` of one of the group's sources."
+          },
+          {
+            "name": "data-testid",
+            "type": "string",
+            "required": false,
+            "description": "On the mark; defaults to the group's `<testid>-mark-<source>`."
+          }
+        ],
+        "CitationSource": [
+          {
+            "name": "id",
+            "type": "string",
+            "required": true,
+            "description": "What a Citation names it by."
+          },
+          {
+            "name": "title",
+            "type": "string",
+            "required": true,
+            "description": "The page or document's title: \"Ferry timetable, summer\"."
+          },
+          {
+            "name": "site",
+            "type": "string",
+            "required": false,
+            "description": "Where it is from, short: \"example.com\", \"Trip notes\". The pill shows it, else the title."
+          },
+          {
+            "name": "excerpt",
+            "type": "string",
+            "required": false,
+            "description": "The words it was cited for, shown on its card."
+          }
+        ]
+      },
+      "choices": [],
+      "parts": {
+        "group": "view",
+        "content": "view",
+        "mark": "link",
+        "sources": "view",
+        "source": "button",
+        "sourceNumber": "text",
+        "sourceName": "text",
+        "card": "view",
+        "cardTitle": "text",
+        "cardSite": "text",
+        "cardExcerpt": "text"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": "label",
+        "description": [],
+        "states": [],
+        "keyboard": [
+          {
+            "keys": "Tab",
+            "effect": "To each mark among the words, then each source's pill"
+          },
+          {
+            "keys": "Enter",
+            "effect": "On a mark, shows its card; on a pill, opens the source"
+          }
+        ],
+        "target": {},
+        "contrast": [
+          {
+            "what": "mark",
+            "pair": [
+              "accent",
+              "surface"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "pill number",
+            "pair": [
+              "on-accent-soft",
+              "accent-soft"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "pill words",
+            "pair": [
+              "text-muted",
+              "surface"
+            ],
+            "minimum": "4.5:1"
+          }
+        ],
+        "notes": [
+          "A mark reads its number and is described by its card, so a screen reader hears which source backs the claim without opening anything.",
+          "Each pill is named \"Source 1: its title, its site\"."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Answer",
+          "title": "An assistant's answer citing three sources",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { MessageBubble } from '@liulidesign/core/MessageBubble';\nimport { Avatar } from '@liulidesign/core/Avatar';\nimport { Citation, CitationGroup, type CitationSource } from '@liulidesign/core/Citation';\n\nconst sources: CitationSource[] = [\n  { id: 'ferry', title: 'Ferry timetable, summer', site: 'ferries.example.com', excerpt: 'Saturday sailings: 09:30, 14:10 and 16:40. Crossing time about 40 minutes.' },\n  { id: 'forecast', title: 'Coast forecast for Saturday', site: 'weather.example.com', excerpt: 'Dry until mid-afternoon; rain from about four, heavier in the evening.' },\n  { id: 'notes', title: 'Trip notes', excerpt: 'Tent stays in the car if it looks like rain.' },\n];\n\n/** An assistant's answer with three sources: a mark after each claim, the sources as pills under it. */\nexport function Answer() {\n  const opened = useLocal('');\n  return (\n    <view className=\"gap-2\">\n      <MessageBubble avatar={<Avatar name=\"Assistant\" initials=\"A\" size=\"sm\" isDecorative />} author=\"Assistant\">\n        <CitationGroup sources={sources} onOpen={source => opened.set(source.title)} data-testid=\"answer\">\n          <text className=\"text-body\">\n            Take the 14:10 ferry: it crosses in about 40 minutes<Citation source=\"ferry\" /> and lands before the rain starts around four<Citation source=\"forecast\" />. Leave the tent in the car<Citation source=\"notes\" />.\n          </text>\n        </CitationGroup>\n      </MessageBubble>\n      {opened.value !== '' && <text className=\"text-footnote text-muted\" data-testid=\"opened\">{`Opened ${opened.value}`}</text>}\n    </view>\n  );\n}"
+        }
+      ],
+      "gaps": [],
+      "limits": [
+        "The card shows text only; a picture of the page is not drawn.",
+        "Marks are numbers; a source named in the words is a Link."
+      ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--text-caption",
+          "--text-footnote",
+          "--text-callout",
+          "--shadow-raised",
+          "--radius-container"
+        ],
+        "roles": [
+          "accent",
+          "accent-soft",
+          "focus",
+          "line",
+          "on-accent-soft",
+          "surface",
+          "surface-overlay",
+          "text",
+          "text-muted"
+        ]
+      },
+      "related": [
+        "MessageBubble",
+        "Markdown",
+        "Link",
+        "HoverCard"
+      ],
+      "gallery": {
+        "specimen": "Specimen",
+        "tagline": "An answer's sources",
+        "order": 22,
+        "page": {
+          "lead": "Use citations to show which source backs each claim of an answer.",
+          "hero": "Answer",
+          "variants": []
+        }
+      }
+    },
+    {
       "name": "Code",
       "import": "@liulidesign/core/Code",
       "exports": [
@@ -5788,14 +6008,17 @@
       "status": "preview",
       "since": "2026-11-15",
       "summary": "Where a message is written and sent",
-      "description": "Composer is one surface holding the text and its buttons. While the draft fits on one line it is a single row: attach, text, send. Past one line the text takes the full width, growing to five lines and then scrolling, and the buttons sit under it. The send button wakes when there is something to send. The keyboard's send key sends too; with a hardware keyboard Shift and Return add a line. The app sends the text and empties the draft. It sits at the bottom of a conversation, where the page keeps it above the keyboard.",
+      "description": "Composer is one surface holding the text and its buttons. While the draft fits on one line it is a single row: attach, text, send. Past one line the text takes the full width, growing to five lines and then scrolling, and the buttons sit under it. The send button wakes when there is something to send. The keyboard's send key sends too; with a hardware keyboard Shift and Return add a line. The app sends the text and empties the draft. It sits at the bottom of a conversation, where the page keeps it above the keyboard. `endActions` puts the app's buttons before send, a voice button or a model picker. `triggers` open a list at the caret when a word starts with their character, `/` for commands or `@` for people: what follows narrows it, the arrow keys move through it and Return or a press puts the suggestion in the draft.",
       "keywords": [
         "composer",
         "message input",
         "chat input",
         "reply",
         "send",
-        "comment box"
+        "comment box",
+        "slash command",
+        "mention",
+        "prompt"
       ],
       "props": [
         {
@@ -5866,6 +6089,18 @@
           "description": "Before the text, or under it at the start once the draft takes more than a line: an IconButton that attaches a file or a picture."
         },
         {
+          "name": "endActions",
+          "type": "Child",
+          "required": false,
+          "description": "Before the send button: IconButtons for the voice, a model or the mode to send in."
+        },
+        {
+          "name": "triggers",
+          "type": "readonly ComposerTrigger[]",
+          "required": false,
+          "description": "Lists that open at the caret when a word starts with their character, `/` or `@`: the arrow keys move through one, Return or a press puts the suggestion in the draft."
+        },
+        {
           "name": "attachments",
           "type": "Child",
           "required": false,
@@ -5894,10 +6129,64 @@
           "name": "data-testid",
           "type": "string",
           "required": false,
-          "description": "On the field; the send button gets `<testid>-send`."
+          "description": "On the field; the send button gets `<testid>-send`, a trigger's list `<testid>-suggestions`, a suggestion `<testid>-suggestion-<value>`."
         }
       ],
-      "otherProps": {},
+      "otherProps": {
+        "ComposerTrigger": [
+          {
+            "name": "char",
+            "type": "string",
+            "required": true,
+            "description": "The character that opens the list at the start of a word: `/` for commands, `@` for people."
+          },
+          {
+            "name": "label",
+            "type": "string",
+            "required": true,
+            "description": "Names the list for assistive tech: \"Commands\", \"People\"."
+          },
+          {
+            "name": "items",
+            "type": "readonly ComposerSuggestion[] | ((query: string) => readonly ComposerSuggestion[])",
+            "required": true,
+            "description": "The suggestions, matched by label against what was typed after the trigger; or a function of that text, for a list the app narrows itself."
+          },
+          {
+            "name": "onChoose",
+            "type": "((suggestion: ComposerSuggestion) => void)",
+            "required": false,
+            "description": "Runs after a suggestion goes into the draft."
+          }
+        ],
+        "ComposerSuggestion": [
+          {
+            "name": "value",
+            "type": "string",
+            "required": true,
+            "description": "Tells it from the others."
+          },
+          {
+            "name": "label",
+            "type": "string",
+            "required": true,
+            "description": "What the list shows and what is matched against what follows the trigger: \"summarize\", \"Ana Lima\"."
+          },
+          {
+            "name": "description",
+            "type": "string",
+            "required": false,
+            "description": "A quieter line beside the label: what a command does, a person's role."
+          },
+          {
+            "name": "insert",
+            "type": "string",
+            "required": false,
+            "description": "What replaces the trigger and the typed text.",
+            "default": "the trigger, the label and a space: \"@Ana Lima \""
+          }
+        ]
+      },
       "choices": [
         [
           [
@@ -5916,10 +6205,16 @@
         "start": "view",
         "field": "view",
         "editor": "textarea",
+        "end": "view",
         "send": "IconButton",
         "measure": "view",
         "line": "text",
-        "reason": "text"
+        "reason": "text",
+        "suggestions": "view",
+        "suggestionList": "view",
+        "suggestion": "button",
+        "suggestionLabel": "text",
+        "suggestionDescription": "text"
       },
       "accessibility": {
         "pattern": null,
@@ -5946,7 +6241,19 @@
           },
           {
             "keys": "Tab",
-            "effect": "From the field to the send button"
+            "effect": "From the field to the end actions and the send button"
+          },
+          {
+            "keys": "Up and Down arrows",
+            "effect": "With a trigger's list open, move through it"
+          },
+          {
+            "keys": "Return",
+            "effect": "With a trigger's list open, puts the active suggestion in the draft"
+          },
+          {
+            "keys": "Escape",
+            "effect": "Closes a trigger's list until the caret leaves the word"
           }
         ],
         "target": {
@@ -5984,6 +6291,11 @@
           "name": "Stoppable",
           "title": "A stop button while sending",
           "source": "import { useLocal } from '@lingxia/view';\nimport { Composer } from '@liulidesign/core/Composer';\n\n/** While a reply is being written the send button stops it; the next draft can be written meanwhile. */\nexport function Stoppable() {\n  const draft = useLocal('draft', '');\n  const isWriting = useLocal('writing', true);\n  return (\n    <view className=\"gap-2\">\n      <text className=\"text-footnote text-muted\" data-testid=\"stoppable-status\">{isWriting.value ? 'Writing a reply…' : 'Stopped'}</text>\n      <Composer bind={draft} label=\"Message\" placeholder=\"Message\" onSubmit={() => isWriting.set(true)}\n        isSending={isWriting.value} onStop={() => isWriting.set(false)} data-testid=\"stoppable\" />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "Triggers",
+          "title": "Commands and people at the caret, and a voice button",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { IconButton } from '@liulidesign/core/IconButton';\nimport { Composer } from '@liulidesign/core/Composer';\n\n/** An assistant's composer: `/` lists commands and `@` people at the caret, and a voice button sits before send. */\nexport function Triggers() {\n  const draft = useLocal('prompt', '');\n  const said = useLocal('said', '');\n  return (\n    <view className=\"gap-2\">\n      <Composer\n        bind={draft}\n        label=\"Message the assistant\"\n        placeholder=\"Ask anything, / for commands, @ for people\"\n        onSubmit={text => { said.set(`Sent \"${text}\"`); draft.set(''); }}\n        endActions={<IconButton label=\"Dictate\" icon=\"microphone\" variant=\"ghost\" onClick={() => said.set('Listening')} data-testid=\"dictate\" />}\n        triggers={[\n          {\n            char: '/',\n            label: 'Commands',\n            items: [\n              { value: 'summarize', label: 'summarize', description: 'Sum up the conversation' },\n              { value: 'translate', label: 'translate', description: 'Into another language' },\n              { value: 'clear', label: 'clear', description: 'Start a new conversation', insert: '' },\n            ],\n            onChoose: suggestion => { if (suggestion.value === 'clear') said.set('Started a new conversation'); },\n          },\n          {\n            char: '@',\n            label: 'People',\n            items: [\n              { value: 'ana', label: 'Ana Lima', description: 'Design' },\n              { value: 'kai', label: 'Kai Chen', description: 'Trips' },\n              { value: 'noor', label: 'Noor Haddad', description: 'Finance' },\n            ],\n          },\n        ]}\n        data-testid=\"prompt\"\n      />\n      {said.value !== '' && <text role=\"status\" className=\"text-footnote text-muted\">{said.value}</text>}\n    </view>\n  );\n}"
         }
       ],
       "gaps": [],
@@ -6010,12 +6322,16 @@
         "tokens": [
           "--text-footnote",
           "--text-body",
+          "--shadow-raised",
+          "--radius-control",
           "--radius-container"
         ],
         "roles": [
           "accent",
+          "line",
           "line-strong",
           "surface",
+          "surface-overlay",
           "text",
           "text-faint",
           "text-muted"
@@ -6059,6 +6375,10 @@
             {
               "name": "StateDisabled",
               "title": "Disabled, with the reason"
+            },
+            {
+              "name": "Triggers",
+              "title": "An assistant's composer: / for commands and @ for people at the caret, a voice button before send"
             }
           ]
         }
@@ -6248,6 +6568,179 @@
               "title": "The rows given as data, with a submenu"
             }
           ]
+        }
+      }
+    },
+    {
+      "name": "ConversationScrollButton",
+      "import": "@liulidesign/core/ConversationScrollButton",
+      "exports": [
+        "useConversationScroll",
+        "ConversationScrollButton"
+      ],
+      "category": "content",
+      "status": "preview",
+      "since": "2026-11-27",
+      "summary": "Back to the newest message",
+      "description": "`useConversationScroll(count)` keeps a conversation's List on its newest message as messages arrive while the reader is there, and holds it still while they read further up. ConversationScrollButton shows only while they are up: a round button at the end corner over the bottom of the conversation that goes back to the newest message, with the count of messages that arrived meanwhile on its corner. Pass the hook's `anchor` and `onScrollEdge` to the List, and put the button after the List in the box that holds both.",
+      "keywords": [
+        "scroll to bottom",
+        "jump to latest",
+        "new messages",
+        "conversation",
+        "chat",
+        "follow",
+        "streaming",
+        "unread"
+      ],
+      "props": [
+        {
+          "name": "scroll",
+          "type": "ConversationScroll",
+          "required": true,
+          "description": "The conversation's `useConversationScroll`."
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "required": false,
+          "description": "The button's name. Defaults to \"Jump to the latest message\" in the page's language, with the count of new ones."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "data-testid",
+          "type": "string",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "otherProps": {
+        "ConversationScroll": [
+          {
+            "name": "anchor",
+            "type": "{ index: number; align: \"end\"; seq: number; }",
+            "required": true,
+            "description": ""
+          },
+          {
+            "name": "onScrollEdge",
+            "type": "(event: ScrollEdgeEvent) => void",
+            "required": true,
+            "description": ""
+          },
+          {
+            "name": "isAtEnd",
+            "type": "boolean",
+            "required": true,
+            "description": "The newest message is in view."
+          },
+          {
+            "name": "unseen",
+            "type": "number",
+            "required": true,
+            "description": "Messages that arrived while the reader was further up."
+          },
+          {
+            "name": "jumpToLatest",
+            "type": "() => void",
+            "required": true,
+            "description": "Scrolls to the newest message."
+          }
+        ]
+      },
+      "choices": [],
+      "parts": {
+        "root": "button",
+        "icon": "vector",
+        "count": "text"
+      },
+      "accessibility": {
+        "pattern": null,
+        "name": "label",
+        "description": [],
+        "states": [],
+        "keyboard": [
+          {
+            "keys": "Enter or Space",
+            "effect": "Scrolls to the newest message"
+          }
+        ],
+        "target": {
+          "md": 40
+        },
+        "contrast": [
+          {
+            "what": "arrow",
+            "pair": [
+              "text",
+              "surface-raised"
+            ],
+            "minimum": "4.5:1"
+          },
+          {
+            "what": "count",
+            "pair": [
+              "on-accent",
+              "accent"
+            ],
+            "minimum": "4.5:1"
+          }
+        ],
+        "notes": [
+          "Its name says how many messages are new, so the count is not only seen.",
+          "It leaves the tree at the newest message, so it is never a stop that does nothing."
+        ]
+      },
+      "examples": [
+        {
+          "name": "Follow",
+          "title": "A conversation that follows new messages, with the button while reading up",
+          "source": "import { List, useLocal } from '@lingxia/view';\nimport { Button } from '@liulidesign/core/Button';\nimport { MessageBubble } from '@liulidesign/core/MessageBubble';\nimport { ConversationScrollButton, useConversationScroll } from '@liulidesign/core/ConversationScrollButton';\n\nconst opening = Array.from({ length: 24 }, (_, index) => ({ id: `m${index + 1}`, mine: index % 3 === 2, text: index % 3 === 2 ? `Noted, item ${index + 1}.` : `Packing list item ${index + 1}: ${['tent', 'stove', 'rain jackets', 'torch'][index % 4]}` }));\n\n/** A conversation longer than its box: scroll up and the button appears; messages that arrive meanwhile are counted on it. */\nexport function Follow() {\n  const messages = useLocal('messages', opening);\n  const list = messages.value;\n  const scroll = useConversationScroll(list.length);\n  const arrive = () => messages.set([...list, { id: `m${list.length + 1}`, mine: false, text: `New message ${list.length + 1}` }]);\n  return (\n    <view className=\"gap-3\">\n      <view className=\"h-80 overflow-hidden rounded-container border border-line bg-canvas\">\n        <List\n          aria-label=\"Messages\"\n          items={list}\n          getKey={message => message.id}\n          anchor={scroll.anchor}\n          onScrollEdge={scroll.onScrollEdge}\n          renderItem={message => <MessageBubble side={message.mine ? 'end' : 'start'} text={message.text} className=\"pb-1\" data-testid={`message-${message.id}`} />}\n          className=\"grow basis-0 min-h-0 px-3 pt-3\"\n          data-testid=\"messages\"\n        />\n        <ConversationScrollButton scroll={scroll} data-testid=\"latest\" />\n      </view>\n      <Button label=\"A message arrives\" size=\"sm\" onClick={arrive} className=\"self-start\" data-testid=\"arrive\" />\n    </view>\n  );\n}"
+        }
+      ],
+      "gaps": [],
+      "limits": [
+        "It counts messages, not unread ones; a list with read state counts those itself and passes `label`."
+      ],
+      "theming": {
+        "classProps": [
+          {
+            "name": "className",
+            "on": "",
+            "description": ""
+          }
+        ],
+        "tokens": [
+          "--text-caption",
+          "--shadow-raised"
+        ],
+        "roles": [
+          "accent",
+          "focus",
+          "line",
+          "line-strong",
+          "on-accent",
+          "surface-raised",
+          "text"
+        ]
+      },
+      "related": [
+        "MessageBubble",
+        "Composer"
+      ],
+      "gallery": {
+        "specimen": "Follow",
+        "tagline": "Back to the latest",
+        "order": 23,
+        "page": {
+          "lead": "Use it with a conversation that grows while it is read.",
+          "hero": "Follow",
+          "variants": []
         }
       }
     },
@@ -13344,13 +13837,14 @@
       "import": "@liulidesign/core/MessageBubble",
       "exports": [
         "MessageBubble",
-        "MessageReasoning"
+        "MessageReasoning",
+        "MessageToolCall"
       ],
       "category": "content",
       "status": "preview",
       "since": "2026-11-15",
       "summary": "One message of a conversation",
-      "description": "MessageBubble draws one message: the user's own at the end edge in the accent's soft step, anyone else's at the start on a quiet tint, with a name and a face over the first of a run. Under it goes a line the app writes, the time or how the message stands, and for one that failed a way to send it again. A conversation is the View's list of these with a Composer under it; the Conversation pattern shows them together. MessageReasoning folds how an assistant got to its answer into one line above the message.",
+      "description": "MessageBubble draws one message: the user's own at the end edge in the accent's soft step, anyone else's at the start on a quiet tint, with a name and a face over the first of a run. Under it goes a line the app writes, the time or how the message stands, and for one that failed a way to send it again. A conversation is the View's list of these with a Composer under it; the Conversation pattern shows them together. MessageReasoning folds how an assistant got to its answer into one line above the message, and MessageToolCall each step it took with a tool: a line with where the run stands, its details behind it, and Allow and Deny while the step waits on the user.",
       "keywords": [
         "message",
         "bubble",
@@ -13360,7 +13854,12 @@
         "reply",
         "reasoning",
         "thinking",
-        "assistant"
+        "assistant",
+        "tool",
+        "tool call",
+        "step",
+        "approval",
+        "agent"
       ],
       "props": [
         {
@@ -13514,6 +14013,83 @@
             "required": false,
             "description": "On the toggle; the text gets `<testid>-text`."
           }
+        ],
+        "MessageToolCall": [
+          {
+            "name": "status",
+            "type": "\"denied\" | \"done\" | \"failed\" | \"running\" | \"waiting\"",
+            "required": true,
+            "description": "",
+            "values": [
+              "failed",
+              "waiting",
+              "running",
+              "done",
+              "denied"
+            ]
+          },
+          {
+            "name": "approval",
+            "type": "MessageToolCallApproval",
+            "required": false,
+            "description": "The two answers, shown under the line with the details open while it waits."
+          },
+          {
+            "name": "label",
+            "type": "string",
+            "required": true,
+            "description": "What the tool does or did, in one line: \"Searched the web for tide times\", \"npm test\"."
+          },
+          {
+            "name": "meta",
+            "type": "string",
+            "required": false,
+            "description": "A short fact after the label: \"2.4 s\", \"3 results\"."
+          },
+          {
+            "name": "children",
+            "type": "Child",
+            "required": false,
+            "description": "The details, shown while open: its arguments and what it returned, as a CodeBlock, a Markdown or text. Without them the line does not open."
+          },
+          {
+            "name": "hasAvatarSpace",
+            "type": "boolean",
+            "required": false,
+            "description": "Keeps an avatar's width empty before it, so it lines up with the bubbles of a run.",
+            "default": "false"
+          },
+          {
+            "name": "isDefaultOpen",
+            "type": "boolean",
+            "required": false,
+            "description": "Open on first render, uncontrolled.",
+            "default": "false"
+          },
+          {
+            "name": "isOpen",
+            "type": "boolean",
+            "required": false,
+            "description": "Controlled open state; pass `onOpenChange` with it."
+          },
+          {
+            "name": "onOpenChange",
+            "type": "((isOpen: boolean) => void)",
+            "required": false,
+            "description": ""
+          },
+          {
+            "name": "className",
+            "type": "string",
+            "required": false,
+            "description": ""
+          },
+          {
+            "name": "data-testid",
+            "type": "string",
+            "required": false,
+            "description": "On the line; the details get `<testid>-details`, the answers `<testid>-allow` and `<testid>-deny`."
+          }
         ]
       },
       "choices": [],
@@ -13534,7 +14110,15 @@
         "reasoningLabel": "text",
         "reasoningChevron": "vector",
         "reasoningBox": "view",
-        "reasoningText": "text"
+        "reasoningText": "text",
+        "tool": "view",
+        "toolLine": "button",
+        "toolMark": "vector",
+        "toolLabel": "text",
+        "toolWord": "text",
+        "toolMeta": "text",
+        "toolDetails": "view",
+        "toolAnswers": "view"
       },
       "accessibility": {
         "pattern": null,
@@ -13547,13 +14131,17 @@
           },
           {
             "state": "busy",
-            "from": "MessageReasoning: isStreaming"
+            "from": "MessageReasoning: isStreaming; MessageToolCall: status running"
+          },
+          {
+            "state": "expanded",
+            "from": "MessageToolCall with details: isOpen, or isDefaultOpen and the presses since"
           }
         ],
         "keyboard": [
           {
             "keys": "Enter or Space",
-            "effect": "Opens and closes a MessageReasoning"
+            "effect": "Opens and closes a MessageReasoning, or a MessageToolCall that has details"
           }
         ],
         "target": {},
@@ -13598,12 +14186,29 @@
               "canvas"
             ],
             "minimum": "4.5:1"
+          },
+          {
+            "what": "a waiting tool step's mark",
+            "pair": [
+              "accent",
+              "canvas"
+            ],
+            "minimum": "3:1"
+          },
+          {
+            "what": "a waiting tool step's label",
+            "pair": [
+              "text",
+              "canvas"
+            ],
+            "minimum": "4.5:1"
           }
         ],
         "notes": [
           "It is read in order: the name, the message, then the line under it. Put the list in the View's list so a screen reader steps message by message.",
           "A failed message says so in words and with an error mark under the bubble, not with colour alone.",
-          "The side tells whose it is to the eye; say it in `author` for the ear, or name the list by who is speaking."
+          "The side tells whose it is to the eye; say it in `author` for the ear, or name the list by who is speaking.",
+          "A tool step is named by its label and where it stands (\"npm test, failed\"), so the mark is never the only sign."
         ]
       },
       "examples": [
@@ -13621,6 +14226,11 @@
           "name": "Reasoning",
           "title": "An assistant's reasoning, folded above its answer",
           "source": "import { Avatar } from '@liulidesign/core/Avatar';\nimport { MessageBubble, MessageReasoning } from '@liulidesign/core/MessageBubble';\n\n/** An assistant's answer with how it got there folded above it; the second is still thinking. */\nexport function Reasoning() {\n  return (\n    <view className=\"gap-1\">\n      <MessageReasoning\n        label=\"Thought for 8 seconds\"\n        text=\"The trip is Saturday and the forecast shows rain after four. The ferry at 14:10 gets in before that; the 16:40 does not. So the earlier ferry, and the tent can wait in the car.\"\n        isDefaultOpen\n        hasAvatarSpace\n        data-testid=\"reasoning\"\n      />\n      <MessageBubble avatar={<Avatar name=\"Assistant\" initials=\"A\" size=\"sm\" isDecorative />} author=\"Assistant\" text=\"Take the 14:10 ferry: it lands before the rain.\" />\n      <view className=\"h-2\" />\n      <MessageReasoning label=\"Thinking\" text=\"Checking the return times for Sunday\" isStreaming hasAvatarSpace data-testid=\"thinking\" />\n    </view>\n  );\n}"
+        },
+        {
+          "name": "ToolCalls",
+          "title": "An assistant's tool steps: done, failed, running, and one waiting to be allowed",
+          "source": "import { useLocal } from '@lingxia/view';\nimport { CodeBlock } from '@liulidesign/core/Code';\nimport { MessageToolCall } from '@liulidesign/core/MessageBubble';\n\n/** An assistant's steps with tools: done, failed and running fold to a line; one that deletes files waits to be allowed, then is done or denied. */\nexport function ToolCalls() {\n  const answer = useLocal<'waiting' | 'allowed' | 'denied'>('waiting');\n  return (\n    <view className=\"gap-0.5\">\n      <MessageToolCall label=\"Searched the notes for 'packing list'\" status=\"done\" meta=\"3 results\" hasAvatarSpace data-testid=\"searched\">\n        <text>Packing list (Saturday), Tent checklist, Ferry times</text>\n      </MessageToolCall>\n      <MessageToolCall label=\"npm test\" status=\"failed\" meta=\"4.2 s\" isDefaultOpen hasAvatarSpace data-testid=\"tests\">\n        <CodeBlock label=\"Test output\" code={'FAIL  src/trip.test.ts\\n  ferry › lands before the rain\\n    expected 14:10, got 16:40'} />\n      </MessageToolCall>\n      <MessageToolCall label=\"Reading the forecast for Saturday\" status=\"running\" hasAvatarSpace data-testid=\"forecast\" />\n      {answer.value === 'waiting'\n        ? (\n          <MessageToolCall\n            label=\"Delete 3 old drafts in Notes\"\n            status=\"waiting\"\n            approval={{ allowLabel: 'Delete 3 drafts', isDestructive: true, onAllow: () => answer.set('allowed'), onDeny: () => answer.set('denied') }}\n            hasAvatarSpace\n            data-testid=\"delete\"\n          >\n            <text>{'Trip ideas (old)\\nTent checklist (copy)\\nUntitled note'}</text>\n          </MessageToolCall>\n        )\n        : <MessageToolCall label=\"Delete 3 old drafts in Notes\" status={answer.value === 'allowed' ? 'done' : 'denied'} hasAvatarSpace data-testid=\"delete\" />}\n    </view>\n  );\n}"
         }
       ],
       "gaps": [],
@@ -13646,6 +14256,11 @@
             "name": "className",
             "on": "MessageReasoning",
             "description": ""
+          },
+          {
+            "name": "className",
+            "on": "MessageToolCall",
+            "description": ""
           }
         ],
         "tokens": [
@@ -13657,6 +14272,7 @@
           "--radius-checkbox"
         ],
         "roles": [
+          "accent",
           "accent-soft",
           "danger",
           "focus",
@@ -13686,6 +14302,10 @@
             {
               "name": "Reasoning",
               "title": "MessageReasoning: how an assistant got to its answer, one line until opened; a spinner while it is still thinking"
+            },
+            {
+              "name": "ToolCalls",
+              "title": "MessageToolCall: each step with a tool on one line, its details behind it; a step that waits asks to be allowed"
             }
           ]
         }

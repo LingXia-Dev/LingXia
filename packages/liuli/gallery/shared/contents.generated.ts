@@ -97,6 +97,8 @@ import { Content as ListDetail } from '../content/list-detail';
 import { Content as Split } from '../content/split';
 import { Content as Qrcode } from '../content/qrcode';
 import { Content as OverflowList } from '../content/overflow-list';
+import { Content as Citation } from '../content/citation';
+import { Content as ConversationScrollButton } from '../content/conversation-scroll-button';
 import { Content as Stat } from '../content/stat';
 import { Content as Sparkline } from '../content/sparkline';
 import { Content as BarChart } from '../content/bar-chart';
@@ -221,6 +223,8 @@ export const contents: Record<string, GalleryContent> = {
   "split": Split,
   "qrcode": Qrcode,
   "overflow-list": OverflowList,
+  "citation": Citation,
+  "conversation-scroll-button": ConversationScrollButton,
   "stat": Stat,
   "sparkline": Sparkline,
   "bar-chart": BarChart,

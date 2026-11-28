@@ -112,3 +112,43 @@ export function Specimen() {
 export function playground() {
   return { onSubmit: unused } satisfies Partial<ComposerProps>;
 }
+
+/** An assistant's composer: `/` lists commands and `@` people at the caret, and a voice button sits before send. */
+export function Triggers() {
+  const draft = useLocal('prompt', '');
+  const said = useLocal('said', '');
+  return (
+    <view className="gap-2">
+      <Composer
+        bind={draft}
+        label="Message the assistant"
+        placeholder="Ask anything, / for commands, @ for people"
+        onSubmit={text => { said.set(`Sent "${text}"`); draft.set(''); }}
+        endActions={<IconButton label="Dictate" icon="microphone" variant="ghost" onClick={() => said.set('Listening')} data-testid="dictate" />}
+        triggers={[
+          {
+            char: '/',
+            label: 'Commands',
+            items: [
+              { value: 'summarize', label: 'summarize', description: 'Sum up the conversation' },
+              { value: 'translate', label: 'translate', description: 'Into another language' },
+              { value: 'clear', label: 'clear', description: 'Start a new conversation', insert: '' },
+            ],
+            onChoose: suggestion => { if (suggestion.value === 'clear') said.set('Started a new conversation'); },
+          },
+          {
+            char: '@',
+            label: 'People',
+            items: [
+              { value: 'ana', label: 'Ana Lima', description: 'Design' },
+              { value: 'kai', label: 'Kai Chen', description: 'Trips' },
+              { value: 'noor', label: 'Noor Haddad', description: 'Finance' },
+            ],
+          },
+        ]}
+        data-testid="prompt"
+      />
+      {said.value !== '' && <text role="status" className="text-footnote text-muted">{said.value}</text>}
+    </view>
+  );
+}
