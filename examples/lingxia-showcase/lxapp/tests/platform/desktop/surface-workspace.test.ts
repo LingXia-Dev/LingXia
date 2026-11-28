@@ -1312,7 +1312,7 @@ test('gates rail sidebar reveal and compact aside chrome on every desktop', {
 
     await app.nav.go({ tab: 'api' });
     const api = await app.page({ name: 'api' }, { timeout: 30_000 });
-    await api.view.css('body').waitFor({ state: 'attached', timeout: 30_000 });
+    await api.view.testId('api-page').waitFor({ state: 'visible', timeout: 30_000 });
 
     // Cross below the sidebar budget so the adaptive rail is freshly
     // projected. Then use the real native expand control and prove the
@@ -2954,7 +2954,8 @@ test('keeps an aside lxapp page stack and its floats inside the aside', {
   if (!host) throw new Error('visible LingXia host window was not found');
   const originalBounds = { ...host.bounds };
   const floatKey = `automation-aside-float-${Date.now()}`;
-  const chat = t.automation.lxapp('lingxia-showcase-web');
+  // Bound once the spec has opened it: an lxapp binds only while it runs.
+  let opened: ReturnType<typeof t.automation.lxapp> | undefined;
   try {
     await closeChatSurface(t, app);
     // The same wide geometry DESKTOP-ADAPTIVE-001 docks Chat at. It has to
@@ -2969,6 +2970,8 @@ test('keeps an aside lxapp page stack and its floats inside the aside', {
     await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
       await lx.surface.open({ app: 'lingxia-showcase-web', page: 'chat' }, { as: 'aside', edge: 'right' });
     });
+    const chat = t.automation.lxapp('lingxia-showcase-web');
+    opened = chat;
     const asideLayout = await waitForValue(async () => {
       const layout = await app.surfaceLayout();
       const slot = layout.asideSlots.find((candidate) => (
@@ -3200,7 +3203,7 @@ test('keeps an aside lxapp page stack and its floats inside the aside', {
     await attachDesktopFailure(t, 'aside-nav', desktop, host);
     throw error;
   } finally {
-    await chat.logic.eval({ timeout: 15_000 }, async ({ lx }, key) => {
+    await opened?.logic.eval({ timeout: 15_000 }, async ({ lx }, key) => {
       const handle = lx.surface.get({ key }) as { close(): Promise<void> } | null;
       if (handle) await handle.close();
     }, floatKey).catch(() => undefined);

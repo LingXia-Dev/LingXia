@@ -3089,6 +3089,9 @@
   "stream.streamDemo": {
     "defaultMessage": "流式演示"
   },
+  "surface.appearance": {
+    "defaultMessage": "外观"
+  },
   "surface.fromOpener": {
     "defaultMessage": "来自打开者"
   },
@@ -3133,6 +3136,9 @@
   },
   "surface.sendThenClose": {
     "defaultMessage": "发送并关闭"
+  },
+  "surface.topInset": {
+    "defaultMessage": "顶部内边距"
   },
   "system.allow": {
     "defaultMessage": "允许"

@@ -2,10 +2,9 @@ import { expect, test, type Fixture, type TestApp, type TestView } from '@lingxi
 import { notDesktop } from './only.js';
 import type { Automation, DesktopAxNode, DesktopWindowInfo } from '@lingxia/types/automation';
 import { runtimePlatform } from '@lingxia/test/showcase/helpers/platform.js';
-import { waitForElementAttribute } from '@lingxia/test/showcase/helpers/page.js';
 import { bindFixture, eventually } from '@lingxia/test/showcase/helpers/poll.js';
 import { SHOWCASE_APP_ID } from '@lingxia/test/showcase/helpers/app.js';
-import type { ProbeElement, ProbeWindow } from '@lingxia/test/showcase/helpers/view.js';
+import { openDemo } from '../../open-demo';
 
 const testArgs = globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>;
 const targetPlatform = globalThis.__LINGXIA_AUTOMATION_HOST__?.control?.platform?.toLocaleLowerCase();
@@ -79,6 +78,8 @@ async function openWindow(
       key,
       size: { width: 480, height: 640 },
     });
+    // The handle comes back at once; it is visible once its window opened.
+    await handle.opened;
     return {
       key: handle.key ?? null,
       kind: handle.kind,
@@ -99,19 +100,13 @@ async function waitForSurfacePage(
   const { view } = await app.page({ name: 'surface' }, { timeout: 15_000 });
   await view.testId('surface-page').waitFor({ state: 'visible', timeout: 15_000 });
   const snapshot = await eventually(
-    () => view.eval(({ document, window }): SurfacePageSnapshot => {
-      const chrome = window.lxPageChrome as { layout?: { topInset: number } } | undefined;
-      const layout = chrome && chrome.layout;
-      const show = document.querySelector('[data-testid="surface-show-count"]');
-      return {
-        text: document.body ? document.body.innerText ?? '' : '',
-        topInset: layout ? layout.topInset : -1,
-        showCount: Number((show && show.textContent?.trim()) || 0),
-      };
+    async (): Promise<SurfacePageSnapshot> => ({
+      text: await view.testId('surface-query').textContent(),
+      topInset: Number(await view.testId('surface-top-inset').textContent()),
+      showCount: Number((await view.testId('surface-show-count').textContent()).trim() || 0),
     }),
     (snapshot) => (
       typeof snapshot?.text === 'string'
-      && snapshot.text.includes('Surface Page')
       && snapshot.text.includes(fixture)
       && snapshot.topInset === expectedTopInset
       && snapshot.showCount >= 1
@@ -234,7 +229,7 @@ test('open a page window with system chrome and with full chrome', {
       key,
       chrome === 'full' ? FULL_DRAG_STRIP_HEIGHT : 0,
     );
-    expect(snapshot.text).toContain('Surface Page');
+    expect(snapshot.text).toContain(key);
     expect(snapshot.topInset).toBe(chrome === 'full' ? FULL_DRAG_STRIP_HEIGHT : 0);
     // Presenting a window drives exactly one visibility transition, however
     // many times the platform and the opener report it.
@@ -477,29 +472,7 @@ test('deliver a child page message to its opener before closing', {
     (globalThis as unknown as Record<string, HeldSurface | undefined>)[stateKey] = state;
   }, key, stateKey);
 
-  await surface.eval(({ document, window }, marker) => {
-    const page = window as unknown as ProbeWindow & {
-      HTMLInputElement: (new () => unknown) & { prototype: object };
-      InputEvent: new (type: string, init: { bubbles?: boolean; data?: string; inputType?: string }) => unknown;
-    };
-    const input = document.querySelector('input[placeholder="Message to parent page"]') as ProbeElement | null;
-    if (!(input instanceof page.HTMLInputElement)) throw new Error('surface message input missing');
-    const setter = Object.getOwnPropertyDescriptor(page.HTMLInputElement.prototype, 'value')?.set;
-    if (!setter) throw new Error('HTMLInputElement value setter missing');
-    setter.call(input, marker);
-    input.dispatchEvent(new page.InputEvent('input', {
-      bubbles: true,
-      data: marker,
-      inputType: 'insertText',
-    }));
-    return input.value ?? null;
-  }, marker);
-  await waitForElementAttribute(
-    surface,
-    'input[placeholder="Message to parent page"]',
-    'data-controlled-value',
-    marker,
-  );
+  await surface.testId('surface-message').fill(marker);
   await surface.testId("surface-send-message").click();
 
   const messages = await eventually(
@@ -538,10 +511,9 @@ test('push a message from the opener into its page window', {
     handle.send({ ping: namespace });
   }, key, namespace);
   const inbound = await eventually(
-    () => surface.eval(({ document }) => {
-      const text = document.querySelector('[data-testid="surface-inbound"]');
-      const count = document.querySelector('[data-testid="surface-inbound-count"]');
-      return { text: text?.textContent?.trim() ?? '', count: count?.textContent?.trim() ?? '' };
+    async () => ({
+      text: (await surface.testId('surface-inbound').textContent()).trim(),
+      count: (await surface.testId('surface-inbound-count').textContent()).trim(),
     }),
     (value) => value.text.includes(namespace),
     { describe: 'opener message to reach the surface page', timeoutMs: 10_000 },
@@ -576,4 +548,38 @@ test('push a message from the opener into its page window', {
   );
   expect(closed.closed.length).toBe(1);
   expect(closed.closed[0]?.reason).toBe('programmatic');
+});
+
+// Appearance is product state: one change repaints every window, not just the one in front.
+test('the product appearance switches every window together', {
+  id: 'DESKTOP-APPEARANCE-WINDOWS-001',
+  covers: ['lx.host.appearancePreference.set'],
+  start: openDemo('theme'),
+  timeout: 60_000,
+}, async (t) => {
+  await desktopPlatform(t);
+  const app = t.app;
+  const preference = await app.logic.eval(({ lx }) => lx.host.appearancePreference.get() ?? null);
+  if (preference === null) t.skip('this host does not let an lxapp set its appearance');
+  t.defer(() => app.logic.eval(({ lx }, look) => lx.host.appearancePreference.set(look), preference!));
+  await app.logic.eval(({ lx }) => lx.host.appearancePreference.set('light'));
+
+  // The main window's page starts reading the appearance, so its state names the scheme it renders.
+  // Bound to this page instance: `app.view` follows the window in front once the other one opens.
+  const { view: lab } = await app.page();
+  const main = lab.testId('lab-appearance-runs');
+  await lab.testId('lab-appearance-toggle').click();
+  await expect(main).toHaveAttribute('data-state', /theme=light$/);
+
+  const key = 'appearance-windows';
+  t.defer(() => closeKeyedSurface(app, key));
+  await openWindow(app, 'system', key);
+  const { view: other } = await waitForSurfacePage(app, key, 0);
+  await expect(other.testId('surface-appearance')).toHaveText('light');
+
+  for (const look of ['dark', 'light'] as const) {
+    await app.logic.eval(({ lx }, look) => lx.host.appearancePreference.set(look), look);
+    await expect(other.testId('surface-appearance'), `the other window in ${look}`).toHaveText(look);
+    await expect(main, `the main window in ${look}`).toHaveAttribute('data-state', new RegExp(`theme=${look}$`));
+  }
 });

@@ -228,9 +228,10 @@ test("restore rendered home content after closing covering web tabs", { id: "DES
     await waitForCurrentPage(app, 'home');
     // Web tabs cover this home instance and closing them uncovers the same one.
     const home = await app.page({ name: 'home' });
-    const renderedBodyLength = async (): Promise<number> => home.view.eval(({ document }) => (
-      document.body ? (document.body.innerText ?? '').length : -1
-    ));
+    // Renderer-agnostic: the home card's text, read through the page's locators.
+    const renderedBodyLength = async (): Promise<number> => (
+      (await home.view.testId('home-card').textContent()).trim().length
+    );
     await home.view.testId('home-page').waitFor({ state: 'visible', timeout: 30_000 });
     await eventually(renderedBodyLength, (length) => length > 0, {
       describe: 'baseline home page to render',

@@ -1,10 +1,11 @@
-import { t, useLocal } from '@lingxia/view';
+import { t, useEnv, useLocal } from '@lingxia/view';
 import '../../theme/index.css';
 import { Button, Field, InfoList, InfoRow, Page, Section } from '../../shared/ui';
 import type { View } from './$types';
 
 export function render({ data, actions }: View) {
   const count = useLocal('counter', 0);
+  const env = useEnv();
   const message = useLocal('message', '');
   const send = async () => {
     await actions.logSurfaceMessage({ message: message.value.trim() });
@@ -22,6 +23,8 @@ export function render({ data, actions }: View) {
           <InfoRow label={t('surface.onshow')} value={String(data.showCount || 0)} testId="surface-show-count" />
           <InfoRow label={t('surface.onhide')} value={String(data.hideCount || 0)} testId="surface-hide-count" />
           <InfoRow label={t('surface.lastEvent')} value={data.lastLifecycle || 'onLoad'} testId="surface-lifecycle" />
+          <InfoRow label={t('surface.topInset')} value={String(env.insets.top)} testId="surface-top-inset" />
+          <InfoRow label={t('surface.appearance')} value={env.appearance} testId="surface-appearance" />
         </InfoList>
       </Section>
       <Section title={t('surface.inPageCounter')} description={t('surface.hidePreservesThisCounter')}>

@@ -4119,6 +4119,10 @@
     "defaultMessage": "Stream Demo",
     "description": "Text on the stream page."
   },
+  "surface.appearance": {
+    "defaultMessage": "Appearance",
+    "description": "Surface page row: the light or dark scheme this page renders in."
+  },
   "surface.fromOpener": {
     "defaultMessage": "From opener",
     "description": "Text on the surface page."
@@ -4178,6 +4182,10 @@
   "surface.sendThenClose": {
     "defaultMessage": "Send then close",
     "description": "Text on the surface page."
+  },
+  "surface.topInset": {
+    "defaultMessage": "Top inset",
+    "description": "Surface page row: host chrome over the page's top edge, in logical pixels."
   },
   "system.allow": {
     "defaultMessage": "Allow",

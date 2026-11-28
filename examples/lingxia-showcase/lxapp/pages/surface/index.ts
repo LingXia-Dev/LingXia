@@ -26,12 +26,9 @@ export default definePage({
             d.lastInbound = JSON.stringify(message ?? null);
           });
         };
-        // A page opened as a surface hears its opener on `surface`; one pushed by
-        // navigateTo hears it on `opener`. Both are absent for a plain tab/stack page.
-        const ports = [page.surface, page.opener].filter(
-          (port): port is PageSurface | PageMessagePort => Boolean(port),
-        );
-        offInbound = ports.map((port) => port.onMessage(receive));
+        // A surface's `opener` and `surface` are one line, so listen once or each message counts twice.
+        const port: PageSurface | PageMessagePort | undefined = page.opener ?? page.surface;
+        offInbound = port ? [port.onMessage(receive)] : [];
       },
       stopInbound() {
         for (const off of offInbound || []) off();
