@@ -683,6 +683,8 @@ impl Platform for MacosPlatform {
         // upload can never break the local loop.
         if config.package || config.dmg {
             apple::notarize::maybe_sign_and_notarize(&app_path)?;
+        } else {
+            sign_with_stable_identity(&app_path, &bundle_id);
         }
 
         let update_zip_path = if config.package {
@@ -765,6 +767,65 @@ impl Platform for MacosPlatform {
             online: true,
         }])
     }
+}
+
+/// The linker's ad-hoc signature is pinned to the binary's cdhash, so macOS
+/// privacy grants (Accessibility, Screen Recording, camera…) reset on every
+/// rebuild. A development certificate makes the designated requirement
+/// "bundle id + certificate", which survives rebuilds.
+fn sign_with_stable_identity(app_path: &Path, bundle_id: &str) {
+    let identity = match std::env::var("LINGXIA_MACOS_DEV_IDENTITY") {
+        Ok(value) if value.trim() == "-" => return,
+        Ok(value) if !value.trim().is_empty() => value.trim().to_string(),
+        _ => match development_identity() {
+            Some(identity) => identity,
+            None => {
+                eprintln!(
+                    "  {} No Apple Development certificate in the keychain; macOS privacy grants reset on each rebuild",
+                    "Note:".yellow()
+                );
+                return;
+            }
+        },
+    };
+    let output = Command::new("codesign")
+        .args(["--force", "--preserve-metadata=entitlements", "--sign"])
+        .arg(&identity)
+        .args(["--identifier", bundle_id])
+        .arg(app_path)
+        .output();
+    match output {
+        Ok(out) if out.status.success() => {}
+        Ok(out) => eprintln!(
+            "  {} Kept the ad-hoc signature: {}",
+            "Warning:".yellow(),
+            String::from_utf8_lossy(&out.stderr).trim()
+        ),
+        Err(err) => eprintln!("  {} Kept the ad-hoc signature: {err}", "Warning:".yellow()),
+    }
+}
+
+/// Picks the same development identity on every build so the signature stays stable.
+fn development_identity() -> Option<String> {
+    let mut identities = apple::keychain::KeychainManager::new()
+        .list_identities()
+        .ok()?
+        .into_iter()
+        .filter_map(|id| {
+            let rank = if id.common_name.starts_with("Apple Development:") {
+                0
+            } else if id.common_name.starts_with("Mac Developer:")
+                || id.common_name.starts_with("iPhone Developer:")
+            {
+                1
+            } else {
+                return None;
+            };
+            Some((rank, id.common_name, id.sha1))
+        })
+        .collect::<Vec<_>>();
+    identities.sort();
+    identities.into_iter().next().map(|(_, _, sha1)| sha1)
 }
 
 fn load_cached_apple_entitlements(platform: PermissionPlatform, bundle_id: &str) -> Vec<String> {
