@@ -1352,6 +1352,9 @@ pub struct LxApp {
 
     // Scripts injected into every page owned by this LxApp on page load.
     page_scripts: Mutex<Vec<Arc<str>>>,
+
+    /// `LxAppState<T>` values, dropped where Logic is terminated.
+    pub(crate) lxapp_states: crate::host::LxAppStates,
 }
 
 /// Unique id for a single LxApp runtime session within the process.
@@ -2391,6 +2394,7 @@ impl LxApp {
         crate::page::gpu_app_closed(&self.appid, self.session.id);
         // Terminate AppService (receiver handles its own state)
         let termination = self.executor.terminate_app_svc(self.clone_arc());
+        self.lxapp_states.clear();
         self.app_launch_dispatched.store(false, Ordering::SeqCst);
         self.open_shown.store(false, Ordering::SeqCst);
         self.launch_settled.send_replace(false);
@@ -2469,6 +2473,7 @@ impl LxApp {
             resource_grants_claimed: std::sync::atomic::AtomicBool::new(false),
             document_start_scripts: Mutex::new(Vec::new()),
             page_scripts: Mutex::new(Vec::new()),
+            lxapp_states: Default::default(),
         }
     }
 

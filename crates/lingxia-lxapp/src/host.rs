@@ -21,6 +21,9 @@ use tokio::sync::{mpsc, oneshot};
 mod macros;
 
 mod device;
+mod lxapp_state;
+pub(crate) use lxapp_state::LxAppStates;
+pub use lxapp_state::{FromLxApp, LxAppState};
 pub mod page_state;
 pub use page_state::{PageCallGuard, PageState, clear_page_state, track_page_call};
 #[cfg(feature = "automation")]
@@ -1984,6 +1987,64 @@ mod tests {
         );
         cancel_tx.send(()).unwrap();
         assert!(stream.next().await.is_none());
+    }
+
+    static OPENS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    static DROPS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    static FAIL_NEXT_OPEN: AtomicBool = AtomicBool::new(false);
+
+    struct Pool;
+
+    impl FromLxApp for Pool {
+        async fn open(_app: &LxApp) -> lingxia_error::Result<Self> {
+            OPENS.fetch_add(1, Ordering::SeqCst);
+            tokio::task::yield_now().await;
+            if FAIL_NEXT_OPEN.swap(false, Ordering::SeqCst) {
+                return Err(lingxia_error::Error::io("disk not ready"));
+            }
+            Ok(Pool)
+        }
+    }
+
+    impl Drop for Pool {
+        fn drop(&mut self) {
+            DROPS.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    #[tokio::test]
+    async fn lxapp_state_opens_once_retries_a_failure_and_drops_with_the_lxapp() {
+        let (_root, standard, _control) = same_app_id_with_different_classes();
+        let caller = AuthenticatedCaller::for_lxapp(&standard);
+        let invocation = HostInvocationContext::for_dispatch(Arc::clone(&standard), &caller, None)
+            .expect("matching scope");
+
+        FAIL_NEXT_OPEN.store(true, Ordering::SeqCst);
+        let failed = LxAppState::<Pool>::__acquire(&invocation).await;
+        assert_eq!(
+            failed.err().map(|e| e.code().to_string()).as_deref(),
+            Some("E_IO")
+        );
+        assert_eq!(OPENS.load(Ordering::SeqCst), 1);
+
+        let (a, b) = tokio::join!(
+            LxAppState::<Pool>::__acquire(&invocation),
+            LxAppState::<Pool>::__acquire(&invocation)
+        );
+        let (a, b) = (a.expect("opened"), b.expect("shared"));
+        assert!(std::ptr::eq(&*a, &*b));
+        assert_eq!(
+            OPENS.load(Ordering::SeqCst),
+            2,
+            "one open after the failed one"
+        );
+        drop((a, b));
+
+        standard.session.cancel();
+        standard.lxapp_states.clear();
+        assert_eq!(DROPS.load(Ordering::SeqCst), 1);
+        let closed = LxAppState::<Pool>::__acquire(&invocation).await;
+        assert!(closed.is_err_and(|e| e.message().contains("has closed")));
     }
 
     struct ThreadRecordingSyncHandler(Arc<Mutex<Option<std::thread::ThreadId>>>);
