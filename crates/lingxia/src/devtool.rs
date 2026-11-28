@@ -523,6 +523,12 @@ pub fn apply_dev_theme(appid: Option<&str>, pack: &str) -> Result<usize, String>
     Ok(lxapp::theme::apply_dev_theme(appid, pack))
 }
 
+/// Dev sessions: the project type-check's report for `appid` (`None`: clean), shown over its
+/// open GPU pages and those that open later. Returns how many pages got it now.
+pub fn show_dev_problems(appid: &str, report: Option<&str>) -> usize {
+    lxapp::show_dev_problems(appid, report)
+}
+
 fn swap_one(appid: &str, path: &str) -> Result<usize, String> {
     #[cfg(any(
         target_os = "android",

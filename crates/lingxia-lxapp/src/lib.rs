@@ -83,6 +83,7 @@ pub use lingxia_update::{
 pub use lingxia_webview::url_callback;
 pub use lxapp::app_display;
 pub use lxapp::theme;
+pub use page::show_dev_problems;
 /// Host-owned data-root override for isolated test runs. Not an lxapp API.
 #[doc(hidden)]
 pub use lxapp::data_profile;

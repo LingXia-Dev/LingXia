@@ -457,6 +457,8 @@ struct Main<F> {
     shown_at: Duration,
     /// The frame-statistics HUD is drawn over the page.
     hud: bool,
+    /// Dev sessions: the project's type errors, drawn as a banner over the page until fixed.
+    problems: Option<String>,
     /// The last generation [`ViewHost::set_chrome_snapshot`] handed out.
     chrome_generation: u64,
     /// `measureFrames` windows a View step asked for: `(token, milliseconds)`.
@@ -715,6 +717,7 @@ impl<A: PlatformAdapter> ViewHost<A> {
                     demand_at: None,
                     shown_at: Duration::ZERO,
                     hud: false,
+                    problems: None,
                     chrome_generation: 0,
                     frame_measures: Vec::new(),
                     reveals: Vec::new(),
@@ -948,6 +951,17 @@ impl<A: PlatformAdapter> ViewHost<A> {
 
     /// A runtime environment push (`language`, `surface` or `theme` kind, JSON).
     pub fn update_environment(&self, update: &str) -> Result<(), String> {
+        // Dev problems are drawn over the page, never part of the `env` its View reads.
+        if let Some(report) = dev_problems(update)? {
+            let changed = {
+                let mut main = self.inner.main();
+                std::mem::replace(&mut main.problems, report.clone()) != report
+            };
+            if changed {
+                self.redraw();
+            }
+            return Ok(());
+        }
         if self.inner.main().host_environment.update(update)? {
             self.environment_changed();
         }
@@ -2719,5 +2733,51 @@ impl<A: PlatformAdapter> Inner<A> {
                 inner.blink(timer);
             }),
         );
+    }
+}
+
+/// A `devProblems` update's report (`None`: the project is clean), or `None` for any other kind.
+fn dev_problems(update: &str) -> Result<Option<Option<String>>, String> {
+    #[derive(serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct DevProblems {
+        #[allow(dead_code)]
+        kind: String,
+        report: Option<String>,
+    }
+    let value: serde_json::Value =
+        serde_json::from_str(update).map_err(|error| format!("UI_ENVIRONMENT: {error}"))?;
+    if value["kind"] != "devProblems" {
+        return Ok(None);
+    }
+    let problems: DevProblems =
+        serde_json::from_value(value).map_err(|error| format!("UI_ENVIRONMENT: {error}"))?;
+    Ok(Some(
+        problems.report.filter(|report| !report.trim().is_empty()),
+    ))
+}
+
+#[cfg(test)]
+mod dev_problems_tests {
+    #[test]
+    fn a_dev_problems_update_is_told_apart_and_an_empty_report_clears() {
+        let parse = super::dev_problems;
+        assert_eq!(
+            parse(r#"{"kind":"devProblems","report":"1 type error\na.tsx:1:1: x"}"#).unwrap(),
+            Some(Some("1 type error\na.tsx:1:1: x".into()))
+        );
+        assert_eq!(
+            parse(r#"{"kind":"devProblems","report":null}"#).unwrap(),
+            Some(None)
+        );
+        assert_eq!(
+            parse(r#"{"kind":"devProblems","report":" "}"#).unwrap(),
+            Some(None)
+        );
+        assert_eq!(
+            parse(r#"{"kind":"contrast","revision":1,"more":true}"#).unwrap(),
+            None
+        );
+        assert!(parse(r#"{"kind":"devProblems","report":1}"#).is_err());
     }
 }

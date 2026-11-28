@@ -6,23 +6,80 @@ use anyhow::{Context, Result, anyhow, bail};
 use lingxia_i18n::{Catalogue, Problem};
 use std::path::{Path, PathBuf};
 
+/// Dev sessions: the message-key types from the catalogues as they are now, before a
+/// type-check reads them, whether or not a build has compiled them since.
+pub fn refresh_types(dir: &Path) -> Result<()> {
+    if types_current(dir) {
+        return Ok(());
+    }
+    let catalogues = check(dir, true)?;
+    // Rewritten even when unchanged, so the next save finds it current.
+    write_types(
+        dir,
+        catalogues.first().map(|(_, catalogue)| catalogue),
+        true,
+    )
+}
+
+/// The key types are newer than `lxapp.json` and every catalogue, so the check would only
+/// repeat its warnings.
+fn types_current(dir: &Path) -> bool {
+    let modified = |path: &Path| {
+        std::fs::metadata(path)
+            .and_then(|meta| meta.modified())
+            .ok()
+    };
+    let Some(written) = modified(&types_path(dir)) else {
+        return false;
+    };
+    let catalogues = std::fs::read_dir(dir.join("i18n"))
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+        .filter(|path| path.extension().is_some_and(|ext| ext == "json"));
+    std::iter::once(dir.join("lxapp.json"))
+        .chain(catalogues)
+        .all(|input| modified(&input).is_some_and(|changed| changed <= written))
+}
+
+fn types_path(dir: &Path) -> PathBuf {
+    dir.join(".lingxia")
+        .join("types")
+        .join("i18n.generated.d.ts")
+}
+
+/// `.lingxia/types/i18n.generated.d.ts` from the source catalogue, written when it changes or
+/// `always`; removed without one.
+fn write_types(dir: &Path, source: Option<&Catalogue>, always: bool) -> Result<()> {
+    let types = types_path(dir);
+    let Some(source) = source else {
+        if types.exists() {
+            std::fs::remove_file(&types)?;
+        }
+        return Ok(());
+    };
+    let declarations = lingxia_i18n::dts::declarations(source);
+    if always || std::fs::read_to_string(&types).ok().as_deref() != Some(declarations.as_str()) {
+        std::fs::create_dir_all(types.parent().unwrap())?;
+        std::fs::write(&types, declarations)?;
+    }
+    Ok(())
+}
+
 /// `dev` adds `en-XA` and `ar-XB` (see `lingxia_i18n::pseudo`) and lets a translation fall short
 /// per key. Returns the compiled `index.js` GPU pages bundle, `None` without catalogues.
 pub fn compile(dir: &Path, output: &Path, dev: bool) -> Result<Option<PathBuf>> {
     let mut catalogues = check(dir, dev)?;
-    let types = dir
-        .join(".lingxia")
-        .join("types")
-        .join("i18n.generated.d.ts");
+    write_types(
+        dir,
+        catalogues.first().map(|(_, catalogue)| catalogue),
+        false,
+    )?;
     let Some((source, source_catalogue)) = catalogues.first() else {
-        if types.exists() {
-            std::fs::remove_file(&types)?;
-        }
         generated::clear(&generated::mode_dir(dir, dev))?;
         return Ok(None);
     };
     let source = source.clone();
-    let declarations = lingxia_i18n::dts::declarations(source_catalogue);
     let pseudo = if dev {
         vec![
             (
@@ -37,10 +94,6 @@ pub fn compile(dir: &Path, output: &Path, dev: bool) -> Result<Option<PathBuf>> 
     } else {
         Vec::new()
     };
-    if std::fs::read_to_string(&types).ok().as_deref() != Some(declarations.as_str()) {
-        std::fs::create_dir_all(types.parent().unwrap())?;
-        std::fs::write(&types, declarations)?;
-    }
     let out = output.join("i18n");
     std::fs::create_dir_all(&out)?;
     // The modules GPU pages bundle, published whole once all are known.
@@ -691,6 +744,40 @@ const t = useText(); t('web.key')"
             ),
             ["web.key"]
         );
+    }
+
+    #[test]
+    fn a_saved_catalogue_refreshes_the_key_types_without_a_build() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        std::fs::create_dir(root.join("i18n")).unwrap();
+        std::fs::write(root.join("lxapp.json"), r#"{ "languages": ["en-US"] }"#).unwrap();
+        let catalogue = |keys: &[&str]| {
+            let entries: Vec<String> = keys
+                .iter()
+                .map(|key| format!(r#""{key}": {{ "defaultMessage": "x", "description": "d" }}"#))
+                .collect();
+            std::fs::write(
+                root.join("i18n/en-US.json"),
+                format!("{{ {} }}", entries.join(", ")),
+            )
+            .unwrap();
+        };
+        catalogue(&["cart.title"]);
+        refresh_types(root).unwrap();
+        let types = || std::fs::read_to_string(types_path(root)).unwrap();
+        assert!(types().contains("cart.title"));
+        assert!(types_current(root), "nothing changed since");
+        // A key saved later, a moment after the types were written.
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        catalogue(&["cart.title", "cart.total"]);
+        assert!(!types_current(root));
+        refresh_types(root).unwrap();
+        assert!(
+            types().contains("cart.total"),
+            "the new key types before any build"
+        );
+        assert!(types_current(root));
     }
 
     #[test]

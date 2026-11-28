@@ -332,6 +332,9 @@ impl GpuPageView for Endpoint {
                 })?;
                 serde_json::json!({"kind": "theme", "revision": revision, "pack": pack})
             }
+            PageViewEnvironment::DevProblems { report } => {
+                serde_json::json!({"kind": "devProblems", "report": report})
+            }
         };
         self.native.update_environment(&update)
     }

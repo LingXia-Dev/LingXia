@@ -422,9 +422,14 @@ fn run_watch(
     let mut deferred = false;
     let mut was_paused = false;
     // The session's builds skip the type-check; it runs here, after each edit, beside the app.
-    let mut type_checks = TypeChecks::default();
+    let mut type_checks = TypeChecks::new(state.clone());
     for root in &roots {
         type_checks.schedule(&root.app_id, &root.path);
+        // The native build can take minutes after the session's lxapp build, and nothing
+        // watched then: an edit saved meanwhile rebuilds now, or the app starts without it.
+        if edited_since_build(&root.path, &state.build_dir(&root.app_id)) {
+            dirty.insert(root.app_id.clone());
+        }
     }
     while !stop_flag.load(Ordering::Acquire) {
         let mut applied = false;
@@ -665,13 +670,66 @@ struct TypeCheck {
     last: Option<String>,
 }
 
+/// What one finished type-check prints, and what it shows over the app's pages: `Some(None)`
+/// clears them, `None` leaves them as they are.
+#[derive(Debug, PartialEq)]
+struct Outcome {
+    line: Option<String>,
+    pages: Option<Option<String>>,
+}
+
+/// A type-check's result as the session reports it. Errors never stop the session: the last
+/// good build keeps running, and the next clean check clears what was shown.
+fn outcome(last: &mut Option<String>, result: Result<String, String>) -> Outcome {
+    match result {
+        Ok(report) if report.is_empty() => {
+            let was_failing = last.as_ref().is_none_or(|previous| !previous.is_empty());
+            let had_problems = last.as_ref().is_some_and(|previous| !previous.is_empty());
+            *last = Some(report);
+            Outcome {
+                line: had_problems.then(|| "types clean".to_owned()),
+                pages: was_failing.then_some(None),
+            }
+        }
+        Ok(report) => {
+            if last.as_deref() == Some(report.as_str()) {
+                return Outcome {
+                    line: None,
+                    pages: None,
+                };
+            }
+            *last = Some(report.clone());
+            Outcome {
+                line: Some(report.clone()),
+                pages: Some(Some(report)),
+            }
+        }
+        Err(error) => {
+            *last = None;
+            Outcome {
+                line: Some(error.clone()),
+                pages: Some(Some(format!("type check failed\n{error}"))),
+            }
+        }
+    }
+}
+
 /// One background type-check per lxapp; an edit during a run queues exactly one more.
-#[derive(Default)]
-struct TypeChecks(std::collections::BTreeMap<String, Arc<Mutex<TypeCheck>>>);
+struct TypeChecks {
+    checks: std::collections::BTreeMap<String, Arc<Mutex<TypeCheck>>>,
+    state: Arc<DevServerState>,
+}
 
 impl TypeChecks {
+    fn new(state: Arc<DevServerState>) -> Self {
+        Self {
+            checks: Default::default(),
+            state,
+        }
+    }
+
     fn schedule(&mut self, app_id: &str, dir: &Path) {
-        let check = self.0.entry(app_id.to_string()).or_default().clone();
+        let check = self.checks.entry(app_id.to_string()).or_default().clone();
         {
             let mut state = check.lock().unwrap_or_else(|poison| poison.into_inner());
             if state.running {
@@ -681,25 +739,26 @@ impl TypeChecks {
             state.running = true;
         }
         let (app_id, dir) = (app_id.to_string(), dir.to_path_buf());
+        let server = self.state.clone();
         thread::spawn(move || {
             loop {
                 let result = crate::lxapp::dev_typecheck(&dir);
                 let mut state = check.lock().unwrap_or_else(|poison| poison.into_inner());
-                match result {
-                    None => {}
-                    Some(Ok(report)) => {
-                        let previous = state.last.replace(report.clone());
-                        if report.is_empty() {
-                            if previous.is_some_and(|previous| !previous.is_empty()) {
-                                println!("  {} {} types clean", "✓".green(), app_id.cyan());
-                            }
-                        } else if previous.as_deref() != Some(report.as_str()) {
-                            println!("  {} {}: {report}", "⚠".yellow(), app_id.cyan());
+                if let Some(result) = result {
+                    let clean = matches!(&result, Ok(report) if report.is_empty());
+                    let Outcome { line, pages } = outcome(
+                        &mut state.last,
+                        result.map_err(|error| format!("{error:#}")),
+                    );
+                    match line {
+                        Some(line) if clean => {
+                            println!("  {} {} {line}", "✓".green(), app_id.cyan())
                         }
+                        Some(line) => println!("  {} {}: {line}", "⚠".yellow(), app_id.cyan()),
+                        None => {}
                     }
-                    Some(Err(error)) => {
-                        state.last = None;
-                        println!("  {} {}: {error:#}", "⚠".yellow(), app_id.cyan());
+                    if let Some(report) = pages {
+                        server.show_problems(&app_id, report.as_deref());
                     }
                 }
                 if !std::mem::take(&mut state.again) {
@@ -1036,6 +1095,31 @@ fn refresh_native_sources(
 
 /// A route crate changed: rewrite the app's clients, type-check its pages against them, and
 /// say that the running host still serves the old routes.
+/// Whether a source under `root` changed after `build_dir` was last written, skipping what
+/// the watcher never counts as an edit. A copy can keep its source's time, so the build's own
+/// directory dates it.
+fn edited_since_build(root: &Path, build_dir: &Path) -> bool {
+    let modified = |path: &Path| fs::metadata(path).and_then(|meta| meta.modified()).ok();
+    let Some(built) = modified(build_dir) else {
+        return false;
+    };
+    let specs = specs_dir(root);
+    let mut pending = vec![root.to_path_buf()];
+    while let Some(path) = pending.pop() {
+        if is_ignored_path(&path) || path.starts_with(&specs) {
+            continue;
+        }
+        if path.is_dir() {
+            if let Ok(entries) = fs::read_dir(&path) {
+                pending.extend(entries.filter_map(|entry| entry.ok().map(|entry| entry.path())));
+            }
+        } else if modified(&path).is_some_and(|changed| changed > built) {
+            return true;
+        }
+    }
+    false
+}
+
 fn regenerate_native(app_id: &str, dir: &Path, type_checks: &mut TypeChecks) {
     match crate::lxapp::regenerate_native_clients(dir) {
         Ok(true) => {
@@ -1103,6 +1187,76 @@ mod tests {
             fs::create_dir_all(parent).unwrap();
         }
         fs::write(path, contents).unwrap();
+    }
+
+    #[test]
+    fn a_failing_type_check_is_shown_in_the_terminal_and_the_app_and_a_clean_one_clears_it() {
+        let mut last = None;
+        // The first check is clean: nothing to say, nothing shown.
+        assert_eq!(
+            outcome(&mut last, Ok(String::new())),
+            Outcome {
+                line: None,
+                pages: Some(None)
+            }
+        );
+        let report = "1 type error\npages/a.tsx:1:1: TS2345: x".to_string();
+        assert_eq!(
+            outcome(&mut last, Ok(report.clone())),
+            Outcome {
+                line: Some(report.clone()),
+                pages: Some(Some(report.clone()))
+            }
+        );
+        // The same errors after another save stay quiet.
+        assert_eq!(
+            outcome(&mut last, Ok(report.clone())),
+            Outcome {
+                line: None,
+                pages: None
+            }
+        );
+        // A check that cannot run is a problem too; the session keeps going either way.
+        let failed = outcome(&mut last, Err("i18n/en-US.json is not JSON".into()));
+        assert_eq!(failed.line.as_deref(), Some("i18n/en-US.json is not JSON"));
+        assert!(failed.pages.unwrap().unwrap().contains("not JSON"));
+        // The next good save clears the app's banner.
+        assert_eq!(
+            outcome(&mut last, Ok(String::new())),
+            Outcome {
+                line: None,
+                pages: Some(None)
+            }
+        );
+        assert_eq!(
+            outcome(&mut last, Ok(String::new())),
+            Outcome {
+                line: None,
+                pages: None
+            }
+        );
+        outcome(&mut last, Ok(report));
+        assert_eq!(
+            outcome(&mut last, Ok(String::new())).line.as_deref(),
+            Some("types clean")
+        );
+    }
+
+    #[test]
+    fn an_edit_saved_while_the_host_built_is_found_at_startup() {
+        let dir = tempfile::tempdir().unwrap();
+        let (root, build) = (dir.path().join("app"), dir.path().join("build"));
+        write(&root.join("pages/a/index.tsx"), "x");
+        write(&root.join("node_modules/p/index.js"), "x");
+        std::thread::sleep(Duration::from_millis(20));
+        fs::create_dir_all(&build).unwrap();
+        assert!(!edited_since_build(&root, &build));
+        std::thread::sleep(Duration::from_millis(20));
+        write(&root.join("node_modules/p/index.js"), "y");
+        assert!(!edited_since_build(&root, &build), "outside the sources");
+        write(&root.join("i18n/en-US.json"), "{}");
+        assert!(edited_since_build(&root, &build));
+        assert!(!edited_since_build(&root, &dir.path().join("never-built")));
     }
 
     #[test]

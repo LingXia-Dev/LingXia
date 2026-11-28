@@ -164,3 +164,82 @@ fn text(renderer: &mut Renderer, line: &str, [x, y]: [f32; 2], paints: &mut Vec<
         }
     }
 }
+
+const PROBLEMS: [u8; 4] = [153, 27, 27, 235];
+/// Diagnostics the banner names before it stops; the terminal has them all.
+const PROBLEM_LINES: usize = 3;
+
+/// The dev session's problems banner across the top of a `width`-wide page, below `top`
+/// (logical px): the report's count and first diagnostics, over the build still running.
+pub(crate) fn problems(renderer: &mut Renderer, report: &str, width: f32, top: f32) -> Vec<Paint> {
+    let lines = banner_lines(report, width);
+    let x = MARGIN;
+    let y = top + MARGIN;
+    let height = PAD * 2.0 + LINE * lines.len() as f32;
+    let mut paints = vec![
+        Paint::Transform(Affine::IDENTITY),
+        rect(
+            PROBLEMS,
+            [x, y, (width - MARGIN * 2.0).max(0.0), height],
+            6.0,
+        ),
+    ];
+    for (index, line) in lines.iter().enumerate() {
+        text(
+            renderer,
+            line,
+            [x + PAD, y + PAD + LINE * index as f32],
+            &mut paints,
+        );
+    }
+    paints
+}
+
+/// The report's first line (its count) and first diagnostics, each cut to what fits `width`;
+/// a diagnostic's indented detail lines stay in the terminal.
+fn banner_lines(report: &str, width: f32) -> Vec<String> {
+    // Monospace glyphs advance about 0.6 em.
+    let fits = (((width - MARGIN * 2.0 - PAD * 2.0) / (FONT * 0.6)).floor() as usize).max(8);
+    let cut = |line: &str| {
+        if line.chars().count() <= fits {
+            line.to_owned()
+        } else {
+            let mut kept: String = line.chars().take(fits - 1).collect();
+            kept.push('…');
+            kept
+        }
+    };
+    let mut lines = report
+        .lines()
+        .filter(|line| !line.trim().is_empty() && !line.starts_with(char::is_whitespace));
+    let mut shown: Vec<String> = lines.by_ref().take(PROBLEM_LINES + 1).map(cut).collect();
+    if lines.next().is_some() {
+        shown.push(cut("… more in the terminal"));
+    }
+    shown.push(cut(
+        "The last good build keeps running; save a fix to reload.",
+    ));
+    shown
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_problems_banner_names_the_count_and_first_diagnostics_and_cuts_long_lines() {
+        let report = "5 type errors\n\
+            pages/a.tsx:1:1: TS2345: one\n  detail of one\n\
+            pages/b.tsx:2:1: TS2345: two\npages/c.tsx:3:1: TS2345: three\n\
+            pages/d.tsx:4:1: TS2345: four\npages/e.tsx:5:1: TS2345: five";
+        let lines = banner_lines(report, 400.0);
+        assert_eq!(lines[0], "5 type errors");
+        assert_eq!(lines[1], "pages/a.tsx:1:1: TS2345: one");
+        assert_eq!(lines[3], "pages/c.tsx:3:1: TS2345: three");
+        assert_eq!(lines[4], "… more in the terminal");
+        assert!(lines.last().unwrap().starts_with("The last good build"));
+        assert!(!lines.iter().any(|line| line.contains("detail")));
+        let narrow = banner_lines(&format!("1 type error\n{}", "x".repeat(200)), 200.0);
+        assert!(narrow[1].ends_with('…') && narrow[1].chars().count() < 200);
+    }
+}

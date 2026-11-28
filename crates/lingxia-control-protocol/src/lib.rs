@@ -334,6 +334,9 @@ pub mod methods {
         /// Dev sessions: a saved theme replaces an lxapp's (or, without `appid`, the host's) in
         /// its open pages and chrome, without a rebuild.
         pub const THEME: &str = "lxapp.page.theme";
+        /// Dev sessions: the project type-check's report, shown over the lxapp's open pages
+        /// (`report: null` clears it).
+        pub const PROBLEMS: &str = "lxapp.page.problems";
         pub const UNINSTALL: &str = "lxapp.uninstall";
         /// Rebuild the lxapp front-end bundle. Handled by the `lingxia dev`
         /// orchestrator (which owns the project + build pipeline), not the

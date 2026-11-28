@@ -1631,6 +1631,14 @@ impl PageInstance {
         }
     }
 
+    /// Dev sessions: the lxapp's latest type-check report, for a View that started after it.
+    pub(crate) fn push_dev_problems(&self) {
+        let report = dev_problems().get(&self.appid()).cloned();
+        if report.is_some() {
+            self.push_view_environment(PageViewEnvironment::DevProblems { report });
+        }
+    }
+
     pub(crate) fn push_view_environment(&self, update: PageViewEnvironment) {
         if let Some(view) = self.page_view()
             && let Err(error) = view.update_environment(update)
@@ -4069,4 +4077,31 @@ mod tests {
         assert_eq!(state.entry, EntryPhase::Loaded);
         assert_eq!(state.visibility, Visibility::Shown);
     }
+}
+
+/// Dev sessions: each lxapp's latest type-check report, kept so a page opened or reloaded
+/// later shows it too.
+fn dev_problems() -> std::sync::MutexGuard<'static, std::collections::HashMap<String, String>> {
+    static REPORTS: std::sync::LazyLock<
+        std::sync::Mutex<std::collections::HashMap<String, String>>,
+    > = std::sync::LazyLock::new(Default::default);
+    REPORTS.lock().unwrap_or_else(|poison| poison.into_inner())
+}
+
+/// Dev sessions: show `appid`'s type-check report over its open pages and every page that
+/// opens until the next report; `None` (clean) clears it. Returns how many pages got it.
+pub fn show_dev_problems(appid: &str, report: Option<&str>) -> usize {
+    match report {
+        Some(report) => dev_problems().insert(appid.to_owned(), report.to_owned()),
+        None => dev_problems().remove(appid),
+    };
+    let pages = crate::lxapp::try_get(appid)
+        .map(|app| app.live_page_instances())
+        .unwrap_or_default();
+    for page in &pages {
+        page.push_view_environment(PageViewEnvironment::DevProblems {
+            report: report.map(str::to_owned),
+        });
+    }
+    pages.len()
 }

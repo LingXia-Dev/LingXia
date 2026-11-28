@@ -71,6 +71,8 @@ pub fn add_language(dir: &Path, tag: &str) -> Result<()> {
 /// it does not, else its problems as one report (empty when clean).
 pub(crate) fn dev_typecheck(dir: &Path) -> Option<Result<String>> {
     typecheck::applies(dir).then(|| {
+        // A saved catalogue changes the message keys pages may name, even before a build lands.
+        i18n::refresh_types(dir)?;
         typecheck::run(dir).map(|problems| {
             if problems.is_empty() {
                 String::new()

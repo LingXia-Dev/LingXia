@@ -652,6 +652,22 @@ impl DevServerState {
         self.push_theme(None, &pack, "host theme");
     }
 
+    /// The type-check's report for `app_id`, shown over its pages (`None`: clean, cleared).
+    /// Best effort: the terminal already has it, and an app not connected yet gets the next one.
+    pub(crate) fn show_problems(&self, app_id: &str, report: Option<&str>) {
+        if self.runtime_sender().is_none() {
+            return;
+        }
+        let params = serde_json::json!({ "appid": app_id, "report": report });
+        if let Err(error) = self.runtime_request(
+            lingxia_control_protocol::methods::lxapp::PROBLEMS,
+            params,
+            Duration::from_secs(5),
+        ) {
+            eprintln!("  • {app_id}: type errors not shown in the app: {error:#}");
+        }
+    }
+
     fn push_theme(&self, app_id: Option<&str>, pack: &lingxia_theme::Pack, what: &str) {
         if self.runtime_sender().is_none() {
             println!("  ✓ {what} checked (runtime not connected yet)");

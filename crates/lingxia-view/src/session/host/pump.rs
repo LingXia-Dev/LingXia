@@ -153,6 +153,7 @@ struct Request {
     activations: u64,
     pacing: Pacing,
     hud: Option<crate::scene::hud::Hud>,
+    problems: Option<String>,
 }
 
 impl<A: PlatformAdapter> Inner<A> {
@@ -299,6 +300,7 @@ impl<A: PlatformAdapter> Inner<A> {
                     ..Pacing::default()
                 },
                 hud: main.hud.then(|| main.telemetry.stats.hud(asked)),
+                problems: main.problems.clone(),
             };
             main.dirty = false;
             main.pending = false;
@@ -680,6 +682,12 @@ impl<A: PlatformAdapter> Inner<A> {
             let logical = f32::from(width) / scale.max(f32::MIN_POSITIVE);
             crate::scene::hud::paints(&mut session.renderer, hud, logical, top, scale)
         });
+        // Under any host chrome at the top, so the banner never hides behind a navigation bar.
+        let problems = request.problems.as_deref().map(|report| {
+            let top = session.environment["insets"]["top"].as_f64().unwrap_or(0.0) as f32;
+            let logical = f32::from(width) / scale.max(f32::MIN_POSITIVE);
+            crate::scene::hud::problems(&mut session.renderer, report, logical, top)
+        });
         // A frame the target declines is a failed candidate: the session keeps its previous
         // commit (layout, viewport, generation) and the next attempt starts from it.
         session.set_offsets_revision(request.revision);
@@ -697,6 +705,9 @@ impl<A: PlatformAdapter> Inner<A> {
                     display.hide_caret();
                 }
                 display.push_overlay("lingxia:chrome-material", material);
+                if let Some(problems) = problems {
+                    display.push_overlay("lingxia:dev-problems", problems);
+                }
                 if let Some(hud) = hud {
                     display.push_overlay("lingxia:hud", hud);
                 }

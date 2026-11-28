@@ -61,6 +61,8 @@ pub enum PageViewEnvironment {
     Contrast { more: bool, revision: u64 },
     /// Dev sessions: a saved theme pack (JSON) replaces the one the page was seeded with.
     Theme { pack: String, revision: u64 },
+    /// Dev sessions: the project's type errors, shown over the page; `None` once clean.
+    DevProblems { report: Option<String> },
 }
 
 /// Runtime-issued connection identity; the native worker must preserve it through queues.
@@ -316,6 +318,8 @@ impl PageView {
                     PageViewEnvironment::Contrast { .. } => return Ok(()),
                     // A web page's roles are its role stylesheet, replaced by the app.
                     PageViewEnvironment::Theme { .. } => return Ok(()),
+                    // The banner is drawn by the View core; a web page has the terminal's.
+                    PageViewEnvironment::DevProblems { .. } => return Ok(()),
                 };
                 view.exec_js(&script).map_err(lingxia_error::Error::from)
             }

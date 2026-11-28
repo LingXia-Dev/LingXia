@@ -276,6 +276,13 @@ fn handle_lxapp_page_command_impl(
                 json!({ "ok": true, "action": "theme", "pages": pages }),
             ))
         }
+        methods::lxapp::PROBLEMS => {
+            let args: ProblemsArgs = parse_args(handler, args)?;
+            let pages = lingxia::dev::show_dev_problems(&args.appid, args.report.as_deref());
+            Ok(Some(
+                json!({ "ok": true, "action": "problems", "pages": pages }),
+            ))
+        }
         _ => Err(format!("unknown lxapp page handler: {}", handler)),
     }
 }
@@ -494,6 +501,14 @@ mod tests {
         assert!(host.appid.is_none() && host.pack["name"] == "x");
         assert!(serde_json::from_value::<super::ThemeArgs>(serde_json::json!({})).is_err());
     }
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ProblemsArgs {
+    appid: String,
+    /// The type-check's report; `null` once the project is clean.
+    report: Option<String>,
 }
 
 #[derive(serde::Deserialize)]

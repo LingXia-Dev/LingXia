@@ -1948,6 +1948,7 @@ impl PageSvc {
         // A language change made while this document loaded was pushed
         // before its bridge existed; hand it the current one.
         self.page.push_display_language();
+        self.page.push_dev_problems();
         if self.page.holds_first_state() {
             warn!("devHoldFirstState: holding this page's first state")
                 .with_appid(self.page.appid());
