@@ -69,6 +69,16 @@ extension LxApp {
         }
     }
 
+    nonisolated static func hostThemeChanged() {
+        #if os(macOS)
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated {
+                LxAppHostTheme.reapplyEverywhere()
+            }
+        }
+        #endif
+    }
+
     nonisolated static func openExternalUrlString(_ urlString: String) -> Bool {
         guard let url = URL(string: urlString) else { return false }
         #if os(iOS)

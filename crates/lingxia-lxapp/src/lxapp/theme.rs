@@ -1,7 +1,19 @@
 //! Theme roles for native chrome and WebView pages, from the same resolver View pages use.
 
 use lingxia_theme::{ROLE_COUNT, Rgba, Role, ThemeLooks, looks};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+
+type HostThemeListener = Box<dyn Fn() + Send + Sync>;
+
+static HOST_THEME_LISTENER: Mutex<Option<HostThemeListener>> = Mutex::new(None);
+
+/// Native product chrome reads the host's roles when it paints or its appearance changes;
+/// nothing else tells it a dev session replaced the host's theme.
+pub fn set_host_theme_change_listener(listener: HostThemeListener) {
+    *HOST_THEME_LISTENER
+        .lock()
+        .unwrap_or_else(|e| e.into_inner()) = Some(listener);
+}
 
 /// Whether the product is in high contrast as far as the runtime knows: the user's `more`.
 pub fn high_contrast() -> bool {
@@ -75,6 +87,13 @@ pub fn apply_dev_theme(appid: Option<&str>, pack: &str) -> usize {
         Some(appid) => super::try_get(appid).into_iter().collect(),
         None => {
             lingxia_host_config::set_dev_host_theme_pack(pack.to_owned());
+            if let Some(listener) = HOST_THEME_LISTENER
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .as_ref()
+            {
+                listener();
+            }
             super::get_lxapps_manager()
                 .map(|manager| {
                     manager

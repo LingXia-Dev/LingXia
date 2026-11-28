@@ -886,6 +886,10 @@ mod bridge {
         #[swift_bridge(swift_name = "LxApp.lxappRegistryChanged")]
         fn lxapp_registry_changed();
 
+        // A dev session replaced the host's theme — product chrome re-reads its colours.
+        #[swift_bridge(swift_name = "LxApp.hostThemeChanged")]
+        fn host_theme_changed();
+
         // The page an `awaitPageWebView` call waits for has its WebView
         // (`ready`), or never will (failed, or no longer there).
         #[swift_bridge(swift_name = "LxApp.pageWebViewReady")]
@@ -1019,6 +1023,9 @@ pub fn lingxia_init(data_dir: &str, cache_dir: &str, locale: &str) -> bridge::Li
     }));
     lxapp::set_lxapp_registry_change_listener(Box::new(|_appids| {
         self::bridge::lxapp_registry_changed();
+    }));
+    lxapp::theme::set_host_theme_change_listener(Box::new(|| {
+        self::bridge::host_theme_changed();
     }));
     lxapp::set_lxapp_open_blocked_listener(Box::new(show_lxapp_unavailable));
 

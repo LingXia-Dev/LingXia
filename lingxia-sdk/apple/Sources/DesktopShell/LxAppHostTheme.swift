@@ -49,6 +49,29 @@ enum LxAppHostTheme {
         adaptive(.selectedTabBackground)
     }
 
+    /// Chrome resolves these colours into layers when it is built or its appearance changes,
+    /// so a replaced host theme (a dev session's saved `themes/*.json`) asks every view in
+    /// every window to do that again.
+    @MainActor
+    static func reapplyEverywhere() {
+        for window in NSApp.windows {
+            guard let root = window.contentView?.superview ?? window.contentView else { continue }
+            reapply(root)
+        }
+    }
+
+    /// Only the SDK's own views: AppKit and WebKit views resolve dynamic colours at draw time.
+    @MainActor
+    private static func reapply(_ view: NSView) {
+        if Bundle(for: type(of: view)) == Bundle(for: LxAppHostThemeLayerView.self) {
+            view.viewDidChangeEffectiveAppearance()
+        }
+        view.needsDisplay = true
+        for subview in view.subviews {
+            reapply(subview)
+        }
+    }
+
     private static func adaptive(_ role: LxAppHostThemeRole) -> NSColor {
         NSColor(name: nil) { appearance in resolved(role, for: appearance) }
     }

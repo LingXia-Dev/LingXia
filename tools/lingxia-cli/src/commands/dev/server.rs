@@ -611,7 +611,7 @@ impl DevServerState {
         let pack = match crate::theme::load(Some(&root.join(crate::theme::THEME_PATH))) {
             Ok(pack) => pack,
             Err(error) => {
-                eprintln!("  ✗ theme of {app_id}: {error:#}; the last good theme stays");
+                eprintln!("  ✗ theme of {app_id}: {error:#}\n  the last good theme stays");
                 return;
             }
         };
@@ -645,7 +645,7 @@ impl DevServerState {
             Ok(Some(pack)) => pack,
             Ok(None) => return,
             Err(error) => {
-                eprintln!("  ✗ host theme: {error:#}; the last good theme stays");
+                eprintln!("  ✗ host theme: {error:#}\n  the last good theme stays");
                 return;
             }
         };
