@@ -1234,7 +1234,8 @@ mod ios {
     }
 
     /// A window tap: iOS has no public touch injection into a window, so the host control
-    /// under the point is pressed as a completed touch (`touchUpInside`).
+    /// under the point is pressed as a completed touch (`touchUpInside`), and GPU content
+    /// takes it as a page touch.
     async fn press_control(
         points: &[GesturePoint],
         end: GestureEnd,
@@ -1250,7 +1251,7 @@ mod ios {
         }
         let started = Instant::now();
         let (x, y) = (last.x, last.y);
-        on_main(move || unsafe {
+        let on_page = on_main(move || unsafe {
             let window = key_window().ok_or("no key window")?;
             let point = CGPoint { x, y };
             // A system alert's action and SwiftUI chrome take no touches from code: the host
@@ -1259,7 +1260,7 @@ mod ios {
                 Some(Pressable::Probe(probe)) => {
                     let pressed: bool = msg_send![probe, press];
                     return if pressed {
-                        Ok(())
+                        Ok(None)
                     } else {
                         Err("the control under the tap presses nothing".to_string())
                     };
@@ -1270,7 +1271,7 @@ mod ios {
                     let title = objc2_foundation::NSString::from_str(&title);
                     let pressed: bool = msg_send![host, pressAlertAction: &*title];
                     return if pressed {
-                        Ok(())
+                        Ok(None)
                     } else {
                         Err(format!("no alert action {title} on screen"))
                     };
@@ -1282,7 +1283,7 @@ mod ios {
                     }
                     // UIControlEventTouchUpInside
                     let _: () = msg_send![control, sendActionsForControlEvents: 1usize << 6];
-                    return Ok(());
+                    return Ok(None);
                 }
                 None => {}
             }
@@ -1298,20 +1299,37 @@ mod ios {
                     }
                     // UIControlEventTouchUpInside
                     let _: () = msg_send![view, sendActionsForControlEvents: 1usize << 6];
-                    return Ok(());
+                    return Ok(None);
                 }
                 if is_gpu_page(view) {
-                    return Err("the tap lands on a GPU page; tap it as a page".to_string());
+                    // GPU content, a page or the feedback layer over it, takes the tap as
+                    // a page touch on the front page, which routes it as a finger would.
+                    let page = front_gpu_page()?;
+                    let local: CGPoint = msg_send![page as *mut AnyObject, convertPoint: point, fromView: window];
+                    return Ok(Some((page, (local.x, local.y))));
                 }
                 view = msg_send![view, superview];
             }
             Err(format!("no host control at {x:.0},{y:.0}"))
         })
         .await?;
+        let mut delivered = GestureDelivery::Window;
+        let mut events = 1;
+        if let Some((page, at)) = on_page {
+            for phase in [DOWN, UP] {
+                if !on_main(move || touch(page, phase, at)).await? {
+                    return Err(Error::internal(
+                        "the page is not taking input (behind a dialog or leaving)",
+                    ));
+                }
+            }
+            delivered = GestureDelivery::View;
+            events = 2;
+        }
         Ok(AppGestureResult {
             input: GestureInput::Touch,
-            delivered: GestureDelivery::Window,
-            events: 1,
+            delivered,
+            events,
             duration_ms: started.elapsed().as_secs_f64() * 1000.0,
             finger: None,
         })
