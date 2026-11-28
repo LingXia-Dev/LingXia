@@ -1,5 +1,6 @@
-import { lx } from '@lingxia/logic';
-App({
+import { defineApp, lx } from '@lingxia/logic';
+
+export default defineApp({
   onLaunch() {
     console.log('LingXia app launched');
 

@@ -33,7 +33,7 @@ regex = "1"
 png = "0.17"
 
 # `lxdev test` bundler — the same Oxc components as lingxia-cli's Logic
-# bundler, but a dedicated entry mode (no Page()/App() rewrites).
+# bundler, but a dedicated entry mode (no app or page registration).
 oxc_parser = "0.149"
 oxc_resolver = "11.24.3"
 oxc_transformer = "0.149"

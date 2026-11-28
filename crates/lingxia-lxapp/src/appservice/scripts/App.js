@@ -90,7 +90,7 @@ function reportingHook(appInstance, name) {
   };
 }
 
-function registerApp(appConfig, handlerNamesJson) {
+function registerApp(appConfig) {
   if (!appConfig || typeof appConfig !== "object") {
     throw new Error("App registration requires a configuration object");
   }
@@ -112,7 +112,7 @@ function registerApp(appConfig, handlerNamesJson) {
   decideLaunchDestination(appInstance, appConfig, firstShown);
   if (typeof appConfig.onOpen === "function") routeWarmLinksThroughOnOpen(appInstance, appConfig);
 
-  new LxAppSvc(appInstance, handlerNamesJson || "[]");
+  new LxAppSvc(appInstance);
   __APP_INSTANCE__ = appInstance;
   return appInstance;
 }
@@ -221,10 +221,20 @@ function hideLinkFields(appInstance) {
   }
 }
 
+const APP_BRAND = Symbol.for("lingxia.app");
+
 globalThis.__registerApp = registerApp;
+globalThis.__registerDefinedApp = function (definition) {
+  if (!definition || definition[APP_BRAND] !== true) {
+    throw new TypeError(
+      "lxapp.ts must default-export defineApp({ onLaunch }) from '@lingxia/logic'",
+    );
+  }
+  return registerApp(definition);
+};
 globalThis.App = function () {
   throw new Error(
-    "App() should be transformed at build time. Rebuild the logic bundle with the LingXia CLI.",
+    "App() was removed: lxapp.ts default-exports defineApp({ onLaunch }) from '@lingxia/logic'.",
   );
 };
 // For `lxdev test` only; app code shares state through modules.

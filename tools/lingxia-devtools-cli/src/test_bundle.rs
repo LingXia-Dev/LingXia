@@ -2,8 +2,8 @@
 //!
 //! Bundles a `.js`/`.ts` entry and its static ESM import graph into one
 //! ES2020 classic script: an async IIFE whose promise the test runtime
-//! awaits. Unlike the lxapp Logic bundler there are no `Page()`/`App()`
-//! rewrites; dynamic `import()` and Node built-ins are rejected with a source
+//! awaits. Unlike the lxapp Logic bundler there is no app or page
+//! registration; dynamic `import()` and Node built-ins are rejected with a source
 //! diagnostic. Statement rewrites preserve line counts so the inline source
 //! map stays line-accurate against the original files.
 //!

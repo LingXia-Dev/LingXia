@@ -1,6 +1,7 @@
 {
   "about": "Names an author may guess from other runtimes, mapped to the members that do the job. `lingxia api` and the docs check offer them on a miss. Each target must be a member in api.json.",
   "aliases": {
+    "App": ["defineApp"],
     "Page": ["definePage"],
     "chooseFile": ["lx.pick.file", "lx.pick.files"],
     "chooseImage": ["lx.pick.media"],

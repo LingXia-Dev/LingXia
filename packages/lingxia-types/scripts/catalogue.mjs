@@ -158,12 +158,10 @@ export function catalogue({ entries = false } = {}) {
     // `@lingxia/logic` is where Logic imports from: all three, plus the host's `lx`.
     exportsByEntry["@lingxia/logic"] = [...new Set([...exportsByEntry["@lingxia/types"], ...exportsByEntry["@lingxia/types/page"], "lx"])].sort();
     const start = members.length;
-    const app = checker.resolveName("App", undefined, ts.SymbolFlags.Value, false);
     const logicModule = checker.getSymbolAtLocation(program.getSourceFile(resolve(packageDir, "src/generated/logic.ts")));
     const appConfig = checker.getExportsOfModule(logicModule).find(s => s.name === "AppConfig");
-    walk(null, null, "", 0, [app]);
     if (appConfig) walk(appConfig, checker.getDeclaredTypeOfSymbol(appConfig), "App", 1);
-    for (const member of members.slice(start)) member.entry = "global";
+    for (const member of members.slice(start)) member.entry = "@lingxia/logic";
     for (const [file, entry] of [["src/page.ts", "@lingxia/logic"], ["src/error.ts", "@lingxia/logic"]]) {
       const before = members.length;
       const module = checker.getSymbolAtLocation(program.getSourceFile(resolve(packageDir, file)));

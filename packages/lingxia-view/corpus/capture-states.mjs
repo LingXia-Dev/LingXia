@@ -15,7 +15,9 @@ const context = vm.createContext({
   lx: inert, console, setTimeout, clearTimeout, AbortController, URL, TextEncoder, TextDecoder,
   getApp: () => registered,
   __registerApp: definition => { registered = definition; },
+  __registerDefinedApp: definition => { registered = definition; },
   __registerPage: (path, definition) => { pages[path.replace(/\/index\.js$/, '').replace(/^pages\//, '')] = definition.data ?? {}; },
+  __registerDefinedPage: (path, definition) => { pages[path.replace(/\/index\.js$/, '').replace(/^pages\//, '')] = definition.data ?? {}; },
 });
 context.globalThis = context;
 vm.runInContext(source, context);

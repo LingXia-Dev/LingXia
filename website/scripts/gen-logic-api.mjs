@@ -291,7 +291,7 @@ for (const group of written) {
   index += `| [${group.title}](./${group.slug}/) | ${group.summary} |\n`;
 }
 index += `\n:::note\nSignatures are reproduced from the published declarations; option and result shapes are types in the same package. In an editor, type \`lx.\` and hover a member to read the same information against the exact version your project installs.\n:::\n`;
-index += `\nThe \`definePage\` and \`App({})\` contracts, error codes, and handle types ship in the same package — see [About the Logic JS API](../logic-api/).\n`;
+index += `\nThe \`definePage\` and \`defineApp\` contracts, error codes, and handle types ship in the same package — see [About the Logic JS API](../logic-api/).\n`;
 writeFileSync(join(outDir, 'index.md'), index, 'utf8');
 
 const expected = new Set(['index.md', ...written.map((g) => `${g.slug}.md`)]);

@@ -1,4 +1,4 @@
-import { lx, type AppLifecycleEventArgs } from '@lingxia/logic';
+import { defineApp, lx, type AppLifecycleEventArgs } from '@lingxia/logic';
 
 const moreFeedbackByLanguage = {
   "en-US": "Feedback",
@@ -38,7 +38,7 @@ function applyMoreActions(tag = lx.app.language.get()) {
 /** What a reopen delivered, for the showcase desktop specs. */
 const probe = { lastShow: undefined as AppLifecycleEventArgs | undefined };
 
-App({
+export default defineApp({
   onLaunch() {
     console.log('LingXia Showcase (WebView) launched');
 

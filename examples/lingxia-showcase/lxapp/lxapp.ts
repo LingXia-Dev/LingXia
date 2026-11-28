@@ -1,4 +1,5 @@
 import {
+  defineApp,
   lx,
   type AppLifecycleEventArgs,
   type ConfiguredPageName,
@@ -106,7 +107,7 @@ async function applyHostChrome(os: typeof lx.host.info.os) {
   }]);
 }
 
-App({
+export default defineApp({
   // For `lxdev test`, which reads it through `appInstance().state`.
   state: appState,
   onLaunch() {

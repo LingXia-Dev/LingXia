@@ -396,7 +396,7 @@ export interface LogicPage<TData = Record<string, unknown>, TActions = {}> {
 /** A page whose actions are not typed: any action name may be called. */
 export type AnyLogicPage<TData = Record<string, unknown>> = LogicPage<TData, Readonly<Record<string, (...args: any[]) => unknown>>>;
 
-/** The object `App({...})` registered, as `appInstance()` returns it. */
+/** The object `defineApp({...})` registered, as `appInstance()` returns it. */
 export interface LogicApp {
   readonly [member: string]: unknown;
 }
@@ -408,7 +408,7 @@ export interface LogicApp {
  */
 export interface LogicScope {
   readonly lx: Lx & { automation(): Automation };
-  /** The object `App({...})` registered; `null` before it ran. */
+  /** The object `defineApp({...})` registered; `null` before it ran. */
   appInstance<T extends LogicApp = LogicApp>(): T | null;
   /** The page stack, bottom first. */
   pageStack<T extends LogicPage<any> = AnyLogicPage>(): T[];

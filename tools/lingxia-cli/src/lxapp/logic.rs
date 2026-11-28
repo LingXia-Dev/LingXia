@@ -159,7 +159,7 @@ pub fn build_mocks(root: &Path) -> Result<Option<MocksBundle>> {
     let Some(entry) = mocks_entry(root)? else {
         return Ok(None);
     };
-    // Mocks are plain modules: no `App()` / `Page()` registration, so the
+    // Mocks are plain modules: no app or page registration, so the
     // bundler needs only the root.
     let project = &Project {
         root: root.to_path_buf(),
@@ -834,19 +834,21 @@ fn rewrite_module_source(
                 if let Some(expression) = export_default.declaration.as_expression() {
                     refuse_removed_registration(expression, role)?;
                 }
+                if matches!(role, ModuleRole::App)
+                    && !may_be_defined_app(&export_default.declaration)
+                {
+                    bail!(
+                        "lxapp.ts must default-export defineApp({{ onLaunch }}) from '@lingxia/logic'"
+                    );
+                }
                 let (replacement, export_name) =
                     rewrite_export_default(source, &export_default.declaration)?;
                 output.push_str(&replacement);
                 exports.push(("default".to_string(), export_name));
             }
             Statement::ExpressionStatement(expr_stmt) => {
-                if let Some(rewritten) =
-                    rewrite_registration_call(source, &expr_stmt.expression, role)?
-                {
-                    output.push_str(&rewritten);
-                } else {
-                    output.push_str(slice(source, span)?);
-                }
+                refuse_removed_registration(&expr_stmt.expression, role)?;
+                output.push_str(slice(source, span)?);
             }
             _ => {
                 output.push_str(slice(source, span)?);
@@ -868,15 +870,19 @@ fn rewrite_module_source(
     for (exported, local) in &exports {
         output.push_str(&format!("__lx_module_exports[\"{exported}\"] = {local};\n"));
     }
-    // `export default definePage({ ... })` is the page.
-    if let ModuleRole::Page { page_path } = role
-        && !exports.iter().any(|(exported, _)| exported == "default")
-    {
-        bail!(
-            "{page_path}: a page's Logic must `export default definePage({{ data, setup }})` from '@lingxia/logic'"
-        );
+    // `export default defineApp({ ... })` is the app; `export default definePage({ ... })` is a page.
+    if matches!(role, ModuleRole::App) {
+        if !exports.iter().any(|(exported, _)| exported == "default") {
+            bail!("lxapp.ts must default-export defineApp({{ onLaunch }}) from '@lingxia/logic'");
+        }
+        output.push_str("globalThis.__registerDefinedApp(__lx_module_exports[\"default\"]);\n");
     }
     if let ModuleRole::Page { page_path } = role {
+        if !exports.iter().any(|(exported, _)| exported == "default") {
+            bail!(
+                "{page_path}: a page's Logic must `export default definePage({{ data, setup }})` from '@lingxia/logic'"
+            );
+        }
         output.push_str(&format!(
             "globalThis.__registerDefinedPage({}, __lx_module_exports[\"default\"]);\n",
             json_string_literal(&page_registration_path(project, page_path)?)
@@ -1054,47 +1060,7 @@ fn collect_binding_names(pattern: &oxc_ast::ast::BindingPattern<'_>, output: &mu
     }
 }
 
-fn rewrite_registration_call(
-    source: &str,
-    expression: &Expression<'_>,
-    role: &ModuleRole,
-) -> Result<Option<String>> {
-    let Expression::CallExpression(call_expr) = unwrap_expression(expression) else {
-        return Ok(None);
-    };
-    let Expression::Identifier(identifier) = unwrap_expression(&call_expr.callee) else {
-        return Ok(None);
-    };
-
-    match identifier.name.as_str() {
-        "App" => {
-            if !matches!(role, ModuleRole::App) {
-                return Ok(None);
-            }
-            let first_arg = call_expr
-                .arguments
-                .first()
-                .ok_or_else(|| anyhow!("App() must be called with a configuration object"))?;
-            let config_expr = slice(source, first_arg.span())?;
-            let handler_names = match unwrap_expression(first_arg.to_expression()) {
-                Expression::ObjectExpression(object) => collect_app_handler_names(object),
-                _ => Vec::new(),
-            };
-            let handler_json = serde_json::to_string(&handler_names)?;
-            Ok(Some(format!(
-                "globalThis.__registerApp({}, {});",
-                config_expr,
-                json_string_literal(&handler_json)
-            )))
-        }
-        _ => {
-            refuse_removed_registration(expression, role)?;
-            Ok(None)
-        }
-    }
-}
-
-/// `Page(`, `PageInstance(` and `defineApp(` name what to write instead.
+/// `Page(`, `PageInstance(` and `App(` name what to write instead.
 fn refuse_removed_registration(expression: &Expression<'_>, role: &ModuleRole) -> Result<()> {
     let Expression::CallExpression(call_expr) = unwrap_expression(expression) else {
         return Ok(());
@@ -1107,9 +1073,9 @@ fn refuse_removed_registration(expression: &Expression<'_>, role: &ModuleRole) -
             "{}() was removed: a page's Logic default-exports definePage({{ data, setup }}) from '@lingxia/logic'",
             identifier.name.as_str()
         ),
-        "defineApp" if matches!(role, ModuleRole::App) => {
-            bail!("defineApp() does not exist: the app entry calls App({{ onLaunch }})")
-        }
+        "App" if matches!(role, ModuleRole::App) => bail!(
+            "App() was removed: the app entry default-exports defineApp({{ onLaunch }}) from '@lingxia/logic'"
+        ),
         _ => Ok(()),
     }
 }
@@ -1129,60 +1095,6 @@ fn page_registration_path(project: &Project, page_path: &str) -> Result<String> 
     })
 }
 
-fn collect_app_handler_names(object: &oxc_ast::ast::ObjectExpression<'_>) -> Vec<String> {
-    let allowed: HashSet<&str> = ["onLaunch", "onShow", "onHide", "onScreenshot"]
-        .into_iter()
-        .collect();
-    collect_object_handler_names(object, |name| allowed.contains(name))
-}
-
-fn collect_object_handler_names<F>(
-    object: &oxc_ast::ast::ObjectExpression<'_>,
-    include: F,
-) -> Vec<String>
-where
-    F: Fn(&str) -> bool,
-{
-    let mut names = Vec::new();
-    for property in &object.properties {
-        let ObjectPropertyKind::ObjectProperty(property) = property else {
-            continue;
-        };
-        let Some(name) = property_name(&property.key) else {
-            continue;
-        };
-        if !include(&name) {
-            continue;
-        }
-        if is_function_like_property(property) {
-            names.push(name);
-        }
-    }
-    names
-}
-
-fn is_function_like_property(property: &oxc_ast::ast::ObjectProperty<'_>) -> bool {
-    if property.method {
-        return true;
-    }
-    matches!(
-        unwrap_expression(&property.value),
-        Expression::FunctionExpression(_)
-            | Expression::ArrowFunctionExpression(_)
-            | Expression::Identifier(_)
-            | Expression::StaticMemberExpression(_)
-            | Expression::ComputedMemberExpression(_)
-    )
-}
-
-fn property_name(key: &PropertyKey<'_>) -> Option<String> {
-    match key {
-        PropertyKey::StaticIdentifier(identifier) => Some(identifier.name.as_str().to_string()),
-        PropertyKey::StringLiteral(literal) => Some(literal.value.as_str().to_string()),
-        _ => None,
-    }
-}
-
 fn module_export_name(name: &ModuleExportName<'_>) -> Option<String> {
     match name {
         ModuleExportName::IdentifierName(identifier) => Some(identifier.name.as_str().to_string()),
@@ -1191,6 +1103,28 @@ fn module_export_name(name: &ModuleExportName<'_>) -> Option<String> {
         }
         ModuleExportName::StringLiteral(literal) => Some(literal.value.as_str().to_string()),
     }
+}
+
+/// Whether an app's default export can be `defineApp(...)`. Only a value that is plainly
+/// something else fails here; a call or a binding (possibly aliased) is left to the
+/// runtime's brand check.
+fn may_be_defined_app(declaration: &ExportDefaultDeclarationKind<'_>) -> bool {
+    let Some(expression) = declaration.as_expression() else {
+        return false;
+    };
+    !matches!(
+        unwrap_expression(expression),
+        Expression::ObjectExpression(_)
+            | Expression::ArrayExpression(_)
+            | Expression::ArrowFunctionExpression(_)
+            | Expression::FunctionExpression(_)
+            | Expression::ClassExpression(_)
+            | Expression::StringLiteral(_)
+            | Expression::NumericLiteral(_)
+            | Expression::BooleanLiteral(_)
+            | Expression::NullLiteral(_)
+            | Expression::TemplateLiteral(_)
+    )
 }
 
 fn unwrap_expression<'a>(expression: &'a Expression<'a>) -> &'a Expression<'a> {
@@ -1643,7 +1577,7 @@ mod tests {
         };
         let mut bundler = LogicBundler::new(&project);
         bundler
-            .add_entry(root.join(entry), ModuleRole::App)
+            .add_entry(root.join(entry), ModuleRole::Plain)
             .unwrap();
         bundler.render_bundle(false).unwrap()
     }
@@ -1707,7 +1641,7 @@ mod tests {
         write(
             temp.path(),
             "lxapp.ts",
-            "// __lingxiaNative stays private\nconst __lingxiaNative = 1;\nglobalThis.n = __lingxiaNative + 1;\nApp({});\n",
+            "// __lingxiaNative stays private\nconst __lingxiaNative = 1;\nglobalThis.n = __lingxiaNative + 1;\nexport default {};\n",
         );
         build_test_bundle(temp.path(), "lxapp.ts");
     }
@@ -1771,7 +1705,7 @@ mod tests {
         write(
             root,
             "node_modules/@lingxia/types/page.js",
-            "export function definePage(d) { return d; }\n",
+            "export function definePage(d) { return d; }\nexport function defineApp(d) { return d; }\n",
         );
         write(
             root,
@@ -1781,7 +1715,7 @@ mod tests {
         write(
             root,
             "lxapp.ts",
-            "import { lx } from '@lingxia/logic';\nglobalThis.seen.push(['app', lx]);\nApp({});\n",
+            "import { defineApp, lx } from '@lingxia/logic';\nglobalThis.seen.push(['app', lx]);\nexport default defineApp({});\n",
         );
         write(
             root,
@@ -1806,7 +1740,7 @@ mod tests {
         let runtime = RongJS::runtime();
         let ctx = runtime.context();
         let prelude = "globalThis.lx = { nav: {} }; globalThis.seen = []; \
-                       globalThis.__registerApp = () => seen.push(['App', null]); \
+                       globalThis.__registerDefinedApp = () => seen.push(['App', null]); \
                        globalThis.__registerDefinedPage = () => seen.push(['register', null]);";
         ctx.eval::<()>(Source::from_bytes(prelude)).unwrap();
         ctx.eval::<()>(Source::from_bytes(bundle)).unwrap();
@@ -1953,10 +1887,14 @@ mod tests {
     }
 
     #[test]
-    fn an_app_calling_define_app_fails_with_the_replacement() {
+    fn an_app_calling_app_or_missing_default_export_fails_with_the_replacement() {
         for source in [
-            "defineApp({ onLaunch() {} });\n",
-            "export default defineApp({});\n",
+            "App({ onLaunch() {} });\n",
+            "export default App({});\n",
+            "export const x = 1;\n",
+            "export default { onLaunch() {} };\n",
+            "export default ({ onLaunch() {} }) as const;\n",
+            "export default function onLaunch() {}\n",
         ] {
             let temp = TempDir::new().unwrap();
             let root = temp.path();
@@ -1968,9 +1906,30 @@ mod tests {
                 .and_then(|_| bundler.render_bundle(false))
                 .unwrap_err();
             assert!(
-                format!("{error:#}").contains("App({ onLaunch })"),
+                format!("{error:#}").contains("defineApp({ onLaunch })"),
                 "{error:#}"
             );
+        }
+    }
+
+    /// A binding or a call may still be `defineApp(...)` (aliased or re-exported), so only the
+    /// runtime's brand check can refuse it.
+    #[test]
+    fn an_app_exporting_a_binding_or_call_builds() {
+        for source in [
+            "const app = globalThis.made;\nexport default app;\n",
+            "export default globalThis.make({});\n",
+        ] {
+            let temp = TempDir::new().unwrap();
+            let root = temp.path();
+            write(root, "lxapp.ts", source);
+            let project = test_project(root);
+            let mut bundler = LogicBundler::new(&project);
+            bundler
+                .add_entry(root.join("lxapp.ts"), ModuleRole::App)
+                .unwrap();
+            let bundle = bundler.render_bundle(false).unwrap();
+            assert!(bundle.contains("__registerDefinedApp"), "{bundle}");
         }
     }
 
@@ -2458,7 +2417,7 @@ mod tests {
         let runtime = RongJS::runtime();
         let ctx = runtime.context();
         ctx.eval::<()>(Source::from_bytes(
-            "globalThis.__registerApp = () => {}; \
+            "globalThis.__registerDefinedApp = () => {}; globalThis.defineApp = (app) => app; \
              globalThis.__lingxiaNative = { invoke: (route, input, pageId) => `${route}:${input.name}:${pageId}` };",
         ))
         .unwrap();
@@ -2469,7 +2428,10 @@ mod tests {
     #[test]
     fn the_generated_native_client_ships_first_without_an_import() {
         let temp = TempDir::new().unwrap();
-        let bundle = native_project(&temp.path().canonicalize().unwrap(), "App({});\n");
+        let bundle = native_project(
+            &temp.path().canonicalize().unwrap(),
+            "export default globalThis.defineApp({});\n",
+        );
         let client = bundle
             .find("//#region .lingxia/native.logic.ts")
             .expect("client bundled");
@@ -2490,7 +2452,7 @@ mod tests {
         let temp = TempDir::new().unwrap();
         let bundle = native_project(
             &temp.path().canonicalize().unwrap(),
-            "import { native } from '@lingxia/native';\nglobalThis.client = native;\nApp({});\n",
+            "import { native } from '@lingxia/native';\nglobalThis.client = native;\nexport default globalThis.defineApp({});\n",
         );
         assert_eq!(
             bundle.matches("//#region .lingxia/native.logic.ts").count(),
@@ -2506,7 +2468,7 @@ mod tests {
         write(
             temp.path(),
             "lxapp.ts",
-            "import { native } from '@lingxia/native';\nApp({ native });\n",
+            "import { native } from '@lingxia/native';\nexport default { native };\n",
         );
         let project = test_project(temp.path());
         let mut bundler = LogicBundler::new(&project);

@@ -2,8 +2,8 @@
 
 What every Logic file (`pages/*/index.ts`, `lxapp.ts`, shared modules) runs
 against. Logic imports the runtime from one place:
-`import { definePage, lx } from '@lingxia/logic'`. `App` and the Web profile are
-globals.
+`import { defineApp, definePage, lx } from '@lingxia/logic'`. The Web profile is
+global.
 
 **`@lingxia/types` is the API reference.** Its declarations are generated from
 the runtime: signatures, defaults, platforms, permissions, errors and examples

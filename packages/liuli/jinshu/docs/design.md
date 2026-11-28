@@ -196,7 +196,7 @@ const documents = {
   pageOf: key => `pages/lesson?id=${key}`,   // optional: where a person opens it
 };
 
-App({
+export default defineApp({
   onLaunch() {
     // Registered once at launch: the tools do not depend on any page being open.
     lx.agent.provide(createJinshuTools({ documents }));

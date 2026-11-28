@@ -1,7 +1,7 @@
 {
   "name": "@lingxia/logic",
   "version": "0.31.0",
-  "description": "What an lxapp's Logic imports: lx, definePage, type, isLxError and every API type",
+  "description": "What an lxapp's Logic imports: lx, defineApp, definePage, type, isLxError and every API type",
   "type": "module",
   "repository": {
     "type": "git",

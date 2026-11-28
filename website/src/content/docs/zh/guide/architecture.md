@@ -35,7 +35,7 @@ React 或纯 HTML。它渲染复制而来的数据，掌管临时交互状态，
 
 - **渲染保持简单。** 视图是数据的纯函数——易于推理，也易于更换框架。
 - **逻辑保持可移植。** 业务代码与平台 API 集中一处，在每个目标平台复用。
-- **边界是类型化的。** `@lingxia/types` 描述 `definePage`、`App({})` 与 `lx.*`；CLI 为宿主 Rust 路由生成 `@lingxia/native`。
+- **边界是类型化的。** `@lingxia/types` 描述 `definePage`、`defineApp` 与 `lx.*`；CLI 为宿主 Rust 路由生成 `@lingxia/native`。
 
 ## 下一步
 

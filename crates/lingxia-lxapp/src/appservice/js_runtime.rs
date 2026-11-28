@@ -1881,7 +1881,7 @@ mod worker_assignment_tests {
                     .unwrap()
                     .insert(instance.clone(), page);
                 let script = format!(
-                    "__registerApp({{ onLaunch() {{}} }}, '[\"onLaunch\"]'); \
+                    "__registerApp({{ onLaunch() {{}} }}); \
                      __registerPage('pages/home/index', {{ data: {{}}, actions: {{ \
                        async start() {{ \
                          await new Promise((resolve) => {{ globalThis.__release = resolve; }}); \
@@ -2045,7 +2045,7 @@ mod worker_assignment_tests {
                         state.pages_by_id.lock().unwrap().insert(id.clone(), page);
                     }
                     let script = format!(
-                        "__registerApp({{ onLaunch() {{}} }}, '[\"onLaunch\"]'); \
+                        "__registerApp({{ onLaunch() {{}} }}); \
                          __registerPage('pages/home/index', {{ data: {{}}, onLoad() {{}} }}); \
                          (() => {{ \
                            const svc = __LX_CREATE_PAGE__('pages/home/index', null, {id:?}); \

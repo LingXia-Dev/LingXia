@@ -1,6 +1,6 @@
 # Lxapp pages
 
-How to write lxapp pages: layout, Logic, `App({})`, navigation and page chrome. The View is
+How to write lxapp pages: layout, Logic, `defineApp`, navigation and page chrome. The View is
 a GPU View by default ([authoring](./gpu/authoring.md)); React or HTML in a WebView is the
 second path ([WebView pages](./webview/guide.md)). One kind per lxapp.
 
@@ -22,7 +22,7 @@ second path ([WebView pages](./webview/guide.md)). One kind per lxapp.
 
 `lingxia new` writes the layout ([Step 0](../SKILL.md#0c-scaffold-and-read-the-result)). A page is
 `pages/<name>/`: `index.ts` (Logic), `index.tsx` (View; `index.html` for an HTML page) and an optional
-`index.json` (page config). `lxapp.ts` holds [`App({})`](#app); `shared/` holds modules both sides import.
+`index.json` (page config). `lxapp.ts` holds [`defineApp`](#defineapp); `shared/` holds modules both sides import.
 
 - `lxapp.json` — `appId`, `appName`, `version`, `minRuntime`, `pages`, and
   optional `languages` ([Product settings](./core.md#product-settings)). `appName`
@@ -90,7 +90,7 @@ export default definePage({
 });
 ```
 
-- `params`, `result`, `messages`, `data`, [`follow`](#app), and `setup` or `actions` are all optional; `definePage({ data })` is a static page.
+- `params`, `result`, `messages`, `data`, [`follow`](#defineapp), and `setup` or `actions` are all optional; `definePage({ data })` is a static page.
 - `messages: type<{ in: A; out: B }>()` types the line to the opener: the
   opener's handle sends `A` and receives `B`, `page.opener` the reverse.
   Messages sent before the other side's first `onMessage` wait for it.
@@ -128,7 +128,7 @@ Order across `App` and `Page`, and what each navigation fires: [Lifecycle](./lif
 
 - **Leaving unloads.** Entering again starts a fresh instance: `data` is back
   to its defaults and the View is a new document. Keep what must survive in
-  `lx.storage` or `App({})`.
+  `lx.storage` or a shared module / `defineStore`.
 - **Hidden keeps state.** A covered or backgrounded page keeps `data`.
 - Replacing the current page with its own route keeps the instance and calls
   `onLoad` again.
@@ -203,10 +203,11 @@ plain `setTimeout` is for module work that outlives a page.
 
 The runtime routes by shape. Details: [Bridge](./bridge.md).
 
-## `App({})`
+## `defineApp`
 
 The optional lxapp-wide singleton, in `lxapp.ts` at the lxapp root,
-created once at boot and shared by every page:
+default-exporting `defineApp(...)` from `@lingxia/logic`, created once at boot
+and shared by every page:
 
 ```ts
 // shared/session.ts — app state is a store the App and pages import
@@ -219,9 +220,10 @@ export const session = defineStore(
 
 ```ts
 // lxapp.ts
+import { defineApp } from '@lingxia/logic';
 import { session } from './shared/session';
 
-App({
+export default defineApp({
   async onLaunch() {
     // Once per worker. May return the first page; a cold App Link goes to `onOpen`.
     const loaded = await session.ready;  // { ok: true } or { ok: false, error }; never rejects
@@ -262,11 +264,11 @@ export default definePage({
   write it through its source, never `page.update`.
 - `persist` loads at definition and saves each change, one save at a time with the newest value;
   a change made before the load wins, `saved` reports the last save and `reload()` reads storage again.
-- `onError(failure)` in `App({})` sees each failure nothing handled (View handlers, page hooks and timers,
+- `onError(failure)` in `defineApp({})` sees each failure nothing handled (View handlers, page hooks and timers,
   App hooks, store callbacks, module code), one call at a time; it only observes. `failure.source.kind` is
   `view_handler`, `hook` or `app`. A promise nothing awaited or caught reaches it (`kind: 'app'`,
   `hook: null`) only on an engine that tracks rejections: not on iOS or macOS.
-- There is no `getApp()` or `globalData`; `App({ globalData })` throws. Plain module
+- There is no `getApp()` or `globalData`; `defineApp({ globalData })` throws. Plain module
   state is not reactive; share what pages show through a store.
 - Hook order across `App` and pages: [Lifecycle](./lifecycle.md).
 - There is no `getCurrentPages()`; a page reaches itself through `page`, and

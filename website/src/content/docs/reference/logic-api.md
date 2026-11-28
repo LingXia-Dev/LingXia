@@ -5,7 +5,7 @@ sidebar:
   order: 0
 ---
 
-Yes—the **Logic JS API** is the JavaScript/TypeScript surface available in an lxapp's Logic context. Its main entry point is the global `lx` object. The generated reference also includes the `definePage` and `App({})` contracts, lifecycle types, errors, handles, options, and results that describe that environment.
+Yes—the **Logic JS API** is the JavaScript/TypeScript surface available in an lxapp's Logic context. Its main entry point is the global `lx` object. The generated reference also includes the `definePage` and `defineApp` contracts, lifecycle types, errors, handles, options, and results that describe that environment.
 
 The generated [Logic JS API](../api/) reference groups every `lx.*` member by capability — navigation, surfaces, files, media, device, network, and the host app — with its published signature and option shape. For the architecture and practical usage pattern, read [LxApp pages](../../guide/lxapp-pages/).
 

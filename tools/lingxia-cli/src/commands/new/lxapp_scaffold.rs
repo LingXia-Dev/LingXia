@@ -599,7 +599,7 @@ mod tests {
             "{{APP_ROOT_SELECTOR}} { min-height: 100%; }",
         )
         .unwrap();
-        fs::write(lxapp.join("lxapp.ts"), "App({});").unwrap();
+        fs::write(lxapp.join("lxapp.ts"), "export default defineApp({});").unwrap();
         fs::write(lxapp.join("lxapp.config.ts"), "export default {};").unwrap();
         fs::write(lxapp.join("gitignore"), "node_modules/").unwrap();
         fs::write(
@@ -628,7 +628,11 @@ mod tests {
             r#"{"framework":"html","pages":[{"name":"home","path":"pages/home/index.html"}]}"#,
         )
         .unwrap();
-        fs::write(lxapp_html.join("lxapp.ts"), "App({ html: true });").unwrap();
+        fs::write(
+            lxapp_html.join("lxapp.ts"),
+            "export default defineApp({ html: true });",
+        )
+        .unwrap();
         fs::write(
             lxapp_html.join("lxapp.config.ts"),
             "export default { staticDirs: ['public'] };",

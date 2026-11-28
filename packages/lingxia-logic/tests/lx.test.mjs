@@ -9,6 +9,7 @@ test("the runtime entry exports the host's own lx object", async () => {
     const runtime = await import(new URL("../index.js", import.meta.url));
     assert.equal(runtime.lx, host, "the same object, not a copy or a wrapper");
     assert.equal(typeof runtime.definePage, "function");
+    assert.equal(typeof runtime.defineApp, "function");
     assert.equal(typeof runtime.isLxError, "function");
   } finally {
     delete globalThis.lx;

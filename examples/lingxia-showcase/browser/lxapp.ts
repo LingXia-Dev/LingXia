@@ -1,6 +1,6 @@
-import { lx, type AppLifecycleEventArgs, type ConfiguredPageName } from '@lingxia/logic';
+import { defineApp, lx, type AppLifecycleEventArgs, type ConfiguredPageName } from '@lingxia/logic';
 
-App({
+export default defineApp({
   // A reopen naming a page (the sidebar's Downloads, the host's Settings) lands on it;
   // an open instance is brought back rather than stacked again.
   onShow(args?: AppLifecycleEventArgs) {

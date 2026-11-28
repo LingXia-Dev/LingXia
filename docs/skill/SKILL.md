@@ -119,7 +119,7 @@ A JS-Logic lxapp that calls Rust routes is still B. B's id rule:
 | `@lingxia/react` | React hooks + framework-wrapped native components | lxapp View (React) | `useLxPage`, `useLxHost`, `useLxStream`, `LxMediaSwiper`, `LxNavigator` |
 | `@lingxia/html` | DOM helpers for HTML-only views | lxapp View (HTML) | `pageReady`, `getPage`, `subscribePage`, `getHost`, `subscribeHost` |
 | `@lingxia/elements` | Pure-JS custom elements (`<lx-media-swiper>`, `<lx-navigator>`) | rarely direct — react re-exports wrappers | `registerMediaSwiperComponent`, `LxMediaSwiperElement` |
-| `@lingxia/logic` | Logic's `lx`, `definePage`, `type`, `LxError` and every API type | lxapp Logic | [Install typing](./lxapp/core.md#install-typing) |
+| `@lingxia/logic` | Logic's `lx`, `defineApp`, `definePage`, `type`, `LxError` and every API type | lxapp Logic | [Install typing](./lxapp/core.md#install-typing) |
 | `@lingxia/types` | Generated API declarations; Logic globals, mocks, automation, page types | tsconfig `types`, mocks, tests | `import type { Mocks } from '@lingxia/types/mocks'` |
 | `@lingxia/test` | Test authoring SDK for `lxdev test` | lxapp tests | `import { test } from '@lingxia/test'` |
 | `@lingxia/bridge` | Bridge runtime + low-level helpers | rarely direct | types such as `LxStream`, `LxChannel` |
@@ -139,7 +139,7 @@ The CLI ships `@lingxia/polyfills`; never add it.
 | Write and run tests (`@lingxia/test`, `lxdev test`) | [lxapp/testing.md](./lxapp/testing.md) |
 | Mocks and scenarios: `mocks/`, `lxdev mock`, `lingxia dev --mock`, `t.scenario.use` | [lxapp/mock.md](./lxapp/mock.md) |
 | **Lxapp** | |
-| Pages: `lxapp.json`, `definePage`, `App({})`, stores, navigation, tab bar, page chrome, text in several languages | [lxapp/guide.md](./lxapp/guide.md) |
+| Pages: `lxapp.json`, `definePage`, `defineApp`, stores, navigation, tab bar, page chrome, text in several languages | [lxapp/guide.md](./lxapp/guide.md) |
 | Hook order, `App`/`Page` triggers, what each navigation or restart fires | [lxapp/lifecycle.md](./lxapp/lifecycle.md) |
 | GPU View: elements, layout, hooks, events, dialogs, inputs, accessibility, video; find a Liuli part with `lingxia ui` | [lxapp/gpu/authoring.md](./lxapp/gpu/authoring.md) |
 | GPU View: Tailwind classes, theme roles, `theme.json`, transitions, drag and snap | [lxapp/gpu/styling-motion.md](./lxapp/gpu/styling-motion.md) |

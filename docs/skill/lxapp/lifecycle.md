@@ -1,12 +1,12 @@
 # Lifecycle
 
-When `App({})` and page hooks fire, in what order, and what each
+When `defineApp({})` and page hooks fire, in what order, and what each
 navigation does to the pages it enters and leaves. Hook signatures are in
-[Pages → Lifecycle](./guide.md#lifecycle) and [`App({})`](./guide.md#app).
+[Pages → Lifecycle](./guide.md#lifecycle) and [`defineApp`](./guide.md#defineapp).
 
 ## Two layers
 
-`App({})` hooks belong to the lxapp session. Page hooks belong to one
+`defineApp({})` hooks belong to the lxapp session. Page hooks belong to one
 page instance. They advance independently.
 
 - **Every page `onLoad` waits for `App.onLaunch` to settle**, so a page can
@@ -18,7 +18,9 @@ page instance. They advance independently.
   declare global { interface LxStorageSchema { userId: string } }
 
   // lxapp.ts
-  App({
+  import { defineApp, lx } from '@lingxia/logic';
+
+  export default defineApp({
     async onLaunch() {
       session.userId = (await lx.storage.get('userId')) ?? '';
     },

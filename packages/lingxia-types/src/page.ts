@@ -1,9 +1,12 @@
 
 import type {
+  AppConfig,
+  AppLifecycleName,
   DeepReadonly,
   JsonData,
   JsonValue,
   NavigationBarPatch,
+  NoLifecycleTypos,
   PageLoadOptions,
   Live,
   PageEnvContext,
@@ -403,6 +406,41 @@ export function definePage(definition: { setup?: unknown; actions?: unknown }): 
   }
   Object.defineProperty(definition, Symbol.for('lingxia.page'), { value: true });
   return definition;
+}
+
+/**
+ * Define the lxapp's application entry (`lxapp.ts`).
+ *
+ * `TCustom` is inferred from the members written beside the lifecycle hooks, so
+ * `this.myMethod()` resolves inside the config and a key that is only a case
+ * away from a hook is rejected.
+ *
+ * @example
+ * ```ts
+ * import { defineApp } from '@lingxia/logic';
+ *
+ * export default defineApp({
+ *   onLaunch() {},
+ *   onOpen(link) {
+ *     if (link.query.id) return { page: 'detail', params: { id: link.query.id } };
+ *   },
+ * });
+ * ```
+ */
+export function defineApp<TCustom = {}>(
+  config: AppConfig &
+    TCustom &
+    NoLifecycleTypos<TCustom, AppLifecycleName> &
+    ThisType<AppConfig & TCustom>,
+): AppConfig & TCustom {
+  if (config === null || typeof config !== 'object') {
+    throw new TypeError('defineApp takes an app configuration object');
+  }
+  if ('globalData' in config) {
+    throw new TypeError('defineApp: globalData is gone; keep app state in a module or defineStore');
+  }
+  Object.defineProperty(config, Symbol.for('lingxia.app'), { value: true });
+  return config;
 }
 
 type SyncActions<A> = A extends PromiseLike<unknown>

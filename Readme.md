@@ -115,7 +115,7 @@ Browse the source directly at [docs/skill/SKILL.md](docs/skill/SKILL.md) — tha
 |---|---|
 | `@lingxia/react` | React bindings and native component wrappers for lxapp Views |
 | `@lingxia/html` | HTML-only View helpers |
-| `@lingxia/types` | TypeScript declarations for Logic-side `definePage`, `App({})`, and `lx.*` |
+| `@lingxia/types` | TypeScript declarations for Logic-side `definePage`, `defineApp`, and `lx.*` |
 | `@lingxia/bridge` | Low-level bridge runtime |
 | `@lingxia/elements` | Custom elements behind the framework wrappers |
 

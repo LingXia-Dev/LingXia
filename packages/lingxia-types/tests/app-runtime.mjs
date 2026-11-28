@@ -25,7 +25,7 @@ const link = `{ scene: 8003, url: 'https://x.example/showcase/detail?id=7', path
 __registerApp({
   async onLaunch() { order.push('launch'); await Promise.resolve(); order.push('launched'); },
   onOpen(link) { order.push('open'); return { page: 'detail', params: { id: link.query.id } }; },
-}, '[]');`);
+});`);
   run(`app.onLaunch(${link})`);
   await settle();
   assert.deepEqual(json('order'), ['launch', 'launched', 'open']);
@@ -37,7 +37,7 @@ __registerApp({
   const run = world();
   const json = (script) => JSON.parse(run(`JSON.stringify(${script})`));
   run(`globalThis.shows = 0;
-__registerApp({ onShow() { shows += 1; }, onOpen(link) { return link.query.id === '7' ? { tab: 'home' } : undefined; } }, '[]');`);
+__registerApp({ onShow() { shows += 1; }, onOpen(link) { return link.query.id === '7' ? { tab: 'home' } : undefined; } });`);
   run(`app.onShow({ reason: 'foreground' })`);
   run(`app.onShow({ scene: 8003, url: 'https://x.example/', query: {} })`);
   await settle();
@@ -53,15 +53,25 @@ __registerApp({ onShow() { shows += 1; }, onOpen(link) { return link.query.id ==
   const run = world();
   const json = (script) => JSON.parse(run(`JSON.stringify(${script})`));
   run(`globalThis.seen = [];
-__registerApp({ onLaunch(...args) { seen.push(args.length); }, onShow(args) { seen.push(args); }, onOpen() {} }, '[]');`);
+__registerApp({ onLaunch(...args) { seen.push(args.length); }, onShow(args) { seen.push(args); }, onOpen() {} });`);
   run(`app.onLaunch(${link})`);
   run(`app.onShow(${link})`);
   await settle();
   assert.deepEqual(json('seen'), [0, { path: 'pages/home/index', query: { id: '7' } }]);
 }
 
-// globalData is gone.
-assert.throws(() => world()(`__registerApp({ globalData: {} }, '[]')`), /globalData is gone/);
+// globalData is gone, App() is removed, and __registerDefinedApp checks the brand.
+assert.throws(() => world()(`__registerApp({ globalData: {} })`), /globalData is gone/);
+assert.throws(() => world()(`App({})`), /App\(\) was removed/);
+assert.throws(() => world()(`__registerDefinedApp({})`), /must default-export defineApp/);
+{
+  const run = world();
+  run(`const def = { onShow() { globalThis.ran = true; } };
+Object.defineProperty(def, Symbol.for('lingxia.app'), { value: true });
+__registerDefinedApp(def);
+app.onShow({});`);
+  assert.equal(run('globalThis.ran'), true);
+}
 
 // App.onError: serial calls after the failing stack, merged repeats, a cap, its own throw not re-reported.
 {
@@ -83,7 +93,7 @@ __registerApp({
     if (failure.error.message === 'boom-in-handler') throw new Error('onError itself');
   },
   async onLaunch() { throw new Error('launch'); },
-}, '[]');`);
+});`);
   run(`app.onLaunch().catch(() => { globalThis.launchStillRejects = true; })`);
   run(`const page = { name: 'home', instance: 'p1' };
 const hook = (message) => ({ error: new Error(message), source: { kind: 'hook', hook: 'every' } });
@@ -125,7 +135,7 @@ for (let i = 0; i < 25; i += 1) __LX_REPORT_FAILURE__({ error: new Error('e' + i
   const realError = console.error;
   const run = world();
   run(`globalThis.logged = []; console.error = (...args) => logged.push(args.map(String).join(' '));
-__registerApp({ onOpen() { throw new Error('bad link'); } }, '[]');`);
+__registerApp({ onOpen() { throw new Error('bad link'); } });`);
   run(`app.onShow({ scene: 8003, url: 'https://x.example/', path: 'p', query: {} })`);
   await settle();
   const logged = JSON.parse(run('JSON.stringify(logged)'));

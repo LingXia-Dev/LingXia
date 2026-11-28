@@ -181,7 +181,7 @@ const tools = createJinshuTools({
   registry,                                                     // optional: your custom blocks
 });
 
-App({ onLaunch() { lx.agent.provide(tools); } });
+export default defineApp({ onLaunch() { lx.agent.provide(tools); } });
 ```
 
 `jinshu_read` returns markup with ids, optionally just the outline, a range, a search, or what changed

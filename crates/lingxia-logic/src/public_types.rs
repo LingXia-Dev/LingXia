@@ -35,7 +35,7 @@ rong::js_api! {
     id: string;
 } | CanceledResult"###;
 
-        /// What `App({...})` takes: the lxapp's lifecycle hooks.
+        /// What `defineApp({...})` takes: the lxapp's lifecycle hooks.
         type AppConfig = r###"{
     /**
      * Runs once when the lxapp starts, before its first page. A returned page or tab is the

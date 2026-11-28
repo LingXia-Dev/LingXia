@@ -199,7 +199,7 @@ export const ui = {
       items: [
         { name: '@lingxia/react', desc: 'React hooks + native component wrappers for Views' },
         { name: '@lingxia/html', desc: 'DOM helpers for HTML-only Views' },
-        { name: '@lingxia/types', desc: 'TypeScript declarations for definePage, App({}), lx.*' },
+        { name: '@lingxia/types', desc: 'TypeScript declarations for definePage, defineApp, lx.*' },
         { name: '@lingxia/bridge', desc: 'Low-level bridge runtime and invocation helpers' },
         { name: '@lingxia/elements', desc: 'Custom elements behind the framework wrappers' },
         { name: '@lingxia/test', desc: 'Authoring SDK for cases lxdev test runs against a live app' },
@@ -426,7 +426,7 @@ export const ui = {
       items: [
         { name: '@lingxia/react', desc: 'React Hooks + 视图用原生组件封装' },
         { name: '@lingxia/html', desc: '纯 HTML 视图的 DOM 辅助函数' },
-        { name: '@lingxia/types', desc: 'definePage、App({})、lx.* 的 TypeScript 声明' },
+        { name: '@lingxia/types', desc: 'definePage、defineApp、lx.* 的 TypeScript 声明' },
         { name: '@lingxia/bridge', desc: '底层桥运行时与调用辅助' },
         { name: '@lingxia/elements', desc: '框架封装背后的自定义元素' },
         { name: '@lingxia/test', desc: '编写用例的 SDK，由 lxdev test 对真实应用执行' },

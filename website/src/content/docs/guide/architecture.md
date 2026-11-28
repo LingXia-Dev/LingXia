@@ -35,7 +35,7 @@ Durable business state and portable `lx.*` platform calls live in JavaScript Log
 
 - **Rendering stays simple.** The View is a pure function of data — easy to reason about and easy to swap frameworks.
 - **Logic stays portable.** Business code and platform APIs live in one place, reused across every target.
-- **The boundary is typed.** `@lingxia/types` describes `definePage`, `App({})`, and `lx.*`; the CLI generates `@lingxia/native` for host Rust routes.
+- **The boundary is typed.** `@lingxia/types` describes `definePage`, `defineApp`, and `lx.*`; the CLI generates `@lingxia/native` for host Rust routes.
 
 ## Next
 

@@ -326,6 +326,7 @@
       "WallTime",
       "Weekday",
       "dateParts",
+      "defineApp",
       "definePage",
       "defineStore",
       "derive",
@@ -657,6 +658,7 @@
       "WifiInfo",
       "WindowChrome",
       "dateParts",
+      "defineApp",
       "definePage",
       "defineStore",
       "derive",
@@ -668,6 +670,9 @@
     ]
   },
   "aliases": {
+    "App": [
+      "defineApp"
+    ],
     "Page": [
       "definePage"
     ],
@@ -821,7 +826,7 @@
     {
       "path": "App.onError",
       "kind": "hook",
-      "entry": "global",
+      "entry": "@lingxia/logic",
       "summary": "Sees each failure nothing handled, one call at a time and never inside the failing stack; it observes only (the return is ignored).",
       "description": "Sees each failure nothing handled, one call at a time and never inside the failing stack;\nit observes only (the return is ignored). Development builds still fail loudly. Its own\nthrow is logged, not reported again.",
       "signatures": [
@@ -848,7 +853,7 @@
     {
       "path": "App.onHide",
       "kind": "hook",
-      "entry": "global",
+      "entry": "@lingxia/logic",
       "summary": "Runs each time the lxapp leaves the front.",
       "description": "Runs each time the lxapp leaves the front.",
       "signatures": [
@@ -874,7 +879,7 @@
     {
       "path": "App.onLaunch",
       "kind": "hook",
-      "entry": "global",
+      "entry": "@lingxia/logic",
       "summary": "Runs once when the lxapp starts, before its first page.",
       "description": "Runs once when the lxapp starts, before its first page. A returned page or tab is the\nfirst page (signed out → onboarding), and the cold `link` then skips `onOpen`. Decide\nlocally: with a cold link's `onOpen` it holds the launch screen at most 1.5 s, after which\nthe start page opens and a late target is navigated to.",
       "signatures": [
@@ -907,7 +912,7 @@
     {
       "path": "App.onOpen",
       "kind": "hook",
-      "entry": "global",
+      "entry": "@lingxia/logic",
       "summary": "An App Link from outside: cold, when `onLaunch` returned nothing, before the first page (its target is the first page); warm, before `onShow`.",
       "description": "An App Link from outside: cold, when `onLaunch` returned nothing, before the first page\n(its target is the first page); warm, before `onShow`. Turn its untrusted strings into a\ntarget here; returning nothing opens the start page cold and stays where the app is warm.",
       "signatures": [
@@ -939,7 +944,7 @@
     {
       "path": "App.onScreenshot",
       "kind": "hook",
-      "entry": "global",
+      "entry": "@lingxia/logic",
       "summary": "Runs after the person takes a screenshot while the lxapp is in front.",
       "description": "Runs after the person takes a screenshot while the lxapp is in front.",
       "signatures": [
@@ -957,7 +962,7 @@
     {
       "path": "App.onShow",
       "kind": "hook",
-      "entry": "global",
+      "entry": "@lingxia/logic",
       "summary": "Runs each time the lxapp comes to the front.",
       "description": "Runs each time the lxapp comes to the front.",
       "signatures": [
@@ -1129,6 +1134,41 @@
       "source": "src/time.ts:116"
     },
     {
+      "path": "defineApp",
+      "kind": "function",
+      "entry": "@lingxia/logic",
+      "summary": "Define the lxapp's application entry (`lxapp.ts`).",
+      "description": "Define the lxapp's application entry (`lxapp.ts`).\n\n`TCustom` is inferred from the members written beside the lifecycle hooks, so\n`this.myMethod()` resolves inside the config and a key that is only a case\naway from a hook is rejected.",
+      "signatures": [
+        {
+          "text": "defineApp<TCustom = {}>(config: AppConfig & TCustom & NoLifecycleTypos<TCustom, AppLifecycleName> & ThisType<AppConfig & TCustom>): AppConfig & TCustom",
+          "parameters": [
+            {
+              "name": "config",
+              "type": "AppConfig & TCustom & NoLifecycleTypos<TCustom, AppLifecycleName> & ThisType<AppConfig & TCustom>",
+              "required": true
+            }
+          ],
+          "returns": "AppConfig & TCustom"
+        }
+      ],
+      "types": [
+        "AppConfig",
+        "AppLifecycleEventArgs",
+        "AppLifecycleName",
+        "LaunchInfo",
+        "NavTarget",
+        "NoLifecycleTypos",
+        "OpenLink",
+        "UnhandledFailure"
+      ],
+      "tags": {},
+      "examples": [
+        "import { defineApp } from '@lingxia/logic';\n\nexport default defineApp({\n  onLaunch() {},\n  onOpen(link) {\n    if (link.query.id) return { page: 'detail', params: { id: link.query.id } };\n  },\n});"
+      ],
+      "source": "src/page.ts:430"
+    },
+    {
       "path": "definePage",
       "kind": "function",
       "entry": "@lingxia/logic",
@@ -1194,7 +1234,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:355"
+      "source": "src/page.ts:358"
     },
     {
       "path": "defineStore",
@@ -7170,7 +7210,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:214"
+      "source": "src/page.ts:217"
     },
     {
       "path": "page.close",
@@ -7194,7 +7234,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:152"
+      "source": "src/page.ts:155"
     },
     {
       "path": "page.data",
@@ -7210,7 +7250,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:127"
+      "source": "src/page.ts:130"
     },
     {
       "path": "page.env",
@@ -7222,7 +7262,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:204"
+      "source": "src/page.ts:207"
     },
     {
       "path": "page.env.get",
@@ -7310,7 +7350,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:220"
+      "source": "src/page.ts:223"
     },
     {
       "path": "page.flush",
@@ -7328,7 +7368,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:140"
+      "source": "src/page.ts:143"
     },
     {
       "path": "page.name",
@@ -7341,7 +7381,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:144"
+      "source": "src/page.ts:147"
     },
     {
       "path": "page.native",
@@ -7354,7 +7394,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:125"
+      "source": "src/page.ts:128"
     },
     {
       "path": "page.navigationBar",
@@ -7366,7 +7406,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:172"
+      "source": "src/page.ts:175"
     },
     {
       "path": "page.navigationBar.update",
@@ -7393,7 +7433,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:177"
+      "source": "src/page.ts:180"
     },
     {
       "path": "page.opener",
@@ -7405,7 +7445,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:163"
+      "source": "src/page.ts:166"
     },
     {
       "path": "page.opener.onMessage",
@@ -7437,7 +7477,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:167"
+      "source": "src/page.ts:170"
     },
     {
       "path": "page.opener.send",
@@ -7463,7 +7503,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:165"
+      "source": "src/page.ts:168"
     },
     {
       "path": "page.orientation",
@@ -7475,7 +7515,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:193"
+      "source": "src/page.ts:196"
     },
     {
       "path": "page.orientation.lock",
@@ -7501,7 +7541,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:195"
+      "source": "src/page.ts:198"
     },
     {
       "path": "page.orientation.unlock",
@@ -7519,7 +7559,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:197"
+      "source": "src/page.ts:200"
     },
     {
       "path": "page.params",
@@ -7532,7 +7572,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:142"
+      "source": "src/page.ts:145"
     },
     {
       "path": "page.refresh",
@@ -7550,7 +7590,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:184"
+      "source": "src/page.ts:187"
     },
     {
       "path": "page.set",
@@ -7576,7 +7616,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:135"
+      "source": "src/page.ts:138"
     },
     {
       "path": "page.setResult",
@@ -7600,7 +7640,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:157"
+      "source": "src/page.ts:160"
     },
     {
       "path": "page.signal",
@@ -7613,7 +7653,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:146"
+      "source": "src/page.ts:149"
     },
     {
       "path": "page.surface",
@@ -7625,7 +7665,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:170"
+      "source": "src/page.ts:173"
     },
     {
       "path": "page.surface.alive",
@@ -7867,7 +7907,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:133"
+      "source": "src/page.ts:136"
     },
     {
       "path": "page.video",
@@ -7894,7 +7934,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:186"
+      "source": "src/page.ts:189"
     },
     {
       "path": "page.visible",
@@ -7906,7 +7946,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:209"
+      "source": "src/page.ts:212"
     },
     {
       "path": "page.visible.get",
@@ -7975,7 +8015,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/page.ts:32"
+      "source": "src/page.ts:35"
     }
   ],
   "types": [
@@ -8292,8 +8332,8 @@
     },
     {
       "name": "AppConfig",
-      "summary": "What `App({...})` takes: the lxapp's lifecycle hooks.",
-      "description": "What `App({...})` takes: the lxapp's lifecycle hooks.",
+      "summary": "What `defineApp({...})` takes: the lxapp's lifecycle hooks.",
+      "description": "What `defineApp({...})` takes: the lxapp's lifecycle hooks.",
       "fields": [
         {
           "name": "onLaunch",
@@ -8538,8 +8578,8 @@
     },
     {
       "name": "AppLifecycleName",
-      "summary": "Lifecycle hook names an `App({...})` config may declare.",
-      "description": "Lifecycle hook names an `App({...})` config may declare.",
+      "summary": "Lifecycle hook names a `defineApp({...})` config may declare.",
+      "description": "Lifecycle hook names a `defineApp({...})` config may declare.",
       "text": "keyof AppConfig",
       "fields": [],
       "source": "src/generated/logic.ts:12"
@@ -9386,7 +9426,7 @@
           "description": "Structured facts about the failure."
         }
       ],
-      "source": "src/page.ts:279"
+      "source": "src/page.ts:282"
     },
     {
       "name": "CheckedSurfaceTarget",
@@ -10008,7 +10048,7 @@
       "summary": "A type a page declares: `params: type<{ id: string }>()`.",
       "description": "A type a page declares: `params: type<{ id: string }>()`. Nothing at run time.",
       "fields": [],
-      "source": "src/page.ts:27"
+      "source": "src/page.ts:30"
     },
     {
       "name": "DeclaredSurface",
@@ -10764,7 +10804,7 @@
       "summary": "A followed key that is also in `data`, as a type error.",
       "description": "A followed key that is also in `data`, as a type error.",
       "fields": [],
-      "source": "src/page.ts:320"
+      "source": "src/page.ts:323"
     },
     {
       "name": "FsCopyOptions",
@@ -12273,7 +12313,7 @@
       "description": "The messages a page definition declares.",
       "text": "P extends { readonly __lxPage: { readonly messages: infer T; }; } ? T : never",
       "fields": [],
-      "source": "src/page.ts:295"
+      "source": "src/page.ts:298"
     },
     {
       "name": "MisspelledLifecycle",
@@ -13230,7 +13270,7 @@
           "description": "Run `fn` every `ms`, counted from the end of each run, so a slow run never piles up; returns\n`stop()`. Paused while the page is hidden, and a run missed meanwhile happens when it shows\nagain. A throw or rejection is reported and the timer goes on. Stops when the page unloads."
         }
       ],
-      "source": "src/page.ts:120"
+      "source": "src/page.ts:123"
     },
     {
       "name": "PageChannel",
@@ -13259,7 +13299,7 @@
           "description": "Returns a function that removes the handler. `error` is set when the View closed it in failure."
         }
       ],
-      "source": "src/page.ts:268"
+      "source": "src/page.ts:271"
     },
     {
       "name": "PageDeclarations",
@@ -13302,7 +13342,7 @@
           "description": "Data keys that show a `Live` (a store, `store.pick(…)`, a host `Live`), current from the first\nframe until the page unloads: `follow: { plan: session.pick(s => s.plan) }`. Read-only in\n`update` and `set`; change the source instead."
         }
       ],
-      "source": "src/page.ts:298"
+      "source": "src/page.ts:301"
     },
     {
       "name": "PageDefinition",
@@ -13331,7 +13371,7 @@
           "description": "What the page declares, for the type system only."
         }
       ],
-      "source": "src/page.ts:245"
+      "source": "src/page.ts:248"
     },
     {
       "name": "PageDefinition.__lxPage",
@@ -13367,7 +13407,7 @@
           "description": "The actions as written, which `mount` calls directly."
         }
       ],
-      "source": "src/page.ts:251"
+      "source": "src/page.ts:254"
     },
     {
       "name": "PageEnvContext",
@@ -13405,7 +13445,7 @@
           "default": "'pause'"
         }
       ],
-      "source": "src/page.ts:224"
+      "source": "src/page.ts:227"
     },
     {
       "name": "PageHandle",
@@ -13486,7 +13526,7 @@
       "description": "Lifecycle hook names a page's `setup` may return.",
       "text": "\"onLoad\" | \"onShow\" | \"onReady\" | \"onHide\" | \"onUnload\" | \"onRefresh\"",
       "fields": [],
-      "source": "src/page.ts:37"
+      "source": "src/page.ts:40"
     },
     {
       "name": "PageLike",
@@ -13515,7 +13555,7 @@
           "description": "Assign whole keys, as `page.set` does."
         }
       ],
-      "source": "src/page.ts:103"
+      "source": "src/page.ts:106"
     },
     {
       "name": "PageLoadOptions",
@@ -13552,14 +13592,14 @@
       "description": "Typed `page.native` client bound to this page instance.",
       "text": "PageNativeRegistry extends { native: infer N; } ? N : Record<string, never>",
       "fields": [],
-      "source": "src/page.ts:117"
+      "source": "src/page.ts:120"
     },
     {
       "name": "PageNativeRegistry",
       "summary": "Augmented by `.lingxia/native.logic.ts` when the host app defines `#[lingxia::native]` routes.",
       "description": "Augmented by `.lingxia/native.logic.ts` when the host app defines `#[lingxia::native]` routes.",
       "fields": [],
-      "source": "src/page.ts:114"
+      "source": "src/page.ts:117"
     },
     {
       "name": "PagePlayer",
@@ -13725,7 +13765,7 @@
           "description": "The page's whole View-callable surface. Actions are called with `this` undefined."
         }
       ],
-      "source": "src/page.ts:51"
+      "source": "src/page.ts:54"
     },
     {
       "name": "PageSurface",
@@ -13926,7 +13966,7 @@
       "description": "The params a page definition declares.",
       "text": "P extends { readonly __lxPage: { readonly params: infer T; }; } ? T : never",
       "fields": [],
-      "source": "src/page.ts:291"
+      "source": "src/page.ts:294"
     },
     {
       "name": "PermissionName",
@@ -14772,7 +14812,7 @@
       "description": "The result a page definition declares.",
       "text": "P extends { readonly __lxPage: { readonly result: infer T; }; } ? T : never",
       "fields": [],
-      "source": "src/page.ts:293"
+      "source": "src/page.ts:296"
     },
     {
       "name": "RouteTarget",
@@ -15246,7 +15286,7 @@
           "description": "The params this showing arrived with: an open, a tab switch or a reuse that carried params\n(also when the page was already on screen); absent on every other show."
         }
       ],
-      "source": "src/page.ts:42"
+      "source": "src/page.ts:45"
     },
     {
       "name": "SignalOptions",
@@ -17283,7 +17323,7 @@
       "description": "A recipe changes the draft in place. What it returns is ignored, so\n`d => d.list.push(x)` is fine; a promise, or a new object shaped like the\ndata, is refused.",
       "text": "(draft: Data) => R & RecipeReturn<R, Data>",
       "fields": [],
-      "source": "src/page.ts:85"
+      "source": "src/page.ts:88"
     },
     {
       "name": "UploadOptions",
@@ -17602,7 +17642,7 @@
       "summary": "Page actions as the View calls them: each resolves to its result.",
       "description": "Page actions as the View calls them: each resolves to its result.",
       "fields": [],
-      "source": "src/page.ts:233"
+      "source": "src/page.ts:236"
     },
     {
       "name": "VisibilityPreference",
@@ -17880,7 +17920,7 @@
       "description": "A page's data with its followed keys.",
       "text": "[ keyof Follow ] extends [ never ] ? Data : Data & FollowedData<Follow>",
       "fields": [],
-      "source": "src/page.ts:328"
+      "source": "src/page.ts:331"
     },
     {
       "name": "definePage(definition)",
@@ -17902,7 +17942,7 @@
           "description": "Not with `setup`: `setup` returns the actions."
         }
       ],
-      "source": "src/page.ts:363"
+      "source": "src/page.ts:366"
     },
     {
       "name": "lx.clipboard.read()",

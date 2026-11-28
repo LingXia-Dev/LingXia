@@ -30,7 +30,9 @@ reaches `App.onOpen` as:
 as an object. Nothing is consumed or rewritten, and the link always opens home.
 
 ```ts
-App({
+import { defineApp } from '@lingxia/logic';
+
+export default defineApp({
   // Cold (before the first page, when onLaunch returned nothing) and warm (before onShow).
   onOpen(link) {
     const { pathname, searchParams } = new URL(link.url);

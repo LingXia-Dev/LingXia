@@ -964,7 +964,11 @@ mod tests {
             "lxapp.json",
             r#"{ "pages": [ { "name": "home", "path": "pages/home/index.tsx" }, { "name": "ask", "path": "pages/ask/index" } ] }"#,
         );
-        write(root, "lxapp.ts", "App({});\n");
+        write(
+            root,
+            "lxapp.ts",
+            "import { defineApp } from '@lingxia/logic';\nexport default defineApp({});\n",
+        );
         write(
             root,
             "pages/home/index.tsx",

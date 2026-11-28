@@ -5,7 +5,7 @@ declare const systemDownloadsPathBrand: unique symbol;
 /** Managed paths and relative userdata paths; system Downloads references are excluded. */
 export type ManagedPath = string & { readonly [systemDownloadsPathBrand]?: never };
 
-/** Lifecycle hook names an `App({...})` config may declare. */
+/** Lifecycle hook names a `defineApp({...})` config may declare. */
 export type AppLifecycleName = keyof AppConfig;
 
 /**

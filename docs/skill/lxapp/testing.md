@@ -246,7 +246,7 @@ const slow = await t.app.logic.eval({ timeout: 30_000 }, async ({ lx }, key: str
 ```
 
 - `logic.eval(fn, ...args)` runs in Logic with `{ lx, appInstance, pageStack,
-  getPage, currentPage }` (`appInstance()` is the object `App({...})`
+  getPage, currentPage }` (`appInstance()` is the object `defineApp({...})`
   registered; neither exists for app code); `view.eval` runs in the page with
   `{ document, window }`. Reach for them when the UI cannot show what a test checks.
 - `fn` is sent as source: it cannot use test variables, imports, or helpers
