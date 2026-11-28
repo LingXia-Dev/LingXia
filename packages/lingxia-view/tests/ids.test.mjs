@@ -48,3 +48,16 @@ test('the compiler stamps each useId call with its function and ordinal', () => 
   assert.match(out, /useId\("Panel#0"\)/);
   assert.match(out, /useId\('kept'\)/);
 });
+
+test('useId stays stable and distinct past the id cache, across renders that evict it', () => {
+  // More ids than the cache keeps (4096), so a second render re-derives evicted ones.
+  const rows = 1100;
+  function Row() { return h('text', {}, [useId('Row#0'), useId('Row#1'), useId('Row#2'), useId('Row#3')].join(' ')); }
+  const page = () => h('page', {}, Array.from({ length: rows }, (_, i) => h(Row, { key: `r${i}` })));
+  const every = { root: { start: 0, end: 1, leading: 0, trailing: 0 } };
+  const texts = buffer => decode(buffer).filter(node => node.tag === 'text').flatMap(node => node.text.split(' '));
+  const first = texts(prepare(page, createView({}, {}), every)); commit();
+  assert.equal(first.length, 4 * rows);
+  assert.equal(new Set(first).size, 4 * rows, 'all distinct');
+  assert.deepEqual(texts(prepare(page, createView({}, {}), every)), first);
+});

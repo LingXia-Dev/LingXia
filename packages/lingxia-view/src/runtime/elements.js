@@ -227,7 +227,10 @@ export function resetStyleWarnings() { warnedClamp.clear(); }
 function nodeStyle(tag, props, data, extra, inherited, direction, structure, every, sizeClass, identity) {
   if (typeof props.className === 'string') noteEnv(classEnvFields(props.className));
   if (usesViewportUnits(props.style) || usesViewportUnits(extra) || usesViewportUnits(every)) noteEnv(VIEWPORT_FIELDS);
-  if (props.style !== undefined || extra !== undefined || every !== undefined || props.className === undefined) return lowerNodeStyle(tag, props, data, extra, inherited, direction, structure, every, sizeClass, identity);
+  // A flat inline style of plain values caches with the classes, keyed by its content: a table's
+  // per-column widths would otherwise lower every cell on every render.
+  const inline = props.style === undefined ? '' : flatStyleKey(props.style);
+  if (inline === null || extra !== undefined || every !== undefined || props.className === undefined) return lowerNodeStyle(tag, props, data, extra, inherited, direction, structure, every, sizeClass, identity);
   const environment = envKey(envOf(render.view));
   if (loweredClasses !== classGeneration) {
     // A new class table: what was lowered, here or by a previous isolate, read the old one.
@@ -242,7 +245,7 @@ function nodeStyle(tag, props, data, extra, inherited, direction, structure, eve
     if (seeded?.env === environment) for (const [key, style] of seeded.entries) lowered.set(key, style);
   }
   // An inherited line height may be a multiplier object; it keys by value, not as "[object Object]".
-  const key = `${tag}\u0000${props.className}\u0000${data ? JSON.stringify(data) : ''}\u0000${props.disabled === true}\u0000${mixedCheckbox(tag, props)}\u0000${direction}\u0000${sizeClass ?? ''}\u0000${(structure ?? []).join(",")}\u0000${inherited.fontSize}\u0000${JSON.stringify(inherited.lineHeight)}`;
+  const key = `${tag}\u0000${props.className}\u0000${data ? JSON.stringify(data) : ''}\u0000${props.disabled === true}\u0000${mixedCheckbox(tag, props)}\u0000${direction}\u0000${sizeClass ?? ''}\u0000${(structure ?? []).join(",")}\u0000${inherited.fontSize}\u0000${JSON.stringify(inherited.lineHeight)}\u0000${inline}`;
   let style = lowered.get(key);
   if (!style) {
     style = lowerNodeStyle(tag, props, data, extra, inherited, direction, structure, undefined, sizeClass, identity);
@@ -280,6 +283,17 @@ const videoBacking = { backgroundColor: '#000000' };
 const mixedCheckbox = (tag, props) => tag === 'checkbox' && props.indeterminate === true;
 
 // Classes, then the parent's child rule, then inline style; `disabled:` replaces the class cascade.
+function flatStyleKey(style) {
+  if (style === null || typeof style !== 'object') return null;
+  let key = '';
+  for (const name in style) {
+    const value = style[name];
+    if (value !== undefined && typeof value !== 'string' && typeof value !== 'number') return null;
+    key += `${name}:${value};`;
+  }
+  return key;
+}
+
 function lowerNodeStyle(tag, props, data, extra, inherited, direction, structure, every, sizeClass, identity) {
   const env = { ...loweringEnv(envOf(render.view), sizeClass), direction, structure, data, indeterminate: mixedCheckbox(tag, props) };
   const classes = resolveClasses(props.className, env);

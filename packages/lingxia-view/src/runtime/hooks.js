@@ -136,8 +136,16 @@ export function useId(site) {
   const base = `${render.scope}\u0000${site ?? '#'}`;
   const seen = counts.get(base) ?? 0;
   counts.set(base, seen + 1);
-  return `lx-${hashId(seen ? `${base}\u0000${seen}` : base)}`;
+  const text = seen ? `${base}\u0000${seen}` : base;
+  let id = ids.get(text);
+  if (id === undefined) {
+    // Scope paths run long in a deep page, and every render asks again for the same ids.
+    if (ids.size >= 4096) ids.delete(ids.keys().next().value);
+    ids.set(text, id = `lx-${hashId(text)}`);
+  }
+  return id;
 }
+const ids = new Map();
 
 export function hasLocalUpdates() { return page.updates.size > 0 || page.invalidated === true; }
 

@@ -46,6 +46,18 @@ test('a malformed seed is refused and changes nothing', () => {
   assert.deepEqual(wire(env(321)), before);
 });
 
+test('an equal inline style reuses its lowering; a changed value lowers anew', () => {
+  const styled = grow => () => h('view', { className: 'flex flex-col gap-2' }, h('view', { className: 'p-4', style: { flexGrow: grow, minWidth: '12ch' } }));
+  const view = env(331);
+  const at = grow => decode(describe(styled(grow), view)).map(({ props }) => props);
+  const two = at(2);
+  takeLowered();
+  assert.deepEqual(at(2), two);
+  assert.equal(takeLowered(), '', 'the same style came from the cache');
+  assert.notDeepEqual(at(3), two);
+  assert.notEqual(takeLowered(), '', 'a new value is lowered');
+});
+
 test('a lowered set too large to keep is not serialized', () => {
   const many = count => () => h('view', {}, ...Array.from({ length: count }, (_, i) =>
     h('view', { style: { fontSize: 8 + i / 100 } }, h('text', { className: 'font-bold' }, 'x'))));
