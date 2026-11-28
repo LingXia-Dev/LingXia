@@ -67,6 +67,11 @@ fn nav_target(value: &JSValue) -> Result<NavTarget, lingxia_error::Error> {
         .keys_as::<String>()
         .map_err(|e| invalid(e.to_string()))?
     {
+        if key == "path" {
+            return Err(invalid(
+                "path is not supported; pass the configured page name in page",
+            ));
+        }
         if !TARGET_KEYS.contains(&key.as_str()) {
             return Err(invalid(format!("unknown target key '{key}'")));
         }
