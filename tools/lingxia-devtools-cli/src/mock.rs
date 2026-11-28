@@ -801,14 +801,16 @@ pub(crate) fn function_half(
     }
 }
 
-/// Split targets into HTTP targets and Function names; an invalid one
+/// Split targets into the host's (HTTP and native) and Function names; an invalid one
 /// fails the whole command.
 pub(crate) fn split_targets(targets: &[String]) -> Result<(Vec<String>, Vec<String>)> {
     let mut http = Vec::new();
     let mut functions = Vec::new();
     for target in targets {
         match mock::parse_target(target).map_err(|err| anyhow!(err))? {
-            mock::MockTarget::Http { .. } => http.push(target.trim().to_string()),
+            mock::MockTarget::Http { .. } | mock::MockTarget::Native { .. } => {
+                http.push(target.trim().to_string())
+            }
             mock::MockTarget::Function { name } => functions.push(name),
         }
     }
@@ -2074,14 +2076,15 @@ mod tests {
     }
 
     #[test]
-    fn targets_split_into_http_and_function_names() {
-        let (http, functions) = split_targets(&[
+    fn targets_split_into_host_and_function_names() {
+        let (host, functions) = split_targets(&[
             "GET **/qoe/*".to_string(),
             "orders.submit".to_string(),
+            "native notes.*".to_string(),
             "* **/x".to_string(),
         ])
         .unwrap();
-        assert_eq!(http, ["GET **/qoe/*", "* **/x"]);
+        assert_eq!(host, ["GET **/qoe/*", "native notes.*", "* **/x"]);
         assert_eq!(functions, ["orders.submit"]);
         let err = split_targets(&["**/qoe/*".to_string()])
             .unwrap_err()
@@ -2089,7 +2092,8 @@ mod tests {
         assert_eq!(
             err,
             "'**/qoe/*' is not a target: an HTTP target is 'METHOD url-glob' (use '*' for any \
-             method), a Function target is a name like orders.submit"
+             method), a native target is 'native notes.list', a Function target is a name like \
+             orders.submit"
         );
     }
 

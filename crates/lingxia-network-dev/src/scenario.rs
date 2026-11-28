@@ -8,8 +8,9 @@
 //! `hang`, `sse`) or a `sequence` of them, served in call order with the
 //! last one repeating; files may also carry `bodyBase64`. String values may
 //! contain `{{now}}`, `{{now-2h}}`, `{{now+30m}}` (ISO-8601 UTC) and
-//! `{{nowMs}}`, rendered each time the answer is served. `function` rules
-//! belong to the dev session's companion.
+//! `{{nowMs}}`, rendered each time the answer is served. `native` rules
+//! answer native route calls (`result`, `error`, `events`, `delay`, or a
+//! `sequence`); `function` rules belong to the dev session's companion.
 
 use super::parse_handler_value;
 use super::registry::{
@@ -23,12 +24,50 @@ use serde_json::Value;
 /// Answers one `sequence` may list.
 pub(crate) const MAX_SEQUENCE: usize = format::MAX_SEQUENCE;
 
-/// A scenario file with one variant applied, its `http` rules compiled.
+/// A scenario file with one variant applied, its `http` and `native` rules compiled.
 #[derive(Debug, Clone)]
 pub(crate) struct Scenario {
     pub resolved: Resolved,
     /// `(rule index, route)` for every `http` rule, in precedence order.
     pub http: Vec<(usize, RouteSpec)>,
+    /// Every `native` rule, in precedence order.
+    pub native: Vec<NativeRule>,
+}
+
+/// A `native` rule as served: its answers in call order, the last repeating.
+#[derive(Debug, Clone)]
+pub(crate) struct NativeRule {
+    pub index: usize,
+    pub route: String,
+    pub input: Option<Matcher>,
+    /// Calls left before the rule retires; `None` for unlimited.
+    pub times: Option<u32>,
+    pub answers: Vec<NativeAnswer>,
+    pub served: usize,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct NativeAnswer {
+    pub events: Vec<Value>,
+    /// The result, or the route error `{ code, message?, data? }`.
+    pub outcome: Result<Value, Value>,
+    pub delay_ms: u64,
+}
+
+impl NativeRule {
+    /// The next answer, its templates rendered at `now_ms`.
+    pub(crate) fn next_answer(&mut self, now_ms: u64) -> NativeAnswer {
+        let mut answer = self.answers[self.served.min(self.answers.len() - 1)].clone();
+        self.served += 1;
+        answer
+            .events
+            .iter_mut()
+            .for_each(|event| render_json(event, now_ms));
+        match &mut answer.outcome {
+            Ok(value) | Err(value) => render_json(value, now_ms),
+        }
+        answer
+    }
 }
 
 impl Scenario {
@@ -50,7 +89,62 @@ pub(crate) fn parse_scenario(value: &Value, variant: Option<&str>) -> Result<Sce
                 .map_err(|err| format!("{}: {err}", rule.path))
         })
         .collect::<Result<Vec<_>, String>>()?;
-    Ok(Scenario { resolved, http })
+    let native = resolved
+        .native_rules()
+        .map(|rule| parse_native_rule(rule).map_err(|err| format!("{}: {err}", rule.path)))
+        .collect::<Result<Vec<_>, String>>()?;
+    Ok(Scenario {
+        resolved,
+        http,
+        native,
+    })
+}
+
+fn parse_native_rule(rule: &format::Rule) -> Result<NativeRule, String> {
+    let Target::Native { route } = &rule.target else {
+        unreachable!("only native rules are compiled here");
+    };
+    let Value::Object(fields) = &rule.value else {
+        unreachable!("checked by parse_file");
+    };
+    let input = fields
+        .get("match")
+        .and_then(|matcher| matcher.get("input"))
+        .map(|input| Matcher::compile(input, "match.input"))
+        .transpose()?;
+    let times = fields
+        .get("times")
+        .and_then(Value::as_u64)
+        .map(|times| times as u32);
+    let answers = match fields.get("sequence") {
+        Some(Value::Array(items)) => items.iter().map(native_answer).collect(),
+        _ => vec![native_answer(&rule.value)],
+    };
+    Ok(NativeRule {
+        index: rule.index,
+        route: route.clone(),
+        input,
+        times,
+        answers,
+        served: 0,
+    })
+}
+
+/// One answer, its shape checked by `format::check_rule`.
+fn native_answer(value: &Value) -> NativeAnswer {
+    let events = match value.get("events") {
+        Some(Value::Array(events)) => events.clone(),
+        _ => Vec::new(),
+    };
+    let outcome = match value.get("error") {
+        Some(error) => Err(error.clone()),
+        None => Ok(value.get("result").cloned().unwrap_or(Value::Null)),
+    };
+    NativeAnswer {
+        events,
+        outcome,
+        delay_ms: value.get("delay").and_then(Value::as_u64).unwrap_or(0),
+    }
 }
 
 fn parse_http_rule(target: &Target, value: &Value) -> Result<RouteSpec, String> {

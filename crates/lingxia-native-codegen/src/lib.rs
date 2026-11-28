@@ -344,6 +344,8 @@ struct NativeRoute {
     kind: RouteKind,
     input: Option<String>,
     output: Option<String>,
+    /// The `E` of a `Result<T, E>` return.
+    error: Option<String>,
     event: Option<String>,
     channel_in: Option<String>,
     channel_out: Option<String>,
@@ -966,6 +968,10 @@ fn extract_route_info(
         .map(|(inbound, outbound)| (text(inbound), text(outbound)))
         .unwrap_or_default();
 
+    let error = match &item_fn.sig.output {
+        ReturnType::Type(_, ty) => unwrap_result_error(&type_string(ty).replace(' ', "")),
+        ReturnType::Default => None,
+    };
     if output.is_none() {
         output = match &item_fn.sig.output {
             ReturnType::Type(_, ty) => {
@@ -982,6 +988,7 @@ fn extract_route_info(
         kind,
         input,
         output,
+        error,
         event,
         channel_in,
         channel_out,
@@ -1278,6 +1285,14 @@ fn unwrap_result(ty: &str) -> Option<String> {
     } else {
         Some(ty.to_string())
     }
+}
+
+fn unwrap_result_error(ty: &str) -> Option<String> {
+    ["Result", "std::result::Result"]
+        .iter()
+        .map(|wrapper| extract_generic_args(ty, wrapper))
+        .find(|args| !args.is_empty())
+        .and_then(|args| args.get(1).map(|error| error.trim().to_string()))
 }
 
 /// Types from outside the crate that serde writes as a string.
@@ -2191,7 +2206,44 @@ fn render_logic_ts(manifest: &NativeManifest) -> Result<String> {
     out.push_str("export type NativeClient = typeof native;\n");
     out.push_str("(globalThis as { __lingxiaCreatePageNative?: typeof createNative }).__lingxiaCreatePageNative = createNative;\n");
     out.push_str("declare module \"@lingxia/types/page\" {\n  interface PageNativeRegistry {\n    native: NativeClient;\n  }\n}\n");
+    out.push_str(&render_native_mock_registry(manifest));
     Ok(out)
+}
+
+/// Each mockable route's types, so a `'native route'` handler in `mocks/index.ts` checks
+/// against the route.
+fn render_native_mock_registry(manifest: &NativeManifest) -> String {
+    let mut out = String::from(
+        "declare module \"@lingxia/types/mocks\" {\n  interface NativeMockRegistry {\n    routes: {\n",
+    );
+    for route in &manifest.routes {
+        if route.kind == RouteKind::Channel {
+            continue;
+        }
+        let input = route
+            .input
+            .as_deref()
+            .map_or("undefined".to_string(), rust_to_ts);
+        let result = rust_to_ts(route.output.as_deref().unwrap_or("void"));
+        let event = match route.kind {
+            RouteKind::Stream | RouteKind::Watch => {
+                rust_to_ts(route.event.as_deref().unwrap_or("unknown"))
+            }
+            _ => "never".to_string(),
+        };
+        let error = route
+            .error
+            .as_deref()
+            .map(|error| error.rsplit("::").next().unwrap_or(error))
+            .filter(|error| manifest.native_errors.contains(*error))
+            .unwrap_or("FrameworkError");
+        out.push_str(&format!(
+            "      {}: {{ input: {input}; result: {result}; event: {event}; error: {error} }};\n",
+            json_string(&route.route)
+        ));
+    }
+    out.push_str("    };\n  }\n}\n");
+    out
 }
 
 fn render_view_ts(manifest: &NativeManifest) -> Result<String> {
@@ -3427,6 +3479,42 @@ mod tests {
             assert!(err.contains("src/errors.rs:"), "{err}");
             assert!(err.contains(expected), "{body}: {err}");
         }
+    }
+
+    #[test]
+    fn logic_client_types_each_mockable_route_for_native_mocks() {
+        let manifest = scan_source(
+            r#"
+            #[derive(Debug, thiserror::Error, Serialize, lingxia::NativeError)]
+            #[serde(tag = "code", rename_all = "SCREAMING_SNAKE_CASE")]
+            enum NotesError {
+                #[error("locked")]
+                Locked,
+            }
+
+            #[lingxia::native("notes.delete")]
+            pub async fn delete(id: i64) -> Result<(), crate::NotesError> { todo!() }
+
+            #[lingxia::native("notes.list")]
+            pub fn list() -> lingxia::Result<Vec<String>> { todo!() }
+
+            #[lingxia::native("notes.import", stream)]
+            pub async fn import(path: String, progress: Progress<u32>) -> lingxia::Result<u64> { todo!() }
+
+            #[lingxia::native("notes.shout", channel)]
+            pub async fn shout(channel: ChannelContext<String>) -> lingxia::Result<()> { todo!() }
+        "#,
+        );
+        let ts = render(&manifest, OutputKind::LogicTypeScript).unwrap();
+        for line in [
+            "declare module \"@lingxia/types/mocks\" {",
+            "\"notes.delete\": { input: number; result: void; event: never; error: NotesError };",
+            "\"notes.list\": { input: undefined; result: string[]; event: never; error: FrameworkError };",
+            "\"notes.import\": { input: string; result: number; event: number; error: FrameworkError };",
+        ] {
+            assert!(ts.contains(line), "{line}\n{ts}");
+        }
+        assert!(!ts.contains("\"notes.shout\": { input"), "{ts}");
     }
 
     #[test]

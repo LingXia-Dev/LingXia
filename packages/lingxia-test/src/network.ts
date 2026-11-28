@@ -106,6 +106,10 @@ export function scenarioCall(call: ScenarioCall): NetworkCall {
     out.function = call.function;
     if (call.args !== undefined) out.body = call.args;
     if (call.outcome !== undefined) out.outcome = call.outcome;
+  } else if (call.kind === "native") {
+    out.route = call.route;
+    if (call.input !== undefined) out.body = call.input;
+    if (call.outcome !== undefined) out.outcome = call.outcome;
   } else {
     out.method = call.method;
     out.url = call.url;

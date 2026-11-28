@@ -1971,6 +1971,17 @@ impl LxApp {
         serde_json::from_str(&json).map_err(|error| crate::EvalError::Thrown(error.into()))
     }
 
+    /// Run `job` in this lxapp's Logic context, on its thread. A job dropped unrun means
+    /// the Logic is not running.
+    #[doc(hidden)]
+    #[cfg(all(feature = "automation", feature = "js-appservice"))]
+    pub fn run_in_logic(
+        &self,
+        job: Box<dyn FnOnce(rong::JSContext) + Send>,
+    ) -> Result<(), lingxia_error::Error> {
+        self.executor.run_in_logic(self.clone_arc(), job)
+    }
+
     /// Evaluate, and report which `lx.*` members the script reached.
     ///
     /// Resolves to `{ value, calls }`. The test runner uses `calls` to tell a

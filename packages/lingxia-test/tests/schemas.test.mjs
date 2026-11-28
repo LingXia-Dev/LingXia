@@ -25,6 +25,9 @@ test("the scenario schema takes rules and variants", () => {
     { function: "coupons.apply", match: { args: { code: "SPRING" } }, error: { code: "COUPON_EXPIRED" } },
     { function: "orders.submit", fault: "unknown", delay: 100 },
     { function: "orders.status", sequence: [{ result: { state: "pending" } }, { result: { state: "paid" } }] },
+    { native: "notes.delete", match: { input: { id: 7 } }, error: { code: "LOCKED", data: { id: 7 } } },
+    { native: "notes.import", events: [{ done: 1 }], result: { imported: 1 }, delay: 10 },
+    { native: "notes.*", times: 2, sequence: [{ result: [] }, { error: { code: "E_INTERNAL" } }] },
   ];
   assert.deepEqual(issues({ $schema: "x", name: "checkout", description: "d", rules }, scenarioSchema), []);
   assert.deepEqual(
@@ -61,6 +64,11 @@ test("the scenario schema rejects what the host rejects", () => {
     { rules: [{ function: "orders.*", result: 1 }] },
     { rules: [{ function: "f", status: 200 }] },
     { rules: [{ function: "f", sequence: [{ result: 1 }], delay: 5 }] },
+    { rules: [{ native: "notes list", result: 1 }] },
+    { rules: [{ native: "notes.list" }] },
+    { rules: [{ native: "notes.list", events: [1], error: { code: "X" } }] },
+    { rules: [{ native: "notes.list", result: 1, fault: "unknown" }] },
+    { rules: [{ native: "notes.list", match: { args: {} }, result: 1 }] },
     { variants: { a: { rules: [] } } },
     { variants: { "a b": { rules: [{ http: "GET **", status: 200 }] } } },
     { variants: { a: { rules: [{ http: "GET **", status: 200 }], extra: 1 } } },

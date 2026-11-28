@@ -197,7 +197,7 @@ pub fn build_mocks(root: &Path) -> Result<Option<MocksBundle>> {
 
 /// The handler keys of a `mocks/index.ts` default export, in order.
 fn mock_keys(path: &Path, source: &str) -> Result<Vec<String>> {
-    use lingxia_control_protocol::mock::{SCENARIO_ONLY_FIELDS, parse_handler_key};
+    use lingxia_control_protocol::mock::{MockTarget, SCENARIO_ONLY_FIELDS, parse_handler_key};
     let allocator = Allocator::default();
     let source_type = SourceType::from_path(path).map_err(|_| anyhow!("unsupported file type"))?;
     let parsed = Parser::new(&allocator, source, source_type).parse();
@@ -257,8 +257,8 @@ fn mock_keys(path: &Path, source: &str) -> Result<Vec<String>> {
     for property in &object.properties {
         let ObjectPropertyKind::ObjectProperty(property) = property else {
             bail!(
-                "list every handler in the default export under its own 'METHOD url-glob' key; \
-                 a spread (...) hides which calls it answers"
+                "list every handler in the default export under its own 'METHOD url-glob' or \
+                 'native route' key; a spread (...) hides which calls it answers"
             );
         };
         let key = match &property.key {
@@ -269,15 +269,18 @@ fn mock_keys(path: &Path, source: &str) -> Result<Vec<String>> {
                 identifier.name.as_str().to_string()
             }
             _ => bail!(
-                "a handler key must be a 'METHOD url-glob' string, like 'GET **/devices/*'; \
-                 a computed key hides which calls it answers"
+                "a handler key must be a 'METHOD url-glob' or 'native route' string, like \
+                 'GET **/devices/*'; a computed key hides which calls it answers"
             ),
         };
-        parse_handler_key(&key).map_err(|err| anyhow!("{err}"))?;
+        let target = parse_handler_key(&key).map_err(|err| anyhow!("{err}"))?;
         if keys.contains(&key) {
             bail!("'{key}' is listed twice");
         }
-        if let Expression::ObjectExpression(answer) = unwrap_expression(&property.value) {
+        // A native answer is the route's result, whose fields are its own.
+        if let (MockTarget::Http { .. }, Expression::ObjectExpression(answer)) =
+            (&target, unwrap_expression(&property.value))
+        {
             for field in &answer.properties {
                 if let ObjectPropertyKind::ObjectProperty(field) = field
                     && let Some(name) = field.key.static_name()
@@ -2069,6 +2072,14 @@ mod tests {
             )
             .unwrap(),
             ["* **/y"]
+        );
+        assert_eq!(
+            mock_keys(
+                Path::new("index.ts"),
+                "export default { 'native notes.list': [{ match: 1 }], 'native notes.*': () => null };"
+            )
+            .unwrap(),
+            ["native notes.list", "native notes.*"]
         );
     }
 

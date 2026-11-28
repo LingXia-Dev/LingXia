@@ -1251,7 +1251,25 @@ export type ScenarioFunctionRule = ScenarioRuleCommon & {
   | { sequence: ScenarioFunctionAnswer[]; result?: never; error?: never; fault?: never; delay?: never }
 );
 
-export type ScenarioRule = ScenarioHttpRule | ScenarioFunctionRule;
+/** How a `native` rule answers one call: its result (after a stream route's events), or its error. */
+export type ScenarioNativeAnswer = { delay?: number } & (
+  | { result: unknown; events?: unknown[]; error?: never }
+  | { error: { code: string; message?: string; data?: unknown }; result?: never; events?: never }
+);
+
+/** A rule for a native route call: `native` is a route glob (`notes.*`). */
+export type ScenarioNativeRule = ScenarioRuleCommon & {
+  native: string;
+  http?: never;
+  function?: never;
+  /** Match the route's input. */
+  match?: { input: ScenarioMatchValue };
+} & (
+  | (ScenarioNativeAnswer & { sequence?: never })
+  | { sequence: ScenarioNativeAnswer[]; result?: never; error?: never; events?: never; delay?: never }
+);
+
+export type ScenarioRule = ScenarioHttpRule | ScenarioNativeRule | ScenarioFunctionRule;
 
 /**
  * A scenario file: rules tried in file order (the first match answers;
@@ -1279,10 +1297,10 @@ export type ScenarioInput =
 export interface ScenarioRuleInfo {
   /** 1-based, in precedence order (the variant's rules first). */
   index: number;
-  /** `GET **\/wifi/main`, `function orders.submit`. */
+  /** `GET **\/wifi/main`, `native notes.list`, `function orders.submit`. */
   target: string;
-  kind: 'http' | 'function';
-  /** Calls it answered (`http` rules); `null` for `function` rules. */
+  kind: 'http' | 'native' | 'function';
+  /** Calls it answered (`http` and `native` rules); `null` for `function` rules. */
   hits: number | null;
 }
 
@@ -1296,7 +1314,10 @@ export interface ScenarioCall {
   seq: number;
   /** Epoch milliseconds. */
   time: number;
-  kind: 'http' | 'function';
+  kind: 'http' | 'native' | 'function';
+  /** `native`: the route and its input; `outcome` is `result` or `error`. */
+  route?: string;
+  input?: unknown;
   /** `http`: upper-case method and URL. */
   method?: string;
   url?: string;
@@ -1317,7 +1338,7 @@ export interface ScenarioCall {
 }
 
 /** `calls()` filter: one rule's target, or its number. */
-export type ScenarioCallFilter = { http: string } | { function: string } | { rule: number };
+export type ScenarioCallFilter = { http: string } | { native: string } | { function: string } | { rule: number };
 
 /**
  * Calls of one bounded log with a `seq` above the one asked for, oldest

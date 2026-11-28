@@ -91,6 +91,7 @@ function describeScenario(definition: ScenarioInput, variant: string | undefined
 
 function describeTarget(target: ScenarioCallTarget): string {
   if ("http" in target) return target.http;
+  if ("native" in target) return `native ${target.native}`;
   if ("function" in target) return `function ${target.function}`;
   return `rule ${target.rule}`;
 }
@@ -98,7 +99,8 @@ function describeTarget(target: ScenarioCallTarget): string {
 function validTarget(target: unknown): target is ScenarioCallTarget {
   if (!target || typeof target !== "object") return false;
   const record = target as Record<string, unknown>;
-  return typeof record.http === "string" || typeof record.function === "string" || typeof record.rule === "number";
+  return typeof record.http === "string" || typeof record.native === "string"
+    || typeof record.function === "string" || typeof record.rule === "number";
 }
 
 /**

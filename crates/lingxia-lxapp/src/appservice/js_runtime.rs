@@ -189,7 +189,17 @@ pub(crate) enum ServiceMessage {
         script: String,
         tx: oneshot::Sender<Result<String, EvalError>>,
     },
+    /// Run `job` in the lxapp's Logic context (dev mocks answering a native call).
+    #[cfg(feature = "automation")]
+    RunInLogic {
+        lxapp: Arc<LxApp>,
+        job: LogicJob,
+    },
 }
+
+/// Work for an lxapp's Logic context; it spawns whatever it awaits.
+#[cfg(feature = "automation")]
+pub type LogicJob = Box<dyn FnOnce(JSContext) + Send>;
 
 #[derive(Clone, Debug)]
 pub(crate) enum WorkerAssignment {
@@ -1281,6 +1291,19 @@ async fn handle_service_message(
                     }
                 }
             });
+        }
+        #[cfg(feature = "automation")]
+        ServiceMessage::RunInLogic { lxapp, job } => {
+            let Some(ctx) = current_ctx.as_ref() else {
+                return;
+            };
+            let same_app = LxApp::from_ctx(ctx)
+                .map(|ctx_app| ctx_app.session.id == lxapp.session.id)
+                .unwrap_or(false);
+            // Dropping `job` unanswered tells its caller the Logic is gone.
+            if same_app {
+                job(ctx.clone());
+            }
         }
     }
 }

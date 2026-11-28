@@ -15,8 +15,8 @@
 use super::capture::{REDACTED, redact_url};
 use super::registry::{UrlMatcher, now_ms};
 use lingxia_control_protocol::mock::{
-    MockConfig, MockEntry, MockMode, MockOwner, MockTarget, Selection, describe_baseline,
-    describe_selection, parse_handler_key, parse_target,
+    MockConfig, MockEntry, MockMode, MockOwner, MockTarget, NATIVE_PREFIX, Selection,
+    describe_baseline, describe_selection, native_route_matches, parse_handler_key, parse_target,
 };
 use serde_json::{Value, json};
 use std::cell::RefCell;
@@ -28,34 +28,70 @@ pub(crate) const MOCK_HOLDER: &str = "@mocks";
 /// Unhandled calls and handler errors a set keeps for status.
 const MAX_DIAGNOSTICS: usize = 50;
 
+/// A call the runtime's mocks can answer.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum Call<'a> {
+    Http {
+        method: &'a str,
+        url: &'a str,
+    },
+    /// A native route the lxapp's Logic calls.
+    Native {
+        route: &'a str,
+    },
+}
+
+impl Call<'_> {
+    /// `GET https://h/x` (credentials redacted) or `native notes.list`.
+    fn shown(&self) -> (String, String) {
+        match self {
+            Self::Http { method, url } => (method.to_ascii_uppercase(), redact_url(url, REDACTED)),
+            Self::Native { route } => (NATIVE_PREFIX.to_string(), route.to_string()),
+        }
+    }
+}
+
+/// A compiled target.
+#[derive(Debug, Clone)]
+enum Matcher {
+    Http(Option<String>, UrlMatcher),
+    Native(String),
+}
+
+impl Matcher {
+    fn matches(&self, call: Call<'_>) -> bool {
+        match (self, call) {
+            (Self::Http(expected, matcher), Call::Http { method, url }) => {
+                expected
+                    .as_deref()
+                    .is_none_or(|expected| expected.eq_ignore_ascii_case(method))
+                    && matcher.is_match(url)
+            }
+            (Self::Native(glob), Call::Native { route }) => native_route_matches(glob, route),
+            _ => false,
+        }
+    }
+}
+
 /// One handler key, compiled.
 #[derive(Debug, Clone)]
 pub(crate) struct MockKey {
     pub key: String,
-    method: Option<String>,
-    matcher: UrlMatcher,
+    matcher: Matcher,
     pub hits: u64,
 }
 
-impl MockKey {
-    fn matches(&self, method: &str, url: &str) -> bool {
-        self.method
-            .as_deref()
-            .is_none_or(|expected| expected.eq_ignore_ascii_case(method))
-            && self.matcher.is_match(url)
-    }
-}
-
-/// Compile an HTTP target (`METHOD url-glob`).
-fn compile(target: &str) -> Result<(Option<String>, UrlMatcher), String> {
+/// Compile an HTTP (`METHOD url-glob`) or native (`native route-glob`) target.
+fn compile(target: &str) -> Result<Matcher, String> {
     match parse_target(target)? {
         MockTarget::Http { method, url } => {
             let matcher = super::scenario::parse_url_string(&url)
                 .map_err(|err| format!("'{target}': {err}"))?;
-            Ok((method, matcher))
+            Ok(Matcher::Http(method, matcher))
         }
+        MockTarget::Native { route } => Ok(Matcher::Native(route)),
         MockTarget::Function { name } => Err(format!(
-            "'{name}' is a Function name; the runtime selects HTTP targets only"
+            "'{name}' is a Function name; the runtime selects HTTP and native targets only"
         )),
     }
 }
@@ -124,8 +160,8 @@ pub(crate) struct MockSet {
 }
 
 impl MockSet {
-    fn key_index(&self, method: &str, url: &str) -> Option<usize> {
-        self.keys.iter().position(|key| key.matches(method, url))
+    fn key_index(&self, call: Call<'_>) -> Option<usize> {
+        self.keys.iter().position(|key| key.matcher.matches(call))
     }
 }
 
@@ -149,10 +185,8 @@ pub(crate) struct Mocks {
     pub selection: Selection,
     next_generation: u64,
     /// Compiled selection targets.
-    compiled: RefCell<Vec<(String, Option<Compiled>)>>,
+    compiled: RefCell<Vec<(String, Option<Matcher>)>>,
 }
-
-type Compiled = (Option<String>, UrlMatcher);
 
 impl Mocks {
     pub(crate) const fn new() -> Self {
@@ -190,13 +224,12 @@ impl Mocks {
         let mut compiled = Vec::with_capacity(keys.len());
         for key in keys {
             parse_handler_key(key).map_err(|err| format!("mocks/index.ts: {err}"))?;
-            let (method, matcher) = compile(key).map_err(|err| format!("mocks/index.ts: {err}"))?;
+            let matcher = compile(key).map_err(|err| format!("mocks/index.ts: {err}"))?;
             if compiled.iter().any(|seen: &MockKey| seen.key == *key) {
                 return Err(format!("mocks/index.ts: '{key}' is listed twice"));
             }
             compiled.push(MockKey {
                 key: key.clone(),
-                method,
                 matcher,
                 hits: 0,
             });
@@ -289,7 +322,7 @@ impl Mocks {
 
     /// Whether `target` matches the call. An uncompilable target (never
     /// installed; defensive) matches nothing.
-    fn target_matches(&self, target: &str, method: &str, url: &str) -> bool {
+    fn target_matches(&self, target: &str, call: Call<'_>) -> bool {
         let mut compiled = self.compiled.borrow_mut();
         let position = match compiled.iter().position(|(seen, _)| seen == target) {
             Some(position) => position,
@@ -301,32 +334,30 @@ impl Mocks {
         compiled[position]
             .1
             .as_ref()
-            .is_some_and(|(expected, matcher)| {
-                expected
-                    .as_deref()
-                    .is_none_or(|expected| expected.eq_ignore_ascii_case(method))
-                    && matcher.is_match(url)
-            })
+            .is_some_and(|matcher| matcher.matches(call))
     }
 
-    /// The mode the selection gives this call of `appid` — the session
-    /// owners first, then the app's config — and the layer that decided
-    /// (`default` when none did).
-    pub(crate) fn mode(
+    /// The mode the selection gives this call of `appid` — the session owners first, then the
+    /// app's config — the layer that decided (`default` when none did), and whether a whole
+    /// value (`all`/`none`) decided rather than a target.
+    fn selected(
         &self,
         appid: &str,
-        method: &str,
-        url: &str,
+        call: Call<'_>,
         run_active: bool,
-    ) -> (MockMode, &'static str) {
-        let matches = |target: &str| self.target_matches(target, method, url);
+    ) -> (MockMode, &'static str, bool) {
+        let matches = |target: &str| self.target_matches(target, call);
         let decided = self.selection.decide(run_active, &matches).or_else(|| {
             self.set(appid)
                 .and_then(|set| set.config_selection.decide(run_active, &matches))
         });
         match decided {
-            Some((owner, entry)) => (entry.mode(), owner.layer(entry)),
-            None => (MockMode::None, "default"),
+            Some((owner, entry)) => (
+                entry.mode(),
+                owner.layer(entry),
+                matches!(entry, MockEntry::Whole(_)),
+            ),
+            None => (MockMode::None, "default", true),
         }
     }
 
@@ -340,24 +371,43 @@ impl Mocks {
         url: &str,
         run_active: bool,
     ) -> (MockDecision, Option<&'static str>) {
-        let (mode, layer) = self.mode(appid, method, url, run_active);
+        self.decide_call(appid, Call::Http { method, url }, run_active)
+    }
+
+    /// [`decide`](Self::decide) for any call the runtime answers.
+    pub(crate) fn decide_call(
+        &mut self,
+        appid: &str,
+        call: Call<'_>,
+        run_active: bool,
+    ) -> (MockDecision, Option<&'static str>) {
+        let (mode, layer, whole) = self.selected(appid, call, run_active);
         if mode == MockMode::None {
             return (MockDecision::Real, Some(layer));
         }
+        // A whole `all` uses the native mocks that exist; a route without one stays local and
+        // real. A named native target is strict, and HTTP never falls through.
+        if whole
+            && matches!(call, Call::Native { .. })
+            && self
+                .set(appid)
+                .is_none_or(|set| set.key_index(call).is_none())
+        {
+            return (MockDecision::Real, Some(layer));
+        }
+        let (method, shown) = call.shown();
         let Some(set) = self.set_mut(appid) else {
             return (
                 MockDecision::Unhandled {
                     detail: format!(
-                        "no mock handlers loaded for {appid}; blocked {} {} under mock all",
-                        method.to_ascii_uppercase(),
-                        redact_url(url, REDACTED)
+                        "no mock handlers loaded for {appid}; blocked {method} {shown} under mock all"
                     ),
                     first: true,
                 },
                 Some(layer),
             );
         };
-        let decision = match set.key_index(method, url) {
+        let decision = match set.key_index(call) {
             Some(index) => {
                 let key = &mut set.keys[index];
                 key.hits += 1;
@@ -366,8 +416,6 @@ impl Mocks {
                 }
             }
             None => {
-                let method = method.to_ascii_uppercase();
-                let shown = redact_url(url, REDACTED);
                 let now = now_ms();
                 let mut first = false;
                 match set
@@ -392,7 +440,10 @@ impl Mocks {
                         });
                     }
                 }
-                let suggested = format!("{method} {}", suggested_glob(url));
+                let suggested = match call {
+                    Call::Http { url, .. } => format!("{method} {}", suggested_glob(url)),
+                    Call::Native { route } => format!("{NATIVE_PREFIX} {route}"),
+                };
                 MockDecision::Unhandled {
                     detail: format!(
                         "no mock handler for {method} {shown}; add '{suggested}' to \
@@ -492,7 +543,7 @@ impl Mocks {
         })
     }
 
-    /// Apply `all` / `none` for an owner. Targets must be HTTP targets.
+    /// Apply `all` / `none` for an owner. Targets must be HTTP or native targets.
     pub(crate) fn select(
         &mut self,
         owner: MockOwner,
@@ -501,7 +552,7 @@ impl Mocks {
     ) -> Result<Vec<MockEntry>, String> {
         for target in &targets {
             match parse_target(target)? {
-                MockTarget::Http { .. } => {
+                MockTarget::Http { .. } | MockTarget::Native { .. } => {
                     compile(target)?;
                 }
                 MockTarget::Function { name } => {
@@ -573,6 +624,96 @@ mod tests {
         // Another app has no mocks: the real backend answers it.
         assert_eq!(
             mocks.decide("other", "GET", "https://h/devices/1", false).0,
+            MockDecision::Real
+        );
+    }
+
+    #[test]
+    fn native_routes_are_selected_and_answered_like_http_calls() {
+        let mut mocks = Mocks::new();
+        mocks
+            .load(
+                "app",
+                "({})",
+                &keys(&["native notes.list", "native notes.*", "GET **/x"]),
+                Some(&json!({ "mock": "none", "overrides": ["native notes.*"] })),
+            )
+            .unwrap();
+        let call = |route| Call::Native { route };
+        assert_eq!(
+            mocks.decide_call("app", call("notes.list"), false).0,
+            MockDecision::Mock {
+                key: "native notes.list".into()
+            }
+        );
+        assert_eq!(
+            mocks.decide_call("app", call("notes.delete"), false).0,
+            MockDecision::Mock {
+                key: "native notes.*".into()
+            }
+        );
+        // HTTP keys never answer a route, and a route outside the override is real.
+        assert_eq!(
+            mocks.decide_call("app", call("tags.list"), false).0,
+            MockDecision::Real
+        );
+        mocks
+            .select(MockOwner::Dev, MockMode::All, keys(&["native tags.*"]))
+            .unwrap();
+        let MockDecision::Unhandled { detail, .. } =
+            mocks.decide_call("app", call("tags.list"), false).0
+        else {
+            panic!("expected unhandled");
+        };
+        assert_eq!(
+            detail,
+            "no mock handler for native tags.list; add 'native tags.list' to mocks/index.ts, \
+             or run: lxdev mock none 'native tags.list'"
+        );
+        mocks
+            .select(MockOwner::Dev, MockMode::None, keys(&["native notes.list"]))
+            .unwrap();
+        assert_eq!(
+            mocks.decide_call("app", call("notes.list"), false).0,
+            MockDecision::Real
+        );
+    }
+
+    #[test]
+    fn a_whole_all_uses_the_native_mocks_that_exist_and_none_turns_them_off() {
+        let mut mocks = Mocks::new();
+        let call = |route| Call::Native { route };
+        // No mocks loaded: a native call stays real, an HTTP call is blocked.
+        mocks
+            .select(MockOwner::Dev, MockMode::All, Vec::new())
+            .unwrap();
+        assert_eq!(
+            mocks.decide_call("app", call("notes.list"), false).0,
+            MockDecision::Real
+        );
+        assert!(matches!(
+            mocks.decide("app", "GET", "https://h/x", false).0,
+            MockDecision::Unhandled { .. }
+        ));
+        mocks
+            .load("app", "({})", &keys(&["native notes.list"]), None)
+            .unwrap();
+        assert_eq!(
+            mocks.decide_call("app", call("notes.list"), false).0,
+            MockDecision::Mock {
+                key: "native notes.list".into()
+            }
+        );
+        // A route without a key falls through to the host's route.
+        assert_eq!(
+            mocks.decide_call("app", call("notes.delete"), false).0,
+            MockDecision::Real
+        );
+        mocks
+            .select(MockOwner::Dev, MockMode::None, Vec::new())
+            .unwrap();
+        assert_eq!(
+            mocks.decide_call("app", call("notes.list"), false).0,
             MockDecision::Real
         );
     }

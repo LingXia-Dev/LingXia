@@ -31,6 +31,10 @@ pub mod page_state;
 pub use page_state::{PageCallGuard, PageState, clear_page_state, track_page_call};
 #[cfg(feature = "automation")]
 mod embedded_document_probe;
+#[cfg(all(feature = "automation", feature = "js-appservice"))]
+mod native_mocks;
+#[cfg(all(feature = "automation", feature = "js-appservice"))]
+pub use native_mocks::{NativeMockHook, register_native_mock_hook};
 mod navigation;
 mod navigator;
 
@@ -1167,6 +1171,43 @@ pub fn dispatch_host_call_sync(
     invocation: HostInvocationContext,
     input: Option<String>,
 ) -> lingxia_error::Result<HostOutput> {
+    dispatch_sync(name, invocation, input)
+}
+
+/// [`dispatch_host_call_sync`] from the Logic context that issued it, so dev mocks can
+/// answer there.
+#[doc(hidden)]
+#[cfg(feature = "js-appservice")]
+pub fn dispatch_host_call_sync_from_logic(
+    logic: &rong::JSContext,
+    name: &str,
+    invocation: HostInvocationContext,
+    input: Option<String>,
+) -> lingxia_error::Result<HostOutput> {
+    #[cfg(feature = "automation")]
+    if let Some(hook) = native_mocks::hook() {
+        let real = {
+            let registry = get_route_registry().lock().unwrap();
+            let real = registry.sync_host_for_caller(name, invocation.caller());
+            if real.is_none() && registry.routes.contains_key(name) {
+                None
+            } else {
+                Some(real)
+            }
+        };
+        if let Some(real) = real {
+            return hook.call_sync(logic, name, invocation, input, real);
+        }
+    }
+    let _ = logic;
+    dispatch_sync(name, invocation, input)
+}
+
+fn dispatch_sync(
+    name: &str,
+    invocation: HostInvocationContext,
+    input: Option<String>,
+) -> lingxia_error::Result<HostOutput> {
     let handler = {
         let registry = get_route_registry().lock().unwrap();
         registry.sync_host_for_caller(name, invocation.caller())
@@ -1197,6 +1238,19 @@ pub(crate) fn get_host_for_caller(
 ) -> Option<Arc<dyn HostHandler>> {
     let registry = get_route_registry();
     let registry = registry.lock().unwrap();
+    // Every native caller looks routes up here, so dev mocks answer Logic, View and WebView
+    // calls alike, even for a route no host registered.
+    #[cfg(all(feature = "automation", feature = "js-appservice"))]
+    if native_mocks::hook().is_some() {
+        let real = registry.host_for_caller(name, caller);
+        if real.is_none() && registry.routes.contains_key(name) {
+            return None;
+        }
+        return Some(Arc::new(native_mocks::Mocked {
+            route: name.to_string(),
+            real,
+        }));
+    }
     registry.host_for_caller(name, caller)
 }
 

@@ -23,11 +23,13 @@ mod capture;
 pub mod companion;
 pub mod dev;
 mod mocks;
+mod native;
 pub mod observer;
 mod registry;
 mod scenario;
 mod test_scenario;
 
+pub use native::NativeMocks;
 pub use test_scenario::{JSMockDriver, JSScenario};
 
 /// What the automation front-end decides for the JS drivers: how a message
@@ -1833,7 +1835,12 @@ const MOCK_RUNNER: &str = r#"(function (host) {
       });
     });
   };
-  const runner = Object.freeze({ run: run });
+  // The handler under `key` in the current module instance, for the native mocks.
+  const handler = function (key) {
+    const map = instance();
+    return map !== null && typeof map === 'object' ? map[key] : undefined;
+  };
+  const runner = Object.freeze({ run: run, handler: handler });
   Object.defineProperty(globalThis, SLOT, { value: runner });
   return runner;
 })"#;
@@ -2354,6 +2361,13 @@ pub fn install_logic_fetch_interceptor(ctx: &JSContext) -> JSResult<()> {
         })?,
     )?;
     install_fetch_interceptor(ctx, logic_target)
+}
+
+/// Logic-context hook: the half of native mocks that runs this lxapp's `'native …'`
+/// handlers, in the module instance its `fetch` handlers use.
+pub fn install_logic_native_mocks(ctx: &JSContext) -> JSResult<()> {
+    let host = interceptor_host(ctx, Rc::new(logic_target))?;
+    native::install(ctx, host.get::<_, JSValue>("mocks")?)
 }
 
 /// `Rong.SSE` wrapper registered with lxapp, applied to every Logic context

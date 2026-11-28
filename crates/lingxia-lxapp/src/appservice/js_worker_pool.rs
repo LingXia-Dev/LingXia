@@ -257,6 +257,8 @@ impl LxAppWorkers {
             ServiceMessage::CallPageSvcEvent { lxapp, .. } => lxapp.appid.clone(),
             ServiceMessage::DispatchAppBusEvent { lxapp, .. } => lxapp.appid.clone(),
             ServiceMessage::Eval { lxapp, .. } => lxapp.appid.clone(),
+            #[cfg(feature = "automation")]
+            ServiceMessage::RunInLogic { lxapp, .. } => lxapp.appid.clone(),
         };
 
         // Resolve target worker strictly from instance mapping (object identity)
@@ -270,6 +272,8 @@ impl LxAppWorkers {
             | ServiceMessage::CallPageSvcEvent { lxapp, .. }
             | ServiceMessage::DispatchAppBusEvent { lxapp, .. }
             | ServiceMessage::Eval { lxapp, .. } => Some(lxapp.as_ref() as *const _ as usize),
+            #[cfg(feature = "automation")]
+            ServiceMessage::RunInLogic { lxapp, .. } => Some(lxapp.as_ref() as *const _ as usize),
         };
 
         // Logic-disabled lxapps (e.g. the built-in browser) never start a worker,
@@ -285,6 +289,8 @@ impl LxAppWorkers {
             | ServiceMessage::CallPageSvcEvent { lxapp, .. }
             | ServiceMessage::DispatchAppBusEvent { lxapp, .. }
             | ServiceMessage::Eval { lxapp, .. } => lxapp.logic_enabled(),
+            #[cfg(feature = "automation")]
+            ServiceMessage::RunInLogic { lxapp, .. } => lxapp.logic_enabled(),
         };
 
         let target_worker_id = match &message {
@@ -514,6 +520,17 @@ impl LxAppWorkers {
             })
             .map_err(|error| unavailable(error.to_string()))?;
         rx.await.map_err(|error| unavailable(error.to_string()))?
+    }
+
+    #[cfg(feature = "automation")]
+    pub(crate) fn run_in_logic(
+        &self,
+        lxapp: Arc<crate::lxapp::LxApp>,
+        job: super::js_runtime::LogicJob,
+    ) -> Result<(), lingxia_error::Error> {
+        self.sender
+            .send(ServiceMessage::RunInLogic { lxapp, job })?;
+        Ok(())
     }
 }
 

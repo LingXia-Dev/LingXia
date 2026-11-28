@@ -83,7 +83,8 @@ fn invoke_sync(
 ) -> JSResult<JSValue> {
     let invocation = HostInvocationContext::for_logic_context_with_page(&ctx, page_id.0)?;
     let payload = js_value_to_json(&ctx, input.0)?;
-    let output = host::dispatch_host_call_sync(&route, invocation, payload).map_err(js_error)?;
+    let output = host::dispatch_host_call_sync_from_logic(&ctx, &route, invocation, payload)
+        .map_err(js_error)?;
     match output {
         HostOutput::Json(json) => json_to_js_value(&ctx, Some(&json)),
         HostOutput::Stream(_) => Err(js_internal_error(format!(

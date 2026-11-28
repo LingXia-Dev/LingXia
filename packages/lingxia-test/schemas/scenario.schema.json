@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://lingxia.app/schemas/scenario.schema.json",
   "title": "LingXia scenario",
-  "description": "A product state for `lxdev mock use` and `t.scenario.use()`: rules that answer the lxapp's HTTP requests (`http`) and Worker Function calls (`function`), tried in file order, and named variants whose rules go before the shared ones.",
+  "description": "A product state for `lxdev mock use` and `t.scenario.use()`: rules that answer the lxapp's HTTP requests (`http`), native route calls (`native`) and Worker Function calls (`function`), tried in file order, and named variants whose rules go before the shared ones.",
   "type": "object",
   "properties": {
     "$schema": { "type": "string" },
@@ -38,7 +38,7 @@
       "items": { "$ref": "#/$defs/rule" }
     },
     "rule": {
-      "oneOf": [{ "$ref": "#/$defs/httpRule" }, { "$ref": "#/$defs/functionRule" }]
+      "oneOf": [{ "$ref": "#/$defs/httpRule" }, { "$ref": "#/$defs/nativeRule" }, { "$ref": "#/$defs/functionRule" }]
     },
     "httpRule": {
       "type": "object",
@@ -101,6 +101,62 @@
           "items": { "$ref": "#/$defs/sseStep" }
         }
       }
+    },
+    "nativeRule": {
+      "type": "object",
+      "required": ["native"],
+      "properties": {
+        "native": {
+          "type": "string",
+          "pattern": "^(\\*\\*|[A-Za-z0-9_*]+)(\\.(\\*\\*|[A-Za-z0-9_*]+))*$",
+          "description": "The native route glob this rule answers: `notes.list`, `notes.*` (`*` within a segment, `**` across them)."
+        },
+        "match": {
+          "type": "object",
+          "properties": { "input": { "description": "Deep subset of the route's input." } },
+          "required": ["input"],
+          "additionalProperties": false
+        },
+        "times": { "$ref": "#/$defs/times" },
+        "note": { "type": "string" },
+        "sequence": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 100,
+          "description": "Answers served in call order; the last one repeats.",
+          "items": { "$ref": "#/$defs/nativeAnswer" }
+        },
+        "result": { "description": "The route's result." },
+        "error": { "$ref": "#/$defs/nativeError" },
+        "events": { "$ref": "#/$defs/nativeEvents" },
+        "delay": { "$ref": "#/$defs/delay" }
+      },
+      "additionalProperties": false,
+      "oneOf": [{ "required": ["sequence"] }, { "required": ["result"] }, { "required": ["error"] }],
+      "not": { "anyOf": [{ "required": ["sequence", "delay"] }, { "required": ["sequence", "events"] }, { "required": ["error", "events"] }] }
+    },
+    "nativeAnswer": {
+      "type": "object",
+      "properties": {
+        "result": {},
+        "error": { "$ref": "#/$defs/nativeError" },
+        "events": { "$ref": "#/$defs/nativeEvents" },
+        "delay": { "$ref": "#/$defs/delay" }
+      },
+      "additionalProperties": false,
+      "oneOf": [{ "required": ["result"] }, { "required": ["error"] }],
+      "not": { "required": ["error", "events"] }
+    },
+    "nativeError": {
+      "type": "object",
+      "description": "The route's error: its `code`, and the variant's fields as `data`.",
+      "properties": { "code": { "type": "string", "minLength": 1 }, "message": { "type": "string" }, "data": {} },
+      "required": ["code"],
+      "additionalProperties": false
+    },
+    "nativeEvents": {
+      "type": "array",
+      "description": "A stream route's events, sent before the result."
     },
     "functionRule": {
       "type": "object",

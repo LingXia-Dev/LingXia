@@ -378,6 +378,10 @@ impl lx::LxLogicExtension for AutomationExtension {
             log::warn!("test network routing unavailable in this Logic context: {err}");
         }
         #[cfg(feature = "runtime")]
+        if let Err(err) = network::install_logic_native_mocks(ctx) {
+            log::warn!("native mocks unavailable in this Logic context: {err}");
+        }
+        #[cfg(feature = "runtime")]
         if let Err(err) = clock::install_logic_clock(ctx) {
             log::warn!("test clock unavailable in this Logic context: {err}");
         }
@@ -394,6 +398,9 @@ pub fn register_automation_runtime() {
     // Installed at bootstrap so host traffic before the first recording shows too.
     #[cfg(feature = "runtime")]
     network::observer::install();
+    // Every native call then passes the lxapp's mocks before its host route.
+    #[cfg(feature = "runtime")]
+    lxapp::host::register_native_mock_hook(Box::new(network::NativeMocks));
     // `Rong.SSE` can only be wrapped before lxapp freezes `Rong`.
     #[cfg(feature = "runtime")]
     lx::register_rong_member_wrapper("SSE", network::wrap_logic_sse);

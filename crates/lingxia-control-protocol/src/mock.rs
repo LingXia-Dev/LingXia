@@ -1,7 +1,8 @@
 //! Mocks: who answers a call when no test route or scenario rule does.
 //!
 //! An lxapp keeps the complete set of its mock handlers in `mocks/index.ts`
-//! (keys are HTTP targets, `"METHOD url-glob"`) and its default selection in
+//! (keys are HTTP targets, `"METHOD url-glob"`, or native route targets,
+//! `"native notes.*"`) and its default selection in
 //! `mocks/config.json`. A *selection* decides, per call, whether the mock
 //! handler or the real backend answers:
 //!
@@ -16,8 +17,8 @@
 //! the calls they match). See [`Selection`] for the resolution.
 //!
 //! Function calls of a Worker project are selected by the session's
-//! companion ([`companion`]); an HTTP target contains whitespace, a Function
-//! target is a dotted name.
+//! companion ([`companion`]); an HTTP target is `METHOD url-glob`, a native
+//! target `native route-glob`, a Function target a dotted name.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -83,33 +84,96 @@ pub enum MockTarget {
     Http { method: Option<String>, url: String },
     /// `orders.submit`: a Worker Function, selected by the companion.
     Function { name: String },
+    /// `native notes.*`: native routes the lxapp's Logic calls; `*` matches within one
+    /// dotted segment, `**` across them.
+    Native { route: String },
 }
 
 impl MockTarget {
-    /// `GET **/x`, `* **/x`, or the Function name.
+    /// `GET **/x`, `* **/x`, `native notes.*`, or the Function name.
     pub fn label(&self) -> String {
         match self {
             Self::Http { method, url } => format!("{} {url}", method.as_deref().unwrap_or("*")),
             Self::Function { name } => name.clone(),
+            Self::Native { route } => format!("{NATIVE_PREFIX} {route}"),
         }
     }
 
     pub fn is_http(&self) -> bool {
         matches!(self, Self::Http { .. })
     }
+
+    /// HTTP and native targets: the runtime selects them, the companion selects Functions.
+    pub fn is_runtime(&self) -> bool {
+        !matches!(self, Self::Function { .. })
+    }
+}
+
+/// The word that starts a native target: `native notes.list`.
+pub const NATIVE_PREFIX: &str = "native";
+
+/// Whether a native route glob matches `route`: `*` within one dotted segment, `**`
+/// across them.
+pub fn native_route_matches(glob: &str, route: &str) -> bool {
+    fn segments(glob: &[&str], route: &[&str]) -> bool {
+        match (glob.split_first(), route.split_first()) {
+            (None, None) => true,
+            (Some((&"**", rest)), _) => {
+                (0..=route.len()).any(|skip| segments(rest, &route[skip..]))
+            }
+            (Some((pattern, rest)), Some((name, names))) => {
+                segment(pattern.as_bytes(), name.as_bytes()) && segments(rest, names)
+            }
+            _ => false,
+        }
+    }
+    fn segment(pattern: &[u8], name: &[u8]) -> bool {
+        match pattern.split_first() {
+            None => name.is_empty(),
+            Some((b'*', rest)) => (0..=name.len()).any(|skip| segment(rest, &name[skip..])),
+            Some((byte, rest)) => name.first() == Some(byte) && segment(rest, &name[1..]),
+        }
+    }
+    let glob: Vec<&str> = glob.split('.').collect();
+    let route: Vec<&str> = route.split('.').collect();
+    segments(&glob, &route)
+}
+
+pub(crate) fn parse_native_route(glob: &str) -> Option<String> {
+    let valid = !glob.is_empty()
+        && glob.split('.').all(|segment| {
+            !segment.is_empty()
+                && segment
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '*')
+                && (!segment.contains("**") || segment == "**")
+        });
+    valid.then(|| glob.to_string())
 }
 
 /// Parse a selection target: text with whitespace is an HTTP target
 /// (`METHOD url-glob`), a dotted name is a Function.
 pub fn parse_target(text: &str) -> Result<MockTarget, String> {
     let text = text.trim();
+    if let Some((word, glob)) = text.split_once(char::is_whitespace)
+        && word == NATIVE_PREFIX
+    {
+        let glob = glob.trim();
+        return parse_native_route(glob)
+            .map(|route| MockTarget::Native { route })
+            .ok_or_else(|| {
+                format!(
+                    "'{text}' is not a native target: a route glob like 'native notes.list' or \
+                     'native notes.*'"
+                )
+            });
+    }
     if text.contains(char::is_whitespace) {
         return match crate::scenario::parse_http_target(text) {
             Ok(crate::scenario::Target::Http { method, url }) => {
                 Ok(MockTarget::Http { method, url })
             }
-            Ok(crate::scenario::Target::Function { .. }) => unreachable!("an http target"),
-            Err(_) => Err(not_a_target(text)),
+            Ok(_) | Err(_) => Err(not_a_target(text)),
         };
     }
     if is_function_name(text) {
@@ -123,7 +187,7 @@ pub fn parse_target(text: &str) -> Result<MockTarget, String> {
 fn not_a_target(text: &str) -> String {
     format!(
         "'{text}' is not a target: an HTTP target is 'METHOD url-glob' (use '*' for any method), \
-         a Function target is a name like orders.submit"
+         a native target is 'native notes.list', a Function target is a name like orders.submit"
     )
 }
 
@@ -139,12 +203,13 @@ pub fn is_function_name(text: &str) -> bool {
         })
 }
 
-/// Parse a handler key of `mocks/index.ts`: an HTTP target only.
+/// Parse a handler key of `mocks/index.ts`: an HTTP or a native target.
 pub fn parse_handler_key(key: &str) -> Result<MockTarget, String> {
     match parse_target(key) {
-        Ok(target @ MockTarget::Http { .. }) => Ok(target),
-        Ok(MockTarget::Function { .. }) | Err(_) => Err(format!(
-            "'{key}' is not a target: a handler key is 'METHOD url-glob' (use '*' for any method)"
+        Ok(target) if target.is_runtime() => Ok(target),
+        Ok(MockTarget::Function { .. }) | Ok(_) | Err(_) => Err(format!(
+            "'{key}' is not a target: a handler key is 'METHOD url-glob' (use '*' for any \
+             method) or 'native route-glob'"
         )),
     }
 }
@@ -220,7 +285,7 @@ impl MockConfig {
         };
         for (index, text) in overrides.iter().enumerate() {
             match parse_target(text) {
-                Ok(MockTarget::Http { .. }) => {}
+                Ok(MockTarget::Http { .. } | MockTarget::Native { .. }) => {}
                 Ok(MockTarget::Function { .. }) => {
                     return Err(format!(
                         "overrides[{index}] \"{text}\" is a Function name; the Worker project \
@@ -230,7 +295,8 @@ impl MockConfig {
                 Err(_) => {
                     return Err(format!(
                         "overrides[{index}] \"{text}\" is not a target: an HTTP target is \
-                         'METHOD url-glob' (use '*' for any method)"
+                         'METHOD url-glob' (use '*' for any method), a native one \
+                         'native route-glob'"
                     ));
                 }
             }
@@ -715,7 +781,8 @@ mod tests {
             assert!(
                 err.ends_with(
                     "is not a target: an HTTP target is 'METHOD url-glob' (use '*' for any \
-                     method), a Function target is a name like orders.submit"
+                     method), a native target is 'native notes.list', a Function target is a \
+                     name like orders.submit"
                 ),
                 "{bad}: {err}"
             );
@@ -723,14 +790,44 @@ mod tests {
         assert_eq!(
             parse_target("**/qoe/*").unwrap_err(),
             "'**/qoe/*' is not a target: an HTTP target is 'METHOD url-glob' (use '*' for any \
-             method), a Function target is a name like orders.submit"
+             method), a native target is 'native notes.list', a Function target is a name like \
+             orders.submit"
         );
         assert!(parse_handler_key("GET **/x").is_ok());
         assert_eq!(
             parse_handler_key("orders.submit").unwrap_err(),
             "'orders.submit' is not a target: a handler key is 'METHOD url-glob' (use '*' for \
-             any method)"
+             any method) or 'native route-glob'"
         );
+    }
+
+    #[test]
+    fn native_targets_name_route_globs() {
+        let target = parse_target(" native  notes.* ").unwrap();
+        assert_eq!(
+            target,
+            MockTarget::Native {
+                route: "notes.*".into()
+            }
+        );
+        assert_eq!(target.label(), "native notes.*");
+        assert!(target.is_runtime() && !target.is_http());
+        assert!(parse_handler_key("native notes.list").is_ok());
+        for bad in ["native notes..list", "native notes/list", "native a.**b"] {
+            assert!(parse_target(bad).is_err(), "{bad}");
+        }
+        for (glob, route, hit) in [
+            ("notes.list", "notes.list", true),
+            ("notes.*", "notes.list", true),
+            ("notes.*", "notes.sync.pull", false),
+            ("notes.**", "notes.sync.pull", true),
+            ("**.pull", "notes.sync.pull", true),
+            ("notes.l*t", "notes.list", true),
+            ("notes.l*t", "notes.lists", false),
+            ("*", "notes.list", false),
+        ] {
+            assert_eq!(native_route_matches(glob, route), hit, "{glob} {route}");
+        }
     }
 
     fn keys() -> Vec<String> {
@@ -767,7 +864,7 @@ mod tests {
             (
                 json!({ "mock": "all", "overrides": ["**/a"] }),
                 "mocks/config.json: overrides[0] \"**/a\" is not a target: an HTTP target is \
-                 'METHOD url-glob' (use '*' for any method)",
+                 'METHOD url-glob' (use '*' for any method), a native one 'native route-glob'",
             ),
             (
                 json!({ "mock": "all", "overrides": ["GET **/a", "GET **/b", "GET **/a"] }),

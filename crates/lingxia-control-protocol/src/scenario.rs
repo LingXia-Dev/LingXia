@@ -11,12 +11,13 @@
 //! }
 //! ```
 //!
-//! A rule targets an HTTP request (`"http": "METHOD url"`) or a Worker
-//! Function call (`"function": "orders.submit"`), may narrow it with
-//! `match`, and answers. This module checks the shape every consumer
-//! agrees on and resolves a variant into one ordered rule list; the host
-//! validates HTTP answers, the companion validates `function` rules against
-//! its Function Definitions.
+//! A rule targets an HTTP request (`"http": "METHOD url"`), a native route
+//! call (`"native": "notes.list"`) or a Worker Function call
+//! (`"function": "orders.submit"`), may narrow it with `match`, and answers.
+//! This module checks the shape every consumer agrees on and resolves a
+//! variant into one ordered rule list; the host validates HTTP answers and
+//! serves native ones, the companion validates `function` rules against its
+//! Function Definitions.
 
 use serde_json::{Map, Value};
 
@@ -25,9 +26,11 @@ pub const FILE_KEYS: [&str; 5] = ["$schema", "name", "description", "rules", "va
 /// Keys a variant may have.
 pub const VARIANT_KEYS: [&str; 2] = ["description", "rules"];
 /// Keys every rule may have besides its answer.
-pub const RULE_KEYS: [&str; 5] = ["http", "function", "match", "times", "note"];
+pub const RULE_KEYS: [&str; 6] = ["http", "native", "function", "match", "times", "note"];
 /// Answer keys of a `function` rule.
 pub const FUNCTION_ANSWER_KEYS: [&str; 4] = ["result", "error", "fault", "delay"];
+/// Answer keys of a `native` rule.
+pub const NATIVE_ANSWER_KEYS: [&str; 4] = ["result", "error", "events", "delay"];
 /// `fault` values of a `function` rule.
 pub const FUNCTION_FAULTS: [&str; 2] = ["notRun", "unknown"];
 /// Rules one resolved scenario may hold.
@@ -68,16 +71,21 @@ pub enum Target {
         method: Option<String>,
         url: String,
     },
+    /// A native route glob: `notes.list`, `notes.*`.
+    Native {
+        route: String,
+    },
     Function {
         name: String,
     },
 }
 
 impl Target {
-    /// `GET **/wifi/main`, `* **/x`, `function orders.submit`.
+    /// `GET **/wifi/main`, `* **/x`, `native notes.list`, `function orders.submit`.
     pub fn label(&self) -> String {
         match self {
             Self::Http { method, url } => format!("{} {url}", method.as_deref().unwrap_or("*")),
+            Self::Native { route } => format!("native {route}"),
             Self::Function { name } => format!("function {name}"),
         }
     }
@@ -85,6 +93,7 @@ impl Target {
     pub fn kind(&self) -> &'static str {
         match self {
             Self::Http { .. } => "http",
+            Self::Native { .. } => "native",
             Self::Function { .. } => "function",
         }
     }
@@ -117,6 +126,12 @@ impl Resolved {
         self.rules
             .iter()
             .filter(|rule| matches!(rule.target, Target::Http { .. }))
+    }
+
+    pub fn native_rules(&self) -> impl Iterator<Item = &Rule> {
+        self.rules
+            .iter()
+            .filter(|rule| matches!(rule.target, Target::Native { .. }))
     }
 
     pub fn function_rules(&self) -> impl Iterator<Item = &Rule> {
@@ -422,19 +437,36 @@ pub fn rule_target(rule: &Value) -> Result<Target, String> {
     let Value::Object(fields) = rule else {
         return Err("a rule must be an object".into());
     };
-    match (fields.get("http"), fields.get("function")) {
-        (Some(_), Some(_)) => Err("a rule targets http or a function, not both".into()),
-        (Some(Value::String(target)), None) => parse_http_target(target),
-        (Some(_), None) => Err(
-            "http must be a string \"METHOD url\", e.g. \"GET **/wifi/main\" or \"* **/wifi/*\""
+    let targets: Vec<&str> = ["http", "native", "function"]
+        .into_iter()
+        .filter(|key| fields.contains_key(*key))
+        .collect();
+    match targets.as_slice() {
+        ["http"] => match &fields["http"] {
+            Value::String(target) => parse_http_target(target),
+            _ => Err(
+                "http must be a string \"METHOD url\", e.g. \"GET **/wifi/main\" or \"* **/wifi/*\""
+                    .into(),
+            ),
+        },
+        ["native"] => match &fields["native"] {
+            Value::String(route) => crate::mock::parse_native_route(route.trim())
+                .map(|route| Target::Native { route })
+                .ok_or_else(|| {
+                    format!("native '{route}' must be a route glob like \"notes.list\" or \"notes.*\"")
+                }),
+            _ => Err("native must be a route glob string, e.g. \"notes.list\"".into()),
+        },
+        ["function"] => match &fields["function"] {
+            Value::String(name) => parse_function_name(name),
+            _ => Err("function must be a Function name string".into()),
+        },
+        [] => Err(
+            "a rule needs a target: \"http\": \"GET **/path\", \"native\": \"notes.list\" \
+             or \"function\": \"orders.submit\""
                 .into(),
         ),
-        (None, Some(Value::String(name))) => parse_function_name(name),
-        (None, Some(_)) => Err("function must be a Function name string".into()),
-        (None, None) => Err(
-            "a rule needs a target: \"http\": \"GET **/path\" or \"function\": \"orders.submit\""
-                .into(),
-        ),
+        many => Err(format!("a rule has one target, not {}", many.join(" and "))),
     }
 }
 
@@ -531,20 +563,19 @@ pub fn check_rule(rule: &Value) -> Result<(), String> {
             }
             Ok(())
         }
-        Target::Function { .. } => check_function_answers(&answer),
+        Target::Native { .. } => check_answers(&answer, check_native_answer),
+        Target::Function { .. } => check_answers(&answer, check_function_answer),
     }
 }
 
 fn check_match(target: &Target, matcher: &Value) -> Result<(), String> {
-    let Value::Object(fields) = matcher else {
-        return Err(match target {
-            Target::Http { .. } => "match must be an object: { \"json\": { … } }".into(),
-            Target::Function { .. } => "match must be an object: { \"args\": { … } }".into(),
-        });
-    };
     let allowed = match target {
         Target::Http { .. } => "json",
+        Target::Native { .. } => "input",
         Target::Function { .. } => "args",
+    };
+    let Value::Object(fields) = matcher else {
+        return Err(format!("match must be an object: {{ \"{allowed}\": … }}"));
     };
     for key in fields.keys() {
         if key == allowed {
@@ -559,6 +590,10 @@ fn check_match(target: &Target, matcher: &Value) -> Result<(), String> {
                 "match.json is for http rules; a function rule matches its arguments with match.args"
                     .into()
             }
+            ("json" | "args", Target::Native { .. }) => {
+                format!("match.{key} is for {} rules; a native rule matches its input with match.input", if key == "json" { "http" } else { "function" })
+            }
+            ("input", _) => "match.input is for native rules".into(),
             ("query", _) => "match.query is not supported; put the query in the URL glob".into(),
             ("headers", _) => "match.headers is not supported".into(),
             _ => format!("unknown match field '{key}' (allowed: {allowed})"),
@@ -570,9 +605,12 @@ fn check_match(target: &Target, matcher: &Value) -> Result<(), String> {
     Ok(())
 }
 
-fn check_function_answers(answer: &Map<String, Value>) -> Result<(), String> {
+fn check_answers(
+    answer: &Map<String, Value>,
+    check_one: fn(&Map<String, Value>) -> Result<(), String>,
+) -> Result<(), String> {
     let Some(sequence) = answer.get("sequence") else {
-        return check_function_answer(answer);
+        return check_one(answer);
     };
     if let Some(other) = answer.keys().find(|key| *key != "sequence") {
         return Err(format!(
@@ -595,9 +633,65 @@ fn check_function_answers(answer: &Map<String, Value>) -> Result<(), String> {
         if fields.contains_key("sequence") {
             return Err(format!("sequence[{i}]: sequences do not nest"));
         }
-        check_function_answer(fields).map_err(|err| format!("sequence[{i}]: {err}"))?;
+        check_one(fields).map_err(|err| format!("sequence[{i}]: {err}"))?;
     }
     Ok(())
+}
+
+fn check_native_answer(answer: &Map<String, Value>) -> Result<(), String> {
+    if let Some(key) = answer
+        .keys()
+        .find(|key| !NATIVE_ANSWER_KEYS.contains(&key.as_str()))
+    {
+        return Err(match key.as_str() {
+            "status" | "json" | "body" | "headers" | "abort" | "hang" | "sse" => format!(
+                "'{key}' answers an http rule; a native rule answers with result, error or events"
+            ),
+            _ => format!(
+                "unknown native answer field '{key}' (allowed: {})",
+                NATIVE_ANSWER_KEYS.join(", ")
+            ),
+        });
+    }
+    let ends = answer.contains_key("result") || answer.contains_key("error");
+    match answer.get("events") {
+        None => {}
+        Some(Value::Array(_)) if ends => {}
+        Some(Value::Array(_)) => {
+            return Err(
+                "events stream before a result; add the result the stream ends with".into(),
+            );
+        }
+        Some(_) => return Err("events must be an array of the route's events".into()),
+    }
+    match (answer.get("result"), answer.get("error")) {
+        (Some(_), Some(_)) => return Err("a native answer takes result or error, not both".into()),
+        (None, None) => return Err("a native rule answers with result or error".into()),
+        (None, Some(error)) => check_error(error)?,
+        (Some(_), None) => {}
+    }
+    check_delay(answer)
+}
+
+fn check_error(error: &Value) -> Result<(), String> {
+    match error {
+        Value::Object(fields) if matches!(fields.get("code"), Some(Value::String(code)) if !code.is_empty()) => {
+            Ok(())
+        }
+        _ => Err(
+            "error must be an object with a string code: { \"code\": \"COUPON_EXPIRED\" }".into(),
+        ),
+    }
+}
+
+fn check_delay(answer: &Map<String, Value>) -> Result<(), String> {
+    match answer.get("delay") {
+        None | Some(Value::Null) => Ok(()),
+        Some(Value::Number(n)) if n.as_u64().is_some_and(|ms| ms <= MAX_DELAY_MS) => Ok(()),
+        Some(other) => Err(format!(
+            "delay must be milliseconds between 0 and {MAX_DELAY_MS}, got {other}"
+        )),
+    }
 }
 
 fn check_function_answer(answer: &Map<String, Value>) -> Result<(), String> {
@@ -630,16 +724,7 @@ fn check_function_answer(answer: &Map<String, Value>) -> Result<(), String> {
         }
     }
     if let Some(error) = answer.get("error") {
-        match error {
-            Value::Object(fields) if matches!(fields.get("code"), Some(Value::String(code)) if !code.is_empty()) =>
-                {}
-            _ => {
-                return Err(
-                    "error must be an object with a string code: { \"code\": \"COUPON_EXPIRED\" }"
-                        .into(),
-                );
-            }
-        }
+        check_error(error)?;
     }
     if let Some(fault) = answer.get("fault")
         && !fault
@@ -653,13 +738,7 @@ fn check_function_answer(answer: &Map<String, Value>) -> Result<(), String> {
                 .join(", ")
         ));
     }
-    match answer.get("delay") {
-        None | Some(Value::Null) => Ok(()),
-        Some(Value::Number(n)) if n.as_u64().is_some_and(|ms| ms <= MAX_DELAY_MS) => Ok(()),
-        Some(other) => Err(format!(
-            "delay must be milliseconds between 0 and {MAX_DELAY_MS}, got {other}"
-        )),
-    }
+    check_delay(answer)
 }
 
 // ------------------------------- matching -------------------------------
@@ -1128,12 +1207,38 @@ mod tests {
     }
 
     #[test]
+    fn native_rules_target_route_globs() {
+        let file = parse_file(&json!({
+            "rules": [
+                { "native": "notes.delete", "match": { "input": { "id": 7 } }, "error": { "code": "LOCKED" } },
+                { "native": "notes.import", "events": [{ "done": 1 }], "result": { "imported": 1 }, "delay": 10 },
+                { "native": "notes.*", "sequence": [{ "result": [] }, { "error": { "code": "E", "data": {} } }], "times": 2 },
+            ]
+        }))
+        .unwrap();
+        let resolved = file.resolve(None).unwrap();
+        let labels: Vec<String> = resolved
+            .native_rules()
+            .map(|rule| rule.target.label())
+            .collect();
+        assert_eq!(
+            labels,
+            [
+                "native notes.delete",
+                "native notes.import",
+                "native notes.*"
+            ]
+        );
+        assert_eq!(resolved.rules[0].target.kind(), "native");
+    }
+
+    #[test]
     fn rule_shapes_are_checked() {
         for (rule, expected) in [
             (json!("x"), "a rule must be an object"),
             (
                 json!({ "http": "GET x", "function": "f", "status": 1 }),
-                "not both",
+                "a rule has one target, not http and function",
             ),
             (
                 json!({ "http": "**/wifi", "status": 1 }),
@@ -1210,6 +1315,42 @@ mod tests {
             (
                 json!({ "function": "f", "match": { "json": {} }, "result": 1 }),
                 "match.json is for http rules",
+            ),
+            (
+                json!({ "native": "notes list", "result": 1 }),
+                "native 'notes list' must be a route glob",
+            ),
+            (
+                json!({ "native": "notes.list" }),
+                "answers with result or error",
+            ),
+            (
+                json!({ "native": "notes.list", "result": 1, "error": { "code": "X" } }),
+                "result or error, not both",
+            ),
+            (
+                json!({ "native": "notes.list", "events": [1] }),
+                "add the result the stream ends with",
+            ),
+            (
+                json!({ "native": "notes.list", "result": 1, "events": 1 }),
+                "events must be an array",
+            ),
+            (
+                json!({ "native": "notes.list", "status": 200 }),
+                "'status' answers an http rule",
+            ),
+            (
+                json!({ "native": "notes.list", "fault": "notRun" }),
+                "unknown native answer field 'fault'",
+            ),
+            (
+                json!({ "native": "notes.list", "result": 1, "match": { "args": {} } }),
+                "a native rule matches its input with match.input",
+            ),
+            (
+                json!({ "http": "GET x", "status": 1, "match": { "input": {} } }),
+                "match.input is for native rules",
             ),
             (
                 json!({ "function": "f", "sequence": [] }),

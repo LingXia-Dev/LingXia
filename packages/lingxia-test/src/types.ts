@@ -915,11 +915,13 @@ export interface NetworkCall {
   seq: number;
   /** Epoch milliseconds. */
   time: number;
-  /** `http`: Logic `fetch` or `Rong.SSE`; `function`: a Worker Function call. */
-  kind: "http" | "sse" | "function";
+  /** `http`: Logic `fetch` or `Rong.SSE`; `native`: a native route call; `function`: a Worker Function call. */
+  kind: "http" | "sse" | "native" | "function";
   /** `http`: upper-case method and URL. */
   method?: string;
   url?: string;
+  /** `native`: the route; `body` is its input. */
+  route?: string;
   /** `function`: the Function's name. */
   function?: string;
   /** `http`: the answered status; `null` when none was (abort, hang, still pending). */
@@ -940,7 +942,7 @@ export interface NetworkCall {
   answeredBy: "rule" | "route" | "mock" | "real" | "companion";
   /** The scenario rule that answered (1-based). */
   rule?: number;
-  /** `function`: `result`, `error`, `fault` or `default`. */
+  /** `function`: `result`, `error`, `fault` or `default`; `native`: `result` or `error`. */
   outcome?: string;
   /** Why no scenario rule matched, when rules targeted the call. */
   noMatch?: string;

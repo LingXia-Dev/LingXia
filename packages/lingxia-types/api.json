@@ -140,6 +140,10 @@
       "Mocks",
       "MoreAction",
       "MoreActionsApi",
+      "NativeMock",
+      "NativeMockContext",
+      "NativeMockRegistry",
+      "NativeRouteTypes",
       "NavApi",
       "NavCurrent",
       "NavMessages",
@@ -476,6 +480,10 @@
       "Mocks",
       "MoreAction",
       "MoreActionsApi",
+      "NativeMock",
+      "NativeMockContext",
+      "NativeMockRegistry",
+      "NativeRouteTypes",
       "NavApi",
       "NavCurrent",
       "NavMessages",
@@ -1831,7 +1839,7 @@
         ]
       },
       "examples": [],
-      "source": "src/index.ts:34"
+      "source": "src/index.ts:44"
     },
     {
       "path": "lx.clipboard",

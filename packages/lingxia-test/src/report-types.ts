@@ -128,7 +128,7 @@ export interface ScenarioReport {
   label: string;
   name: string | null;
   variant: string | null;
-  rules: { index: number; target: string; kind: "http" | "function"; hits: number }[];
+  rules: { index: number; target: string; kind: "http" | "native" | "function"; hits: number }[];
 }
 
 export interface ReportError {

@@ -75,6 +75,7 @@ pub(crate) fn installed(parsed: &scenario::Scenario, source: Option<&str>) -> In
         calls: VecDeque::new(),
         calls_total: 0,
         companion: false,
+        native: parsed.native.clone(),
     }
 }
 
@@ -111,7 +112,8 @@ pub fn use_scenario_generation(
     }
     let slot = installed(&parsed, source);
     let http = parsed.http.len();
-    let functions = parsed.resolved.rules.len() - http;
+    let native = parsed.native.len();
+    let functions = parsed.resolved.function_rules().count();
     let (dev, replaced) = registry::with_registry(|routes| {
         if let Some(generation) = generation {
             if routes.dev_scenario_generation != generation
@@ -148,10 +150,12 @@ pub fn use_scenario_generation(
     warn(
         appid,
         format!(
-            "dev scenario {} is ACTIVE: {http} http rule{} answer this app's Logic fetch{companion} \
-             until `lxdev mock clear` or the dev session ends",
+            "dev scenario {} is ACTIVE: {http} http rule{} answer this app's Logic fetch, \
+             {native} native rule{} its native calls{companion}, until `lxdev mock clear` or the \
+             dev session ends",
             label(&dev),
-            plural(http)
+            plural(http),
+            plural(native)
         ),
     );
     Ok(status())
@@ -228,6 +232,14 @@ pub(crate) fn rules_json(scenario: &InstalledScenario, routes: &Registry) -> Vec
                 entry["hits"] = json!(rule.hits);
                 entry["installed"] = json!(remaining.is_some());
                 entry["timesLeft"] = json!(remaining.flatten());
+            } else if rule.kind == "native" {
+                let served = scenario
+                    .native
+                    .iter()
+                    .find(|native| native.index == rule.index);
+                entry["hits"] = json!(rule.hits);
+                entry["installed"] = json!(served.is_some());
+                entry["timesLeft"] = json!(served.and_then(|native| native.times));
             }
             entry
         })
@@ -244,6 +256,7 @@ pub(crate) fn scenario_calls_json(scenario: &InstalledScenario, limit: usize) ->
         .map(|call| {
             let mut entry = json!({
                 "time": scenario::iso_utc(call.time_ms as i64),
+                "kind": call.kind,
                 "method": call.method,
                 "url": capture::redact_url(&call.url, capture::REDACTED),
                 "rule": call.rule,

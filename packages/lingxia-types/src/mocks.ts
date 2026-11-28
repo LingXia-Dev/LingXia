@@ -54,9 +54,76 @@ export type MockContext = {
  */
 export type MockHandler = (req: MockRequest, ctx: MockContext) => MockAnswer | Promise<MockAnswer>;
 
+/** One native route's types: what the generated client records per route. */
+export type NativeRouteTypes = {
+  input: unknown;
+  result: unknown;
+  /** A stream route's progress events; `never` for a call route. */
+  event: unknown;
+  /** The route's error union, each code's fields under `data`. */
+  error: { code: string; data?: unknown };
+};
+
+/**
+ * Each native route's types, keyed by route name. The generated native client
+ * (`.lingxia/native.logic.ts`) fills it, so a `'native notes.list'` handler is
+ * checked against the route.
+ */
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+export interface NativeMockRegistry {}
+
+type NativeRoutes = NativeMockRegistry extends { routes: infer R } ? R : {};
+
+type NativeErrorData<E, C> = Extract<E, { code: C }> extends { data?: infer D } ? D : undefined;
+
+/** What a native handler can use besides the input. */
+export type NativeMockContext<R extends NativeRouteTypes = NativeRouteTypes> = {
+  route: string;
+  /** The real route, when a host registered it (call routes). */
+  call(input?: R['input']): Promise<R['result']>;
+  /** The route's own error, to throw: it reaches the caller as the route's would. */
+  error<C extends R['error']['code']>(code: C, data?: NativeErrorData<R['error'], C>, message?: string): Error;
+};
+
+/**
+ * Answers one native call: the result, or a handler returning it. A stream
+ * route's handler is a generator: it yields events and returns the result.
+ * Throwing `ctx.error(code, data)` fails the call with the route's error.
+ */
+export type NativeMock<R extends NativeRouteTypes = NativeRouteTypes> =
+  | R['result']
+  | ((
+      input: R['input'],
+      ctx: NativeMockContext<R>,
+    ) =>
+      | R['result']
+      | Promise<R['result']>
+      | AsyncGenerator<R['event'], R['result'], void>
+      | Generator<R['event'], R['result'], void>);
+
+type JsonValue = string | number | boolean | null | readonly unknown[] | { readonly [key: string]: unknown };
+
+/** The context of a glob key (`'native notes.*'`), which may match routes of any type. */
+type AnyNativeMockContext = {
+  route: string;
+  call(input?: any): Promise<any>;
+  error(code: string, data?: any, message?: string): Error;
+};
+
+/** A handler under a glob key: its routes' types are not known. */
+type AnyNativeMock = JsonValue | ((input: any, ctx: AnyNativeMockContext) => unknown);
+
+type HttpMethod = 'GET' | 'HEAD' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'OPTIONS' | 'CONNECT' | 'TRACE';
+
+/** An HTTP handler key: `'GET **\/devices/*'`, `'* **\/x'`, `'POST /regex/'`. */
+export type HttpMockKey = `${HttpMethod | Lowercase<HttpMethod> | '*'} ${string}`;
+
 /**
  * The default export of `mocks/index.ts`: keys are HTTP targets
- * (`'GET **\/devices/*'`, `'* **\/x'`, `'POST /regex/'`), tried in order;
- * values are answers or handlers.
+ * (`'GET **\/devices/*'`, `'* **\/x'`, `'POST /regex/'`) or native route
+ * targets (`'native notes.list'`, `'native notes.*'`), tried in order; values
+ * are answers or handlers.
  */
-export type Mocks = Record<string, MockAnswer | MockHandler>;
+export type Mocks = { [key: HttpMockKey]: MockAnswer | MockHandler } & {
+  [key: `native ${string}`]: AnyNativeMock;
+} & { [K in keyof NativeRoutes as `native ${K & string}`]?: NativeMock<NativeRoutes[K] & NativeRouteTypes> };

@@ -297,7 +297,7 @@ impl JSScenario {
             .ok_or_else(|| auto_err("this scenario has ended or was replaced"))
     }
 
-    /// HTTP calls that reached the scenario, as the spec sees them.
+    /// HTTP and native calls that reached the scenario, as the spec sees them.
     fn http_calls(&self, calls: &[ScenarioCall]) -> Vec<Value> {
         calls
             .iter()
@@ -305,15 +305,23 @@ impl JSScenario {
                 let mut entry = json!({
                     "seq": call.seq,
                     "time": call.time_ms,
-                    "kind": "http",
-                    "method": call.method,
-                    "url": call.url,
+                    "kind": call.kind,
                     "rule": call.rule,
-                    "status": call.status,
                     "answeredBy": call.answered_by.clone().unwrap_or_else(|| "real".to_string()),
                 });
-                if let Some(body) = &call.body {
-                    entry["body"] = body.clone();
+                if call.kind == "native" {
+                    entry["route"] = json!(call.url);
+                    entry["outcome"] = json!(call.action);
+                    if let Some(input) = &call.body {
+                        entry["input"] = input.clone();
+                    }
+                } else {
+                    entry["method"] = json!(call.method);
+                    entry["url"] = json!(call.url);
+                    entry["status"] = json!(call.status);
+                    if let Some(body) = &call.body {
+                        entry["body"] = body.clone();
+                    }
                 }
                 if let Some(no_match) = &call.no_match {
                     entry["noMatch"] = json!(no_match);
@@ -374,11 +382,12 @@ impl JSScenario {
     }
 }
 
-/// `{ http: 'PATCH **/devices/*' }`, `{ function: 'orders.submit' }`, or
-/// `{ rule: 2 }`.
+/// `{ http: 'PATCH **/devices/*' }`, `{ native: 'notes.*' }`, `{ function: 'orders.submit' }`,
+/// or `{ rule: 2 }`.
 enum CallFilter {
     Any,
     Http(Option<String>, super::registry::UrlMatcher),
+    Native(String),
     Function(String),
     Rule(usize),
 }
@@ -396,6 +405,9 @@ impl CallFilter {
             };
             let matcher = scenario::parse_url_string(&url).map_err(auto_err)?;
             return Ok(Self::Http(method, matcher));
+        }
+        if let Some(route) = object.get_opt::<_, String>("native")? {
+            return Ok(Self::Native(route));
         }
         if let Some(name) = object.get_opt::<_, String>("function")? {
             return Ok(Self::Function(name));
@@ -418,13 +430,19 @@ impl CallFilter {
                         .as_str()
                         .is_some_and(|url| matcher.is_match(url))
             }
+            Self::Native(glob) => {
+                call["kind"] == "native"
+                    && call["route"].as_str().is_some_and(|route| {
+                        lingxia_control_protocol::mock::native_route_matches(glob, route)
+                    })
+            }
             Self::Function(name) => call["kind"] == "function" && call["function"] == *name,
             Self::Rule(rule) => call["rule"].as_u64() == Some(*rule as u64),
         }
     }
 
     fn wants_functions(&self) -> bool {
-        !matches!(self, Self::Http(..))
+        !matches!(self, Self::Http(..) | Self::Native(_))
     }
 }
 
@@ -462,7 +480,7 @@ impl JSScenario {
                     "index": rule.index,
                     "target": rule.target,
                     "kind": rule.kind,
-                    "hits": rule.route_id.map(|_| rule.hits),
+                    "hits": (rule.route_id.is_some() || rule.kind == "native").then_some(rule.hits),
                 })
             })
             .collect();
@@ -512,10 +530,10 @@ impl JSScenario {
         let functions = match &filter {
             CallFilter::Any => {
                 return Err(auto_err(
-                    "callsAfter needs { http }, { function } or { rule } as its target",
+                    "callsAfter needs { http }, { native }, { function } or { rule } as its target",
                 ));
             }
-            CallFilter::Http(..) => false,
+            CallFilter::Http(..) | CallFilter::Native(_) => false,
             CallFilter::Function(_) => true,
             CallFilter::Rule(index) => current
                 .rules

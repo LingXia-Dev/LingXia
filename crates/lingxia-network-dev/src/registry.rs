@@ -3,7 +3,7 @@
 //! JS engine; `super` adapts it to the automation driver and Logic `fetch`.
 
 use super::capture::{CallLog, Captures, Observed, Settled, Source};
-use super::mocks::{MOCK_HOLDER, MockDecision, Mocks};
+use super::mocks::{Call, MOCK_HOLDER, MockDecision, Mocks};
 use lingxia_control_protocol::scenario::Matcher;
 use regex::Regex;
 use std::collections::VecDeque;
@@ -392,6 +392,8 @@ pub(crate) struct ScenarioCall {
     /// reused, so it outlives the call's trim. Assigned by `push_call`.
     pub seq: u64,
     pub time_ms: u64,
+    /// `http`, or `native`: then `url` is the route and `body` its input.
+    pub kind: &'static str,
     pub method: String,
     /// As requested; redact before it leaves a test run.
     pub url: String,
@@ -400,7 +402,7 @@ pub(crate) struct ScenarioCall {
     /// The rule that answered; `None` when the request went on to the
     /// network.
     pub rule: Option<usize>,
-    /// `fulfill`, `abort`, `continue`, `hang`, or `none`.
+    /// `fulfill`, `abort`, `continue`, `hang`, or `none`; `result` or `error` for `native`.
     pub action: &'static str,
     pub status: Option<u16>,
     /// `rule 2 (name:variant)` or `route <pattern>`; `None` for the network.
@@ -447,6 +449,8 @@ pub(crate) struct InstalledScenario {
     pub calls_total: u64,
     /// Its `function` rules are installed in the dev session's companion.
     pub companion: bool,
+    /// Its `native` rules, served here.
+    pub native: Vec<super::scenario::NativeRule>,
     /// The spec attempt of its run that installed it; `None` for the whole
     /// run (or a dev session).
     pub attempt: Option<u64>,
@@ -483,6 +487,12 @@ impl InstalledScenario {
     pub(crate) fn route_ids(&self) -> impl Iterator<Item = u64> + '_ {
         self.rules.iter().filter_map(|rule| rule.route_id)
     }
+}
+
+/// Who answers a native call.
+pub(crate) enum NativeDecision {
+    Rule(super::scenario::NativeAnswer),
+    Select(MockDecision),
 }
 
 /// Why a dev scenario stopped answering.
@@ -1113,6 +1123,7 @@ impl Registry {
             scenario.push_call(ScenarioCall {
                 seq: 0,
                 time_ms: entry.timestamp_ms,
+                kind: "http",
                 method: entry.method.clone(),
                 url: url.to_string(),
                 body: request_value(&request),
@@ -1240,6 +1251,7 @@ impl Registry {
                 scenario.push_call(ScenarioCall {
                     seq: 0,
                     time_ms: now_ms(),
+                    kind: "http",
                     method: method.clone(),
                     url: url.to_string(),
                     body: body.clone(),
@@ -1266,6 +1278,17 @@ impl Registry {
         })
     }
 
+    /// A scenario change has paused calls until it commits.
+    fn scenario_blocked(&self) -> bool {
+        if self.active_runs.is_empty() {
+            self.scenario_pending.contains(DEV_SESSION_OWNER)
+        } else {
+            self.active_runs
+                .iter()
+                .any(|owner| self.scenario_pending.contains(owner))
+        }
+    }
+
     /// [`Self::decide_route`], then the mock selection when no route or
     /// rule answered (or one passed the call on with `continue` or
     /// `patchJson`) and the app's policy admits the URL.
@@ -1278,14 +1301,7 @@ impl Registry {
         allowed: impl Fn() -> bool,
         call: u64,
     ) -> (Option<Decision>, Option<NoMatch>, MockDecision) {
-        let blocked = if self.active_runs.is_empty() {
-            self.scenario_pending.contains(DEV_SESSION_OWNER)
-        } else {
-            self.active_runs
-                .iter()
-                .any(|owner| self.scenario_pending.contains(owner))
-        };
-        if blocked {
+        if self.scenario_blocked() {
             return (None, None, MockDecision::Unhandled {
                 detail: "scenario transition has not committed; clear or reinstall the scenario before making requests".into(),
                 first: false,
@@ -1322,6 +1338,101 @@ impl Registry {
             }
         }
         (decision, no_match, next)
+    }
+
+    /// Who answers a native route call of `appid`: a scenario's `native` rule, else the
+    /// mock selection. Blocked while a scenario change has not committed, like a request.
+    pub(crate) fn decide_native(
+        &mut self,
+        appid: &str,
+        route: &str,
+        input: Option<&str>,
+    ) -> NativeDecision {
+        if self.scenario_blocked() {
+            return NativeDecision::Select(MockDecision::Unhandled {
+                detail: "scenario transition has not committed; clear or reinstall the scenario \
+                         before calling native routes"
+                    .into(),
+                first: false,
+            });
+        }
+        if let Some(answer) = self.native_rule(appid, route, input) {
+            return NativeDecision::Rule(answer);
+        }
+        let run_active = self.runs_active();
+        NativeDecision::Select(
+            self.mocks
+                .decide_call(appid, Call::Native { route }, run_active)
+                .0,
+        )
+    }
+
+    /// The first `native` rule that answers this call; a test run's scenario before a dev one,
+    /// which stands aside while a run is active.
+    fn native_rule(
+        &mut self,
+        appid: &str,
+        route: &str,
+        input: Option<&str>,
+    ) -> Option<super::scenario::NativeAnswer> {
+        let dev_aside = !self.active_runs.is_empty();
+        let mut parsed: Option<serde_json::Value> = None;
+        let scenarios = self
+            .run_scenarios
+            .iter_mut()
+            .chain(self.dev.iter_mut().filter(|_| !dev_aside));
+        for scenario in scenarios.filter(|scenario| scenario.appid == appid) {
+            let found = scenario.native.iter().position(|rule| {
+                lingxia_control_protocol::mock::native_route_matches(&rule.route, route)
+                    && rule.input.as_ref().is_none_or(|matcher| {
+                        let input = parsed.get_or_insert_with(|| {
+                            input
+                                .and_then(|input| serde_json::from_str(input).ok())
+                                .unwrap_or(serde_json::Value::Null)
+                        });
+                        matcher.check(input, "match.input").is_ok()
+                    })
+            });
+            let Some(position) = found else {
+                continue;
+            };
+            let rule = &mut scenario.native[position];
+            let index = rule.index;
+            let answer = rule.next_answer(now_ms());
+            let retired = rule.times.as_mut().is_some_and(|times| {
+                *times = times.saturating_sub(1);
+                *times == 0
+            });
+            if retired {
+                scenario.native.remove(position);
+            }
+            if let Some(slot) = scenario.rules.iter_mut().find(|slot| slot.index == index) {
+                slot.hits += 1;
+            }
+            let answered_by = format!("rule {index} ({})", scenario.label());
+            scenario.push_call(ScenarioCall {
+                seq: 0,
+                time_ms: now_ms(),
+                kind: "native",
+                method: String::new(),
+                url: route.to_string(),
+                body: input.map(|input| {
+                    serde_json::from_str(input)
+                        .unwrap_or_else(|_| serde_json::Value::String(input.to_string()))
+                }),
+                rule: Some(index),
+                action: if answer.outcome.is_ok() {
+                    "result"
+                } else {
+                    "error"
+                },
+                status: None,
+                answered_by: Some(answered_by),
+                no_match: None,
+            });
+            return Some(answer);
+        }
+        None
     }
 
     /// Who answers a call no route or rule answered (or one they passed on
@@ -2387,11 +2498,13 @@ mod tests {
             calls: VecDeque::new(),
             calls_total: 0,
             companion: false,
+            native: Vec::new(),
             attempt: None,
         };
         let call = ScenarioCall {
             seq: 0,
             time_ms: 7,
+            kind: "http",
             method: "GET".into(),
             url: "http://h/x".into(),
             body: None,

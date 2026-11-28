@@ -1344,6 +1344,62 @@ mod scenarios {
     }
 
     #[test]
+    fn native_rules_answer_by_route_input_and_order() {
+        use super::super::registry::NativeDecision;
+        let file = json!({
+            "name": "notes",
+            "rules": [
+                { "native": "notes.delete", "match": { "input": { "id": 7 } },
+                  "error": { "code": "LOCKED", "data": { "id": 7 } } },
+                { "native": "notes.import", "events": [{ "done": 1 }], "result": { "imported": 1 } },
+                { "native": "notes.*", "sequence": [{ "result": [] }, { "result": ["{{nowMs}}"] }], "times": 2 },
+            ]
+        });
+        let scenario = parse_scenario(&file, None).unwrap();
+        let slot = super::super::dev::installed(&scenario, None);
+        let mut registry = Registry::default();
+        let dev = registry
+            .install_scenario(DEV_SESSION_OWNER, "app", slot, scenario.http, || true)
+            .unwrap();
+        registry.dev = Some(dev);
+        let mut answer =
+            |route: &str, input: Option<&str>| match registry.decide_native("app", route, input) {
+                NativeDecision::Rule(answer) => Some(answer),
+                NativeDecision::Select(_) => None,
+            };
+
+        let locked = answer("notes.delete", Some(r#"{"id":7}"#)).unwrap();
+        assert_eq!(
+            locked.outcome,
+            Err(json!({ "code": "LOCKED", "data": { "id": 7 } }))
+        );
+        let import = answer("notes.import", None).unwrap();
+        assert_eq!(import.events, [json!({ "done": 1 })]);
+        assert_eq!(import.outcome, Ok(json!({ "imported": 1 })));
+        // Another input passes the first rule to the glob; its sequence then retires it.
+        assert_eq!(
+            answer("notes.delete", Some(r#"{"id":8}"#)).unwrap().outcome,
+            Ok(json!([]))
+        );
+        let rendered = answer("notes.list", None).unwrap().outcome.unwrap();
+        assert!(
+            rendered[0].as_str().unwrap().parse::<u64>().is_ok(),
+            "{rendered}"
+        );
+        assert!(
+            answer("notes.list", None).is_none(),
+            "times: 2 retired the glob"
+        );
+        assert!(answer("tags.list", None).is_none());
+
+        let dev = registry.dev.as_ref().unwrap();
+        let hits: Vec<u64> = dev.rules.iter().map(|slot| slot.hits).collect();
+        assert_eq!(hits, [1, 1, 2]);
+        assert_eq!(dev.calls.len(), 4);
+        assert_eq!(dev.calls[0].answered_by.as_deref(), Some("rule 1 (notes)"));
+    }
+
+    #[test]
     fn a_closed_attempt_takes_what_it_installed_and_nothing_else() {
         let catch_all = || {
             RouteSpec::new(

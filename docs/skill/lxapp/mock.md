@@ -1,6 +1,7 @@
 # Mocks: who answers the app's calls
 
-The app calls `fetch` (or a Worker Function). In development, for each call:
+The app calls `fetch`, a native route (`native.notes.list()`), or a Worker
+Function. In development, for each call:
 
 ```text
 test route  >  scenario rule  >  selection → mock handler (mocks/) | real backend
@@ -45,6 +46,12 @@ export default {
   'GET **/legal-documents': { json: [] },
   'GET **/ai/runs/*/events': { sse: [{ data: { state: 'done' } }, { drop: true }] },
   'GET **/qoe/summary': { continue: true }, // real even under `all`
+  'native notes.list': () => [{ id: 1, title: 'Groceries' }],
+  'native notes.delete': ({ id }, ctx) => {
+    if (id === 7) throw ctx.error('LOCKED');
+    return null;
+  },
+  'native notes.import': async function* () { yield { done: 1, total: 1 }; return { imported: 1 }; },
 } satisfies Mocks;
 ```
 
@@ -57,6 +64,13 @@ export default {
   `match` or `bodyBase64`: code handles those. `req` is
   `{ method, url: URL, headers, text(), json() }`; `ctx.fetch` is the
   original `fetch`, so a handler can proxy without being intercepted again.
+- **Native keys** are `'native route-glob'` (`*` within a dotted segment, `**`
+  across them). The value is the result, or `(input, ctx) => result`; a
+  stream route's handler is a generator that yields events and returns the
+  result. `throw ctx.error(code, data)` fails the call with the route's own
+  error; `ctx.call(input)` reaches the real route. Logic, View and WebView
+  calls all pass through these, and the generated native client types them
+  per route.
 - **Reload.** A dev session follows `mocks/` live, without rebuilding or
   restarting: saves anywhere under it, a `mocks/` created after the start,
   and deleting it (the app then has no mocks). An invalid save keeps the last
@@ -69,7 +83,10 @@ export default {
   `TypeError: fetch failed` (`error.data.detail` says which handler and why).
   A call the selection sends to mocks with no matching key fails the same
   way: `no mock handler for GET https://…/x; add 'GET **/x' to mocks/index.ts,
-  or run: lxdev mock none 'GET **/x'`. Nothing falls through to real.
+  or run: lxdev mock none 'GET **/x'`. Nothing falls through to real. A
+  selected native route with no key, or one under `all` that no host
+  registers, fails with `E_NOT_FOUND` and the same advice
+  (`add 'native notes.list' to mocks/index.ts`).
 - **Never shipped.** Any build fails when product code imports `mocks/`:
   `pages/home/index.ts imports from mocks/ (mocks/fixtures.ts)`.
 - Add `"mocks/**/*.ts"` to `tsconfig.logic.json` (`lingxia new` does).
@@ -83,7 +100,9 @@ export default {
 
 - `all`: mocks answer, `overrides` go real. `none` (the default): real
   answers, `overrides` go to mocks (each must be a key of `mocks/index.ts`).
-- Only HTTP targets; a Worker project selects its Functions itself.
+- HTTP and native targets; a Worker project selects its Functions itself.
+- **Native routes under `all`** use the native mocks that exist and fall through to the host's
+  route otherwise; a named native target (`'native notes.*'`) is strict, like HTTP.
 - **A whole value replaces the layers below entirely**: `--mock none` means
   everything real, whatever the config says, overrides included; a live
   `lxdev mock all` (no targets) likewise. A live change with targets changes
@@ -95,6 +114,7 @@ export default {
 lxdev mock                                # who answers now, and from which layer
 lxdev mock all                            # everything from mocks
 lxdev mock none 'GET **/qoe/*'            # only this target real
+lxdev mock all 'native notes.*'           # these native routes from mocks
 lxdev mock all orders.submit              # a Worker Function (the companion switches it)
 lxdev mock use checkout:unknown [--watch] # a scenario state on top
 lxdev mock clear                          # drop the scenario (the selection stays)
@@ -144,6 +164,8 @@ scenario under `tests/scenarios/`; its name is the path without `.json`.
     { "http": "GET **/cart", "json": { "items": [{ "sku": "A1", "qty": 2 }] } },
     { "http": "PATCH **/devices/*", "match": { "json": { "name": "Office" } },
       "status": 409, "json": { "error": "conflict" } },
+    { "native": "notes.delete", "match": { "input": { "id": 7 } },
+      "error": { "code": "LOCKED" } },
     { "function": "coupons.apply", "match": { "args": { "code": "SPRING" } },
       "error": { "code": "COUPON_EXPIRED" } }
   ],
@@ -160,12 +182,12 @@ scenario under `tests/scenarios/`; its name is the path without `.json`.
 Rules are tried in file order (a variant's first); the first that matches
 answers, and a call none matches goes to the selection.
 
-| | `http` rule | `function` rule |
-|---|---|---|
-| Target | `"http": "METHOD url-glob"` | `"function": "orders.submit"` |
-| Narrow | `match.json`: the request's JSON body | `match.args`: the call's arguments |
-| Answer | `status`, `statusText`, `headers`, `json` \| `body` \| `bodyBase64`, `contentType`, `delay`; or `abort: "failed"`, `hang: true`, `sse: [...]`, `continue: true` (the next layer answers; with `patchJson`, patched) | `result`, `error: { code, … }`, or `fault: "notRun"` / `"unknown"`; `delay` |
-| Both | `sequence: [answer, …]` (call order, the last repeats), `times: n`, `note`, `{{now}}` / `{{now-2h}}` / `{{nowMs}}` in strings | |
+| | `http` rule | `native` rule | `function` rule |
+|---|---|---|---|
+| Target | `"http": "METHOD url-glob"` | `"native": "notes.*"` | `"function": "orders.submit"` |
+| Narrow | `match.json`: the request's JSON body | `match.input`: the route's input | `match.args`: the call's arguments |
+| Answer | `status`, `statusText`, `headers`, `json` \| `body` \| `bodyBase64`, `contentType`, `delay`; or `abort: "failed"`, `hang: true`, `sse: [...]`, `continue: true` (the next layer answers; with `patchJson`, patched) | `result` (with `events: [...]` first, for a stream route) or `error: { code, data }`; `delay` | `result`, `error: { code, … }`, or `fault: "notRun"` / `"unknown"`; `delay` |
+| All | `sequence: [answer, …]` (call order, the last repeats), `times: n`, `note`, `{{now}}` / `{{now-2h}}` / `{{nowMs}}` in strings | | |
 
 - `match` is a deep subset: listed keys must match, arrays match element by
   element, a `"/regex/flags"` string matches a scalar's text.

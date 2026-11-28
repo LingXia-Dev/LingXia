@@ -12,7 +12,7 @@
     },
     "overrides": {
       "type": "array",
-      "description": "HTTP targets ('METHOD url-glob', '*' for any method) answered the other way: real under all, mocked under none (each must then be a handler key of mocks/index.ts).",
+      "description": "HTTP targets ('METHOD url-glob', '*' for any method) and native targets ('native route-glob') answered the other way: real under all, mocked under none (each must then be a handler key of mocks/index.ts).",
       "uniqueItems": true,
       "items": { "type": "string", "pattern": "^\\s*(\\*|[A-Za-z-]+)\\s+\\S" }
     }
