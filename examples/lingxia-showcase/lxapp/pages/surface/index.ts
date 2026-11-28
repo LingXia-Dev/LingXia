@@ -1,4 +1,4 @@
-import { definePage, type PageMessagePort, type PageSurface } from '@lingxia/logic';
+import { definePage } from '@lingxia/logic';
 
 export default definePage({
   data: {
@@ -26,9 +26,9 @@ export default definePage({
             d.lastInbound = JSON.stringify(message ?? null);
           });
         };
-        // A surface's `opener` and `surface` are one line, so listen once or each message counts twice.
-        const port: PageSurface | PageMessagePort | undefined = page.opener ?? page.surface;
-        offInbound = port ? [port.onMessage(receive)] : [];
+        // Floated or pushed, the opener is the one message line.
+        const off = page.opener?.onMessage(receive);
+        offInbound = off ? [off] : [];
       },
       stopInbound() {
         for (const off of offInbound || []) off();
