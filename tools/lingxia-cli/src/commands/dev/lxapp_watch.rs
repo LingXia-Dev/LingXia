@@ -370,10 +370,11 @@ fn run_watch(
     // The host's `themes/` beside `lingxia.yaml`: a save there pushes the product's theme.
     let host_themes = state.project_root.join(crate::theme::HOST_THEMES_DIR);
     let host_themes = dunce::canonicalize(&host_themes).unwrap_or(host_themes);
-    if state.project_root.join("lingxia.yaml").is_file() && host_themes.is_dir() {
-        if let Err(err) = watcher.watch(&host_themes, RecursiveMode::NonRecursive) {
-            eprintln!("⚠ lxapp watch: {}: {err}", host_themes.display());
-        }
+    if state.project_root.join("lingxia.yaml").is_file()
+        && host_themes.is_dir()
+        && let Err(err) = watcher.watch(&host_themes, RecursiveMode::NonRecursive)
+    {
+        eprintln!("⚠ lxapp watch: {}: {err}", host_themes.display());
     }
     let mut host_theme_dirty = false;
 
