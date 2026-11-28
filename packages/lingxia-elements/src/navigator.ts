@@ -31,7 +31,7 @@ export type LinkTarget =
   | { url: string; page?: never; tab?: never; app?: never; back?: never; params?: never }
   | { back: number; page?: never; tab?: never; app?: never; url?: never; params?: never };
 
-// Where to open it; mirrors `as` of lx.surface.openUrl / openPage. A url
+// Where to open it; mirrors `as` of lx.surface.open. A url
 // opens in the in-app browser unless `as="external"` hands it to the system.
 export type NavigatorUrlPlacement = 'external' | 'main' | 'aside';
 export type NavigatorPagePlacement = 'float' | 'window';

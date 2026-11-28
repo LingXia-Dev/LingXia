@@ -110,13 +110,13 @@ fn ensure_ordinary_app_target(appid: &str) -> Result<(), lingxia_error::Error> {
     #[cfg(feature = "terminal")]
     if appid == lingxia_terminal_config::SETTINGS_APP_ID {
         return Err(lingxia_error::Error::not_supported(
-            "the host Terminal Settings control session is reserved; use lx.surface.openApp"
+            "the host Terminal Settings control session is reserved; use lx.surface.open({ app })"
                 .to_string(),
         ));
     }
     if appid == BROWSER_SYSTEM_APP_ID {
         return Err(lingxia_error::Error::not_supported(
-            "the host Browser System control session is reserved; use lx.surface.openApp"
+            "the host Browser System control session is reserved; use lx.surface.open({ app })"
                 .to_string(),
         ));
     }
@@ -212,7 +212,7 @@ fn register_host_control_surface_bundle(
     };
     let Some(invocation) = control_invocation else {
         return Err(js_error(lingxia_error::Error::not_supported(format!(
-            "the host {label} control session is reserved; use lx.surface.openApp"
+            "the host {label} control session is reserved; use lx.surface.open({{ app }})"
         ))));
     };
     if let Err(denied) = authorization::authorize(invocation, route) {
@@ -328,7 +328,7 @@ mod tests {
     fn ordinary_navigation_cannot_promote_a_settings_app_id() {
         let error = ensure_ordinary_app_target(lingxia_terminal_config::SETTINGS_APP_ID)
             .expect_err("the fixed shell route is the only control entry");
-        assert!(error.to_string().contains("lx.surface.openApp"));
+        assert!(error.to_string().contains("lx.surface.open({ app })"));
         assert!(ensure_ordinary_app_target("same.app").is_ok());
     }
 }

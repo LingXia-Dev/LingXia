@@ -463,10 +463,9 @@ Header actions are icon-only, max two.
 declaration; `replace([])` clears. `update(id, patch)` sets every key the patch
 carries: `update('brand', { value: brand?.shortName })` clears the value when
 there is no brand. Pins are the user's; there is no API to write them. Open a
-declared aside with `lx.surface.openDeclared(id)`. A live lxapp has one handle,
-its `AppSurface`: `lx.surface.openApp`, `lx.surface.app` and
-`lx.surface.openDeclared` / `lx.surface.declared` of its declaration return the
-same object.
+declared aside with `lx.surface.open({ declared: id })`. A live lxapp has one handle,
+its `AppSurface`: `open({ app })`, `get({ app })` and `open` / `get({ declared })`
+of its declaration return the same object.
 
 ### App name and icon
 
@@ -503,8 +502,8 @@ Control-app APIs ([Control app](./control-app.md)).
 ### Terminal and browser mains
 
 A terminal main is the default workspace; open or reuse a named one with
-`lx.surface.openDeclared('terminal', { key: 'project-a', as: 'main' })`. Equal
-keys reuse one workspace; `lx.surface.declared('terminal', { key: 'project-a' })`
+`lx.surface.open({ declared: 'terminal' }, { key: 'project-a', as: 'main' })`. Equal
+keys reuse one workspace; `lx.surface.get({ declared: 'terminal', key: 'project-a' })`
 returns its live handle. `native: browser`
 opens an empty tab in the managed browser; use a `url:` main for a fixed target.
 

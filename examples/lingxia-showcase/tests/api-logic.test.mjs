@@ -16,7 +16,7 @@ function fixture({ ui = {}, openApp, ...overrides } = {}) {
   const lx = {
     nav: { go, back: record('back') },
     ui: { toast: record('toast'), ...ui },
-    openExternal: record('external'), surface: { openUrl: record('url') }, host: { exit: record('exit') },
+    openExternal: record('external'), surface: { open: ({ url }, ...options) => record('url')(url, ...options) }, host: { exit: record('exit') },
     ...overrides,
   };
   page = mountPage(source, { lx });

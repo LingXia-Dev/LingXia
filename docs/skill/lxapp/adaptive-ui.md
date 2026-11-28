@@ -100,7 +100,7 @@ export function render({ data, env }: View) {
 
 ## Edge-to-edge windows
 
-`lx.surface.openPage(page, { as: 'window', chrome: 'full' })` runs the page to
+`lx.surface.open({ page }, { as: 'window', chrome: 'full' })` runs the page to
 the window edge; the system keeps window controls and the runtime keeps a drag
 strip. Check `lx.supports('surface.window.fullChrome')` first; the default is
 `'system'`. A WebView page pads its header by the strip's height:

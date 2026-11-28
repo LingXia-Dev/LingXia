@@ -156,7 +156,7 @@ export interface PageApi<Data, Params, Result, Messages = never, Follow = {}> {
    */
   setResult(value: Result): void;
   /**
-   * The page that opened this one, by `lx.nav.go` or `lx.surface.openPage`;
+   * The page that opened this one, by `lx.nav.go` or `lx.surface.open`;
    * absent for a root, a tab, after a restart, and while `setup` runs (read
    * it in a hook or an action).
    */
@@ -166,7 +166,7 @@ export interface PageApi<Data, Params, Result, Messages = never, Follow = {}> {
     /** Receives what the opener sends. Returns a function that removes the handler. */
     onMessage(handler: (message: MessageIn<Messages>) => void, options?: SignalOptions): () => void;
   };
-  /** This page's surface when it was opened by `lx.surface.openPage`; absent while `setup` runs. */
+  /** This page's surface when it was opened by `lx.surface.open({ page })`; absent while `setup` runs. */
   readonly surface?: Omit<PageSurface, 'opened' | 'result' | 'send' | 'onMessage'>;
   /** This page's navigation bar, reached even while another page is on top. */
   readonly navigationBar: {

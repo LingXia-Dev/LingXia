@@ -107,7 +107,7 @@ export default definePage({
 | `params`, `name` | This instance's params, its page name. |
 | `visible` | `Live<boolean>` of `onShow`/`onHide`; already `true` in `setup` for a page that opens showing. |
 | `signal` | `AbortSignal` aborted as the page unloads, before `onUnload`. Pass it to work the page starts: `fetch(url, { signal: page.signal })`. |
-| `setResult(value)` / `close(value?)` | Return a JSON result to the opener. `close` also leaves: a pushed page goes back (top page only), a surface page closes its surface; it throws for a root or tab page. The opener reads it from the handle's `result` (`lx.nav.go({ page })`, `lx.surface.openPage`): `{ status: 'ok', value }`, or `{ status: 'canceled', reason }` when the page left without one. It settles when the page is closed: a `setResult` in `onUnload` is ignored. |
+| `setResult(value)` / `close(value?)` | Return a JSON result to the opener. `close` also leaves: a pushed page goes back (top page only), a surface page closes its surface; it throws for a root or tab page. The opener reads it from the handle's `result` (`lx.nav.go({ page })`, `lx.surface.open({ page })`): `{ status: 'ok', value }`, or `{ status: 'canceled', reason }` when the page left without one. It settles when the page is closed: a `setResult` in `onUnload` is ignored. |
 | `opener`, `surface` | The page that opened this one, or this page's surface; absent otherwise. |
 | `after`, `every` | Page timers: [Subscriptions](#subscriptions). |
 | `navigationBar`, `orientation`, `refresh()` | [Navigation bar](#navigation-bar) and its [updates](#runtime-updates); `refresh()` runs [`onRefresh`](#lifecycle). |
@@ -369,7 +369,7 @@ to that `onShow`; one without keeps it. A tab page cannot replace another page.
 Moves run one at a time in the order issued; past 8 waiting, another throws `E_INVALID_STATE`. `{ url }` opens the in-app browser and
 does not join the stack; `lx.openExternal(url)` hands a URL to the system.
 
-`lx.surface.openPage('detail', { as: 'float', params })` returns the same
+`lx.surface.open({ page: 'detail', params }, { as: 'float' })` returns the same
 handle, plus `show`/`hide`, `visible`, `alive` and `onClose`; the floated page reaches its opener
 through `page.opener` and its surface through `surface`.
 A handle is not a promise: await `.opened`. Its methods can be called at once;

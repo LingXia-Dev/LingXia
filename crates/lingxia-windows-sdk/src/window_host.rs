@@ -7230,7 +7230,7 @@ pub fn restore_and_focus_host_window(window: isize) -> bool {
 
 /// `SetForegroundWindow` is ignored unless the calling thread owns the
 /// foreground, which it never does for a tray click, an update-helper launch,
-/// or `lx.surface.openApp`. Attaching to the foreground thread's input queue
+/// or `lx.surface.open({ app })`. Attaching to the foreground thread's input queue
 /// makes the call stick. Runs on the window's own UI thread.
 unsafe fn bring_to_foreground(hwnd: HWND) {
     unsafe {

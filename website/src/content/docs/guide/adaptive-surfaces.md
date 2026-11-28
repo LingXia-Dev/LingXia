@@ -76,14 +76,14 @@ At the shell level the same declaration drives several realizations:
 
 ## Open surfaces at runtime
 
-`lx.surface` selects behavior by method:
+`lx.surface.open` takes what to show, in `lx.nav.go`'s target shapes, and where to show it:
 
 ```ts
-lx.surface.openDeclared('assistant')
-lx.surface.openUrl('https://example.com')
-lx.surface.openUrl('https://example.com', { as: 'aside' })
-lx.surface.openPage('inspector', { as: 'float' })
-lx.surface.openPage('editor', { as: 'window', chrome: 'full' })
+lx.surface.open({ declared: 'assistant' })
+lx.surface.open({ url: 'https://example.com' })
+lx.surface.open({ url: 'https://example.com' }, { as: 'aside' })
+lx.surface.open({ page: 'inspector' }, { as: 'float' })
+lx.surface.open({ page: 'editor' }, { as: 'window', chrome: 'full' })
 
 // Logic, in a page: only when Logic itself acts on the size class.
 // Called on a change of sizeClass or canDock; stops when the page unloads.
@@ -94,12 +94,12 @@ A View reads the same size class with `useLxHost().sizeClass` from
 `@lingxia/react` — no subscription, no `setData`. It changes
 only when the size class does; exact widths are CSS and container queries.
 
-- `openDeclared(id)` opens content declared in `lingxia.yaml`; `id` is the declaration's content identity.
-- `openUrl(url)` opens a normal in-app browser tab; `{ as: 'aside' }` docks the browser aside.
-- `openPage(page)` opens one of **this** lxapp's pages as a chrome-less `float` or a desktop `window`. A page cannot become an `aside` — declare an lxapp surface for your own side panel.
+- `{ declared: id }` opens content declared in `lingxia.yaml`; `id` is the declaration's content identity.
+- `{ url }` opens a normal in-app browser tab; `{ as: 'aside' }` docks the browser aside.
+- `{ page }` opens one of **this** lxapp's pages as a chrome-less `float` or a desktop `window`. A page cannot become an `aside` — declare an lxapp surface for your own side panel.
 - Ask `lx.supports('surface.window.fullChrome')` before offering an edge-to-edge window. Pad custom chrome with `var(--lx-page-chrome-top-inset)`.
 - `hide()` preserves state; `close()` destroys the surface. Page-overlay form is chosen when opened, while declared surfaces continue to adapt with the shell.
-- `lx.surface.get(key)` returns a handle only for pages and URLs this lxapp opened **with a `key`**. The Control app finds a live app with `lx.shell.getApp(appId)` and a declared surface with `lx.shell.getDeclared(id, key?)`; handles carry no runtime id.
+- `lx.surface.get({ key })` returns a handle only for pages and URLs this lxapp opened **with a `key`**. The Control app finds a live app with `lx.surface.get({ app })` and a declared surface with `lx.surface.get({ declared, key? })`; handles carry no runtime id.
 
 `lx.openSurface`, `lx.onSurfaceContext` and `lx.surface.watchContext` no longer exist.
 

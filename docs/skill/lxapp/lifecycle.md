@@ -54,7 +54,7 @@ Every `onShow` / `onHide` receives `{ source, reason }`:
 | What happened | Hook | `source` | `reason` |
 | --- | --- | --- | --- |
 | First open of this session | `onLaunch()`, then `onShow` | `lxapp` | `open` |
-| Reopened while alive (link, notification tap, `lx.nav.go({ app })`, `openApp`, a banner action) | `onShow` with path/query | `lxapp` | `switch_back` |
+| Reopened while alive (link, notification tap, `lx.nav.go({ app })`, `lx.surface.open({ app })`, a banner action) | `onShow` with path/query | `lxapp` | `switch_back` |
 | Another lxapp opened as the main | `onHide` | `lxapp` | `switch_away` |
 | Closed | `onHide` | `lxapp` | `close` |
 | Host app went to background / came back | `onHide` / `onShow` | `host` | `background` / `foreground` |
@@ -64,13 +64,13 @@ Every `onShow` / `onHide` receives `{ source, reason }`:
   then a single `onShow`; with `onOpen` defined, a link arriving just after another show
   brought the app forward reaches `onOpen` alone.
 
-- **An aside does not hide the main.** `lx.surface.openApp(id, { as: 'aside' })`
+- **An aside does not hide the main.** `lx.surface.open({ app: id }, { as: 'aside' })`
   (Control app only) opens beside the main, which gets no `onHide`. Collapsing a docked aside is
   a page event, not an App event: the aside lxapp's App hooks stay quiet (see
   Navigation below). Reopening it while docked brings it back in place; route
   from the `path` / `query` in App `onShow`.
 - **Moving between aside and main does not restart.** Dragging an aside's tab
-  onto the sidebar, clicking its Pin, or `lx.surface.openApp(id, { as })` naming
+  onto the sidebar, clicking its Pin, or `lx.surface.open({ app: id }, { as })` naming
   the other role moves the live lxapp: no `onLaunch`, page stack and state
   kept; the previous main gets `onHide` (`switch_away`). Desktop only: mobile
   hosts reject with `E_NOT_SUPPORTED`, the root main with `E_SURFACE_ROLE_LOCKED`,

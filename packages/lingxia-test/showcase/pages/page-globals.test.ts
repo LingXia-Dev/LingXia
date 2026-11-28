@@ -58,19 +58,19 @@ test('keep App identity across pages and merge setData into the correct View', {
 
 test('inject the owning surface into a page opened as a float', {
   id: 'PAGE-GLOBALS-002', app: SHOWCASE_APP_ID,
-  covers: ['Page.surface', 'Page.route', 'lx.surface.openPage', 'PageSurface.key', 'PageSurface.close'],
+  covers: ['Page.surface', 'Page.route', 'lx.surface.open', 'PageSurface.key', 'PageSurface.close'],
 }, async (t) => {
   const { app, namespace, defer } = bindFixture(t, 'PAGE-GLOBALS-002');
   defer(async () => {
     await app.logic.eval(async ({ lx }, key) => {
-      const surface = lx.surface.get(key);
+      const surface = lx.surface.get({ key });
       if (surface?.kind === 'page') await surface.close();
     }, namespace);
     await app.nav.reset({ page: 'home' });
   });
   await app.nav.reset({ page: 'home' });
   const opened = await app.logic.eval(async ({ lx }, key) => {
-    const surface = lx.surface.openPage('surface', { as: 'float', key, params: { fixture: key } });
+    const surface = lx.surface.open({ page: 'surface', params: { fixture: key } }, { as: 'float', key });
     await surface.opened;
     return { key: surface.key ?? null };
   }, namespace);
@@ -88,6 +88,6 @@ test('inject the owning surface into a page opened as a float', {
     if (!surface) throw new Error('Page surface missing');
     await surface.close();
   }, page.instanceId);
-  await expect.poll(() => app.logic.eval(({ lx }, key) => lx.surface.get(key) == null, namespace)).toBe(true);
+  await expect.poll(() => app.logic.eval(({ lx }, key) => lx.surface.get({ key }) == null, namespace)).toBe(true);
   await expect((await app.page({ name: 'home' })).view.testId('home-page')).toBeVisible();
 });

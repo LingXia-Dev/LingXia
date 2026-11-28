@@ -42,7 +42,7 @@ function fileUrl(nativeDir: string, relative: string): string {
 test('open a browser tab from Logic and control it through TabSurface', {
   id: 'DESKTOP-SURFACE-TAB-001',
   covers: [
-    'lx.surface.openUrl',
+    'lx.surface.open',
     'lx.surface.get',
     'TabSurface.kind',
     'TabSurface.realized',
@@ -80,7 +80,7 @@ test('open a browser tab from Logic and control it through TabSurface', {
       alive: !!state?.tab.alive,
       visible: !!state?.tab.visible,
       closed: state?.closed ?? 0,
-      registered: lx.surface.get(key) != null,
+      registered: lx.surface.get({ key }) != null,
     };
   }, stateKey, key);
 
@@ -106,14 +106,14 @@ test('open a browser tab from Logic and control it through TabSurface', {
   }, namespace, relative, title, key);
 
   const opened: OpenedTab = await app.logic.eval({ timeout: 20_000 }, async ({ lx }, url, key, stateKey) => {
-    const tab = await lx.surface.openUrl(url, { as: 'main', key });
+    const tab = await lx.surface.open({ url }, { as: 'main', key });
     const state: HeldTab = { tab, closed: 0, off: null };
     // A group-scoped tab's type omits `onClose`, but a close by the browser
     // chrome still reaches it; this spec checks that it does.
     state.off = (tab as unknown as { onClose(handler: () => void): () => void })
       .onClose(() => { state.closed += 1; });
     (globalThis as unknown as Record<string, HeldTab>)[stateKey] = state;
-    const registered = lx.surface.get(key);
+    const registered = lx.surface.get({ key });
     return {
       kind: tab.kind,
       realized: tab.realized,

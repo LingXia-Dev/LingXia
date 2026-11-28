@@ -167,7 +167,7 @@ const TERMINAL_COLOR_SCHEMES_API = ['createPreview', 'import', 'importFile', 'li
 const TERMINAL_FONTS_API = ['list'] as const;
 const TERMINAL_PREVIEW_API = ['clear', 'close', 'show'] as const;
 const CONPTY_API = ['install', 'setEnabled', 'status'] as const;
-const SURFACE_NAMESPACE_API = ['app', 'declared', 'get', 'openApp', 'openDeclared', 'openPage', 'openUrl'] as const;
+const SURFACE_NAMESPACE_API = ['get', 'open'] as const;
 const SHELL_API = ['activate', 'appDisplay', 'sidebarActions'] as const;
 const APP_DISPLAY_API = ['get', 'update'] as const;
 const HOST_SERVICE_ENV_API = ['get', 'set'] as const;
@@ -856,7 +856,7 @@ export const LX_RETURNED_OBJECT_SURFACES = [
     properties: ['alive', 'key', 'kind', 'opened', 'realized', 'result', 'visible'],
     optionalProperties: ['key'],
     fixture: 'surface',
-    factory: 'lx.surface.openPage',
+    factory: 'lx.surface.open',
   },
   {
     name: 'TabSurface',
@@ -864,7 +864,7 @@ export const LX_RETURNED_OBJECT_SURFACES = [
     properties: ['alive', 'key', 'kind', 'realized', 'scope', 'visible'],
     optionalProperties: ['key'],
     fixture: 'surface',
-    factory: 'lx.surface.openUrl',
+    factory: 'lx.surface.open',
   },
   {
     name: 'PageHandle',

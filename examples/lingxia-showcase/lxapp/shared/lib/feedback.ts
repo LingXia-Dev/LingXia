@@ -1,6 +1,6 @@
 import { lx } from '@lingxia/logic';
 export async function openFeedback() {
-  await lx.surface.openPage('feedback', {
+  await lx.surface.open({ page: 'feedback' }, {
     as: 'float',
     position: 'bottom',
     size: { width: '100%', height: '80%' },

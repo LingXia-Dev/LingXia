@@ -149,7 +149,7 @@ export default definePage({
           return lx.app.t('privacy.cleared', { count: result.historyRemoved });
         },
         async openUrl({ url }: { url: string }) {
-          await lx.surface.openUrl(url);
+          await lx.surface.open({ url });
         },
       },
     };

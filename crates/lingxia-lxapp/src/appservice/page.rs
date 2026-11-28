@@ -566,7 +566,7 @@ impl PageSvc {
     }
 
     /// `surface.openPage` / `surface.openUrl` let a View reach the same
-    /// placements as Logic's `lx.surface`. The handle stays in Logic unused.
+    /// placements as Logic's `lx.surface.open`. The handle stays in Logic unused.
     async fn open_surface_for_view(
         &self,
         name: &str,
@@ -593,15 +593,24 @@ impl PageSvc {
             )
         })?;
         let call = async {
-            let target = params.get::<_, String>(target_key)?;
+            let target = JSObject::new(&ctx);
+            target.set(target_key, params.get::<_, String>(target_key)?)?;
             let options = params
                 .get::<_, JSValue>("options")
                 .unwrap_or_else(|_| JSValue::undefined(&ctx));
+            // The wire carries a page's params among its options; `open` takes them in the target.
+            if let Some(options) = options.clone().into_object()
+                && let Ok(page_params) = options.get::<_, JSValue>("params")
+                && !page_params.is_undefined()
+            {
+                target.set("params", page_params)?;
+                options.delete("params")?;
+            }
             let open = ctx
                 .global()
                 .get::<_, JSObject>("lx")?
                 .get::<_, JSObject>("surface")?
-                .get::<_, JSFunc>(name)?;
+                .get::<_, JSFunc>("open")?;
             let opened = open
                 .call_async::<_, JSValue>(None, (target, options))
                 .await?;

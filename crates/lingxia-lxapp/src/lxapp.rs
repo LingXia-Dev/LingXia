@@ -4146,7 +4146,7 @@ impl LxApp {
     /// `reason: 'switch_back'` and the new `path` / `query`, as a link that
     /// re-enters it does. The page stack is kept; Logic routes from the
     /// query. For a surface the caller reused and revealed itself — an aside
-    /// that `lx.surface.openApp` or a notification tap brings back — where
+    /// that `lx.surface.open({ app })` or a notification tap brings back — where
     /// `open` would present it a second time (or refuse the other region).
     ///
     /// `options.page` names the page asked for; without it, `options.path`,

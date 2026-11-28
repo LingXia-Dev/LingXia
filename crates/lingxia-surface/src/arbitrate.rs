@@ -128,7 +128,7 @@ pub fn arbitrate(
     }
 
     // Reopening a live lxapp under another role keeps its role and focuses it,
-    // so `openApp` never clobbers a user's drag-chosen placement. Lxapps move
+    // so `lx.surface.open({ app })` never clobbers a user's drag-chosen placement. Lxapps move
     // only through promote/demote; native and web surfaces still migrate by
     // reopening with the new role.
     if let Some(existing) = graph.get(&request_id)

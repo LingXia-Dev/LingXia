@@ -67,8 +67,8 @@ open as one), so it stays inherited from the live session.
 
 Only native code opens a surface: the browser runtime opens `app.lingxia.browser`
 as its tab owner and for host chrome's system pages, and the Control app's
-`lx.surface.openApp` reaches Terminal Settings or the browser through
-`ControlAppOnly` shell open-host routes. Any other `openApp` of those ids is
+`lx.surface.open({ app })` reaches Terminal Settings or the browser through
+`ControlAppOnly` shell open-host routes. Any other `open({ app })` of those ids is
 refused, so a guest cannot start one as a `StandardApp` session.
 
 ## Which class reaches which audience

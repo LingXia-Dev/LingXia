@@ -71,7 +71,8 @@ and `ch.data` for transient or high-frequency payloads.
   GPU View only `host.navigation.setLeaveGuard`, `host.navigation.leave`, and
   `host.navigation.setTitle` go to Host directly; every other `host.*` call is rejected with
   `E_PERMISSION_DENIED` and must go through a Logic action.
-- `surface.openPage` / `surface.openUrl` `req` → Logic's surface open, resolving `null`. Any other
+- `surface.openPage` / `surface.openUrl` `req` → Logic's `lx.surface.open` with a `{ page }` (its
+  `options.params` moved into the target) or `{ url }` target, resolving `null`. Any other
   `surface.*` name returns `BRIDGE_METHOD_NOT_FOUND`, never a page method.
 - `nav.go` `req` → Logic's navigation for the calling page, resolving `null`; a target that is not
   an object fails with `BRIDGE_MALFORMED_MESSAGE`.

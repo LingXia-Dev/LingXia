@@ -496,7 +496,7 @@ struct OpenPlacement {
 }
 
 /// Open `url` as a page of the side panel, owned by `owner`, the way
-/// `lx.surface.openUrl(url, { as: 'aside' })` does, and report the browser
+/// `lx.surface.open({ url }, { as: 'aside' })` does, and report the browser
 /// tab behind it (for the page tools) and where the core put it.
 #[cfg(feature = "browser")]
 fn open_side_panel_page(url: &str, owner: Option<&str>) -> Result<Value, String> {

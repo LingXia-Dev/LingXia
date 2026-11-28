@@ -62,7 +62,7 @@ async function desktopPlatform(t: Fixture): Promise<string> {
 
 async function closeKeyedSurface(app: TestApp, key: string): Promise<void> {
   await app.logic.eval({ timeout: 15_000 }, async ({ lx }, key) => {
-    const handle = lx.surface.get(key) as unknown as SurfaceHandle | null;
+    const handle = lx.surface.get({ key }) as unknown as SurfaceHandle | null;
     if (handle) await handle.close();
   }, key);
 }
@@ -73,12 +73,11 @@ async function openWindow(
   key: string,
 ): Promise<OpenedWindow> {
   return await app.logic.eval({ timeout: 20_000 }, async ({ lx }, chrome, key): Promise<OpenedWindow> => {
-    const handle = await lx.surface.openPage('surface', {
+    const handle = await lx.surface.open({ page: 'surface', params: { fixture: key, chrome } }, {
       as: 'window',
       chrome,
       key,
       size: { width: 480, height: 640 },
-      params: { fixture: key, chrome },
     });
     return {
       key: handle.key ?? null,
@@ -174,7 +173,7 @@ test('native close disposes a secondary window in the dock and tray host', {
   );
   if (!window) throw new Error('secondary native window was not found');
   await app.logic.eval(({ lx }, key, stateKey) => {
-    const handle = lx.surface.get(key) as unknown as SurfaceHandle;
+    const handle = lx.surface.get({ key }) as unknown as SurfaceHandle;
     const state = { handle, closed: 0 };
     handle.onClose(() => state.closed++);
     (globalThis as unknown as Record<string, HeldSurface | undefined>)[stateKey] = state;
@@ -196,7 +195,7 @@ test('native close disposes a secondary window in the dock and tray host', {
 test('open a page window with system chrome and with full chrome', {
   id: 'DESKTOP-SURFACE-WINDOW-001',
   covers: [
-    'lx.surface.openPage',
+    'lx.surface.open',
     'lx.surface.get',
     'lx.supports',
     'PageSurface.kind',
@@ -256,7 +255,7 @@ test('open a page window with system chrome and with full chrome', {
 
     await closeKeyedSurface(app, key);
     await eventually(
-      () => app.logic.eval(({ lx }, key) => lx.surface.get(key) == null, key),
+      () => app.logic.eval(({ lx }, key) => lx.surface.get({ key }) == null, key),
       (closed) => closed === true,
       { describe: `${chrome} chrome surface to close`, timeoutMs: 10_000 });
   }
@@ -353,7 +352,7 @@ async function invokeCaption(
 
 test('caption buttons stay on top and can close both chrome modes', {
   id: 'DESKTOP-SURFACE-WINDOW-CHROME-001',
-  covers: ['lx.surface.openPage', 'PageSurface.alive', 'PageSurface.visible', 'PageSurface.onClose'],
+  covers: ['lx.surface.open', 'PageSurface.alive', 'PageSurface.visible', 'PageSurface.onClose'],
   app: SHOWCASE_APP_ID,
   timeout: 120_000,
 }, async (t) => {
@@ -423,7 +422,7 @@ test('caption buttons stay on top and can close both chrome modes', {
     }
 
     await app.logic.eval(({ lx }, key, captionKey) => {
-      const handle = lx.surface.get(key) as unknown as SurfaceHandle;
+      const handle = lx.surface.get({ key }) as unknown as SurfaceHandle;
       const state = { handle, closed: 0 };
       handle.onClose(() => state.closed++);
       (globalThis as unknown as Record<string, HeldSurface | undefined>)[captionKey] = state;
@@ -471,7 +470,7 @@ test('deliver a child page message to its opener before closing', {
   const { view: surface } = await waitForSurfacePage(app, key, 0);
 
   await app.logic.eval(({ lx }, key, stateKey) => {
-    const handle = lx.surface.get(key) as unknown as SurfaceHandle | null;
+    const handle = lx.surface.get({ key }) as unknown as SurfaceHandle | null;
     if (!handle) throw new Error('message surface was not registered');
     const state: HeldSurface = { messages: [], off: null };
     state.off = handle.onMessage((message) => state.messages!.push(message));
@@ -512,7 +511,7 @@ test('deliver a child page message to its opener before closing', {
   expect(typeof received?.timestamp).toBe('number');
 
   await eventually(
-    () => app.logic.eval(({ lx }, key) => lx.surface.get(key) == null, key),
+    () => app.logic.eval(({ lx }, key) => lx.surface.get({ key }) == null, key),
     (closed) => closed === true,
     { describe: 'messaging surface to close itself', timeoutMs: 10_000 },
   );
@@ -534,7 +533,7 @@ test('push a message from the opener into its page window', {
   const { view: surface } = await waitForSurfacePage(app, key, 0);
 
   await app.logic.eval(({ lx }, key, namespace) => {
-    const handle = lx.surface.get(key) as unknown as SurfaceHandle | null;
+    const handle = lx.surface.get({ key }) as unknown as SurfaceHandle | null;
     if (!handle) throw new Error('post surface was not registered');
     handle.send({ ping: namespace });
   }, key, namespace);
@@ -553,7 +552,7 @@ test('push a message from the opener into its page window', {
   // Closing from the opener flips `alive` on the same handle once the native
   // close lands — after close() itself resolves, so observe rather than read.
   await app.logic.eval({ timeout: 15_000 }, async ({ lx }, key, stateKey) => {
-    const handle = lx.surface.get(key) as unknown as SurfaceHandle;
+    const handle = lx.surface.get({ key }) as unknown as SurfaceHandle;
     const closed: Array<{ reason?: string }> = [];
     handle.onClose((event) => closed.push(event));
     (globalThis as unknown as Record<string, HeldSurface | undefined>)[stateKey] = { handle, closed };

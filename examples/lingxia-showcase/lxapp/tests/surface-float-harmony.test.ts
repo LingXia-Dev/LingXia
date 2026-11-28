@@ -7,7 +7,7 @@ const same = (a: number[], b: number[]) => a.every((channel, i) => Math.abs(chan
 // shows the float's page, not the opener under the scrim. Read from the composited screen, since the
 // host capture snapshots only the main window.
 test('a modal float draws its GPU page in its own window', {
-  id: 'SURFACE-FLOAT-HARMONY-001', covers: ['lx.surface.openPage'],
+  id: 'SURFACE-FLOAT-HARMONY-001', covers: ['lx.surface.open'],
   requires: { args: ['harmonyDevice'] }, reason: 'reads the composited screen through the Harmony device fixture',
   start: { page: 'view' },
 }, async (t) => {
@@ -23,7 +23,7 @@ test('a modal float draws its GPU page in its own window', {
   const before = await device.pixels(card);
   try {
     await app.logic.eval(async ({ lx }, key) => {
-      await lx.surface.openPage('surface', { as: 'float', key, size: { width: '60%', height: '40%' }, interaction: { modal: true } }).opened;
+      await lx.surface.open({ page: 'surface' }, { as: 'float', key, size: { width: '60%', height: '40%' }, interaction: { modal: true } }).opened;
     }, key);
     await expect((await app.page({ name: 'surface' })).view.testId('surface-counter')).toBeAttached();
     await new Promise<void>(resolve => setTimeout(() => resolve(), 600));
@@ -43,7 +43,7 @@ test('a modal float draws its GPU page in its own window', {
     expect(ink, `dark text points in the card: ${ink}/${scan.length}`).toBeGreaterThan(3);
   } finally {
     await app.logic.eval(async ({ lx }, key) => {
-      const surface = lx.surface.get(key);
+      const surface = lx.surface.get({ key });
       if (surface?.kind === 'page') await surface.close();
     }, key);
   }

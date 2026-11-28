@@ -157,19 +157,19 @@ async function restoreShowcaseSidebarActions(app: TestApp): Promise<void> {
     await lx.shell.sidebarActions.replace([
       {
         id: 'downloads', placement: 'header', icon: 'public/sidebar-downloads.svg', label: 'Downloads',
-        onSelect() { void lx.surface.openApp('app.lingxia.browser', { page: 'downloads' }); },
+        onSelect() { void lx.surface.open({ app: 'app.lingxia.browser', page: 'downloads' }); },
       },
       {
         id: 'chat', placement: 'footer', icon: 'public/sidebar-chat.svg', label: 'chat',
-        onSelect() { void lx.surface.openDeclared('lingxia-showcase-web'); },
+        onSelect() { void lx.surface.open({ declared: 'lingxia-showcase-web' }); },
       },
       {
         id: 'terminal-settings', placement: 'footer', icon: 'public/sidebar-terminal-settings.svg', label: 'Terminal Settings',
-        onSelect() { void lx.surface.openApp('app.lingxia.terminal-settings', { as: 'aside', edge: 'right' }); },
+        onSelect() { void lx.surface.open({ app: 'app.lingxia.terminal-settings' }, { as: 'aside', edge: 'right' }); },
       },
       {
         id: 'terminal', placement: 'footer', icon: 'public/sidebar-terminal.svg', label: 'Terminal',
-        onSelect() { void lx.surface.openDeclared('terminal'); },
+        onSelect() { void lx.surface.open({ declared: 'terminal' }); },
       },
       {
         id: 'ping', placement: 'footer', icon: 'public/activator.svg', label: 'Ping',
@@ -217,7 +217,7 @@ test("restore rendered home content after closing covering web tabs", { id: "DES
       'DesktopDriver.pointer',
       'DesktopAx.invoke',
       'LxAppDriver.surfaceLayout',
-      'lx.surface.openApp',
+      'lx.surface.open',
     ], app: SHOWCASE_APP_ID }, async (t) => {
   const { app, defer } = bindFixture(t, "DESKTOP-BROWSER-001");
 
@@ -270,7 +270,7 @@ test("restore rendered home content after closing covering web tabs", { id: "DES
     expect(again.sessionId).toBe(settings.sessionId);
 
     await app.logic.eval({ timeout: 20_000 }, async ({ lx }, appId) => {
-      await lx.surface.openApp(appId, { page: 'downloads' });
+      await lx.surface.open({ app: appId, page: 'downloads' });
     }, BROWSER_APP_ID);
     const downloads = await waitForBrowserSystemPage(t, app, 'downloads', 'Downloads page to open');
     expect(downloads.sessionId).toBe(settings.sessionId);

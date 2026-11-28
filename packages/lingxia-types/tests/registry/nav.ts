@@ -64,4 +64,21 @@ async function navigation(): Promise<boolean> {
   return result.status === 'ok' ? result.value.saved : false;
 }
 
-export type RegistryGate = typeof navigation;
+// lx.surface.open takes the same page targets, with the same params and handle typing.
+async function surfaces(): Promise<boolean> {
+  const sheet = lx.surface.open({ page: 'detail', params: { id: 1 } }, { as: 'float' });
+  sheet.send({ draft: 'hi' });
+  // @ts-expect-error the opener sends the page's declared `in`
+  sheet.send({ typing: true });
+  lx.surface.open({ page: 'settings' }, { as: 'window' });
+  // @ts-expect-error detail declares required params
+  lx.surface.open({ page: 'detail' }, { as: 'float' });
+  // @ts-expect-error params are checked against the page's declaration
+  lx.surface.open({ page: 'detail', params: { id: '1' } });
+  // @ts-expect-error an unknown page
+  lx.surface.open({ page: 'missing' });
+  const outcome = await sheet.result;
+  return outcome.status === 'ok' ? outcome.value.saved : false;
+}
+
+export type RegistryGate = [typeof navigation, typeof surfaces];

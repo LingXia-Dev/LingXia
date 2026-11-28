@@ -34,7 +34,7 @@ are present for every lxapp and refuse a guest at the call.
 Calls that act on the product rather than the calling lxapp are the Control app's: most of
 `lx.host` (exit, badge, tray, cache, service environment, updates, autostart, the product's
 language and appearance preferences), `lx.shell`, and opening or finding other apps' surfaces
-(`lx.surface.openApp`). Each member's declaration says `Control app only`; `lingxia api <member>`
+(`lx.surface.open({ app })`, `lx.surface.get({ app })`). Each member's declaration says `Control app only`; `lingxia api <member>`
 shows it. `lx.host.update` is the host app's update; your bundle's is `lx.app.update.onReady`.
 
 Open to every lxapp: reading the resolved settings (`lx.app.language.get()`,

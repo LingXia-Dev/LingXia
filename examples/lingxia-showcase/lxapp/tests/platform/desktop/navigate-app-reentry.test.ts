@@ -31,7 +31,7 @@ test('lx.nav.go({ app }) presents an open lxapp again after the caller came back
   const closeChat = async (): Promise<void> => {
     if (await inAsideSlot()) {
       await app.logic.eval({ timeout: 20_000 }, async ({ lx }, id) => {
-        await (await lx.surface.openDeclared(id)).close();
+        await (await lx.surface.open({ declared: id })).close();
       }, CHAT_APP_ID);
     }
     if (isOpen(await manager.list(), CHAT_APP_ID)) {

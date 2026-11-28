@@ -183,7 +183,7 @@ export default definePage({
           return { message: lx.app.t('bookmarks.status.exported', { count }) };
         },
         async openUrl({ url }: { url: string }) {
-          await lx.surface.openUrl(url);
+          await lx.surface.open({ url });
         },
       },
     };

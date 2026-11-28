@@ -78,11 +78,12 @@ details; JS does not pick a provider by kind.
 | `url` | Normalised first URL | Mains may repeat; asides opened by the API reuse by first URL | A browser tab in the main area or the side panel |
 | `native` | Capability name | Set by the declaration; the terminal admits keyed instances | A host provider, such as the terminal or the browser |
 
-JS opens by subject: a declaration (`openDeclared`), another lxapp
-(`openApp`), its own page (`openPage`), or a URL (`openUrl`). The browser's
+JS opens by subject with `lx.surface.open(target, options?)`: a declaration
+(`{ declared }`), another lxapp (`{ app }`), its own page (`{ page }`), or a URL
+(`{ url }`), the targets `lx.nav.go` takes. The browser's
 system pages (bookmarks, history, downloads, settings) are the host-bundled
 `app.lingxia.browser` lxapp on a control surface: host chrome opens a page
-natively, and only the Control app may `openApp` it. There
+natively, and only the Control app may open it as `{ app }`. There
 is no `native` selector: a native provider is reached only through its
 declaration. Every handle carries a `kind` (`page`, `declared`, `app`, `tab`) and the
 `realized` placement (`main`, `aside`, `float`, `window`).
@@ -259,7 +260,7 @@ main switcher and is selected. Triggers:
 - dropping an aside tab on the sidebar, or the tab menu's **Open in Main
   Area** (§5.3), which is also how a touch host promotes;
 - a Pin of an lxapp that is live as an aside (§7.3);
-- `openApp(appId, { as: 'main' })` or `openDeclared(id, { as: 'main' })`.
+- `open({ app }, { as: 'main' })` or `open({ declared }, { as: 'main' })`.
 
 **Demote** (main to aside). The surface leaves the switcher, its neighbour is
 selected, and it joins the side panel (or, for a native provider, the native
@@ -271,7 +272,7 @@ slot). Triggers:
 - the built-in **Move to Aside** menu item, which the shell adds to a non-root
   main's menu only in `regular` and only when the content offers no placement
   item of its own (its own item re-hosts the live page first);
-- `openApp(appId, { as: 'aside' })` or `openDeclared(id, { as: 'aside' })`.
+- `open({ app }, { as: 'aside' })` or `open({ declared }, { as: 'aside' })`.
 
 The stable root never moves; asking fails with `E_SURFACE_ROLE_LOCKED`.
 URL-callback and ephemeral browser tabs belong to their opener and cannot be
@@ -280,7 +281,7 @@ moved.
 ### 3.2 A reopen that names a role
 
 - An explicit `as` that differs from the live role moves the surface there.
-- A reopen without `as` — `openApp` without it, a sidebar action reopening a
+- A reopen without `as` — `open({ app })` without it, a sidebar action reopening a
   declaration, a notification or menu target, a Pin — focuses the live surface
   in the role it has. It never puts back the declared role over one the user
   chose by dragging.
@@ -744,7 +745,7 @@ translucent chip under the pointer — never a move or "not allowed" cursor.
 - An lxapp pin is a launch intent. Clicking it opens or selects that lxapp as a
   main, which has its own switcher row; removing the pin does not close it. When
   the lxapp is live as an aside, the click promotes it (§3.1); it does not
-  inherit a declared aside role. Sidebar actions and `openDeclared` keep the
+  inherit a declared aside role. Sidebar actions and `open({ declared })` keep the
   declared role.
 - A main opened from a pin occupies exactly the root main's rectangle: no inset,
   card, offset or tab strip of its own, and the previous main is hidden.
@@ -945,7 +946,7 @@ their count opens the switcher.
 ### 9.4 Floats and windows
 
 Floats are bottom sheets; a platform with a native popover MAY use one.
-`openPage` with `as: 'window'` fails with `E_NOT_SUPPORTED` and
+`open({ page }, { as: 'window' })` fails with `E_NOT_SUPPORTED` and
 `placementUnsupported`.
 
 ---
@@ -1025,13 +1026,13 @@ There is no `sidebar:` field. Sidebar entries come only from
 
 | Call | Who | Does | Fails with |
 |---|---|---|---|
-| `lx.surface.openPage(page, options?)` | any lxapp | Its own page as a float or window; returns the handle at once, `opened` settles when shown | `E_INVALID_ARG`, `E_NOT_FOUND`, `E_NOT_SUPPORTED` (`placementUnsupported`) |
-| `lx.surface.openUrl(url, options?)` | any lxapp | A browser tab in main (default) or the side panel | `E_INVALID_ARG`, `E_PERMISSION_DENIED` (domain), `E_INTERNAL` |
-| `lx.surface.openApp(appId, options?)` | Control app | Opens, focuses or moves another lxapp in main or aside | `E_INVALID_ARG`, `E_PERMISSION_DENIED` (+ `appUnderMaintenance` / `appSuspended`), `E_SURFACE_ROLE_LOCKED`, `E_SURFACE_CONFLICT` (+ `appOpenInOtherRole`), `E_NOT_SUPPORTED` (`placementUnsupported`) |
-| `lx.surface.openDeclared(id, options?)` | any lxapp; options Control app | Opens a declaration with its own placement, or a keyed instance or another role | `E_NOT_FOUND`, `E_PERMISSION_DENIED`, `E_SURFACE_ROLE_LOCKED`, `E_CAPABILITY_MISSING` |
-| `lx.surface.get(key)` | any lxapp | Its own live page or URL tab by key | — |
-| `lx.surface.app(appId)` | Control app | The live lxapp's handle | — |
-| `lx.surface.declared(id, { key? })` | Control app | The live declaration's handle | — |
+| `lx.surface.open({ page, params? }, options?)` | any lxapp | Its own page as a float or window; returns the handle at once, `opened` settles when shown | `E_INVALID_ARG`, `E_NOT_FOUND`, `E_NOT_SUPPORTED` (`placementUnsupported`) |
+| `lx.surface.open({ url }, options?)` | any lxapp | A browser tab in main (default) or the side panel | `E_INVALID_ARG`, `E_PERMISSION_DENIED` (domain), `E_INTERNAL` |
+| `lx.surface.open({ app, page?, params?, channel?, version? }, options?)` | Control app | Opens, focuses or moves another lxapp in main or aside | `E_INVALID_ARG`, `E_PERMISSION_DENIED` (+ `appUnderMaintenance` / `appSuspended`), `E_SURFACE_ROLE_LOCKED`, `E_SURFACE_CONFLICT` (+ `appOpenInOtherRole`), `E_NOT_SUPPORTED` (`placementUnsupported`) |
+| `lx.surface.open({ declared }, options?)` | any lxapp; options Control app | Opens a declaration with its own placement, or a keyed instance or another role | `E_NOT_FOUND`, `E_PERMISSION_DENIED`, `E_SURFACE_ROLE_LOCKED`, `E_CAPABILITY_MISSING` |
+| `lx.surface.get({ key })` | any lxapp | Its own live page or URL tab by key | — |
+| `lx.surface.get({ app })` | Control app | The live lxapp's handle | — |
+| `lx.surface.get({ declared, key? })` | Control app | The live declaration's handle | — |
 | `lx.shell.activate()` | Control app | Brings the product window forward without navigating | — |
 | `lx.shell.sidebarActions.replace / update / remove` | Control app | §11.6 | `E_INVALID_ARG`, `E_NOT_FOUND` |
 | `lx.shell.appDisplay.update(patch)` | Control app | The name and icon the shell shows for the app | `E_INVALID_ARG` |
@@ -1044,24 +1045,24 @@ notifications — are on `lx.host`, never on `lx.shell`.
 
 ### 11.2 Opening
 
-- `openDeclared` without a `key` addresses the declaration's default instance. A
+- `open({ declared })` without a `key` addresses the declaration's default instance. A
   non-empty `key` (1 to 128 UTF-8 bytes) selects or creates an additional
   instance where the provider admits several (the terminal does). Omitting `as`
   uses the declared role; `as` focuses or moves the same instance (§3).
-  `{ surface: 'terminal', key: 'project-a', as: 'aside' }` is a separate
+  `open({ declared: 'terminal' }, { key: 'project-a', as: 'aside' })` is a separate
   terminal workspace in the native slot that may later move to main without
   losing its PTYs. A declaration that shows an lxapp resolves to that app's
   `AppSurface`.
-- `openApp` creates, focuses or moves a dynamic lxapp; it needs no declaration.
+- `open({ app })` creates, focuses or moves a dynamic lxapp; it needs no declaration.
   `as` is `main` or `aside`; omitted, a live app keeps its role and a closed one
-  opens in main. A float lxapp is declared and opened with `openDeclared`, so
-  its tray anchor, dismissal and presentation exist. `page` is a configured page
+  opens in main. A float lxapp is declared and opened as `{ declared }`, so
+  its tray anchor, dismissal and presentation exist. The target's `page` is a configured page
   name; full routes are rejected. `channel` defaults to `release`; `version`
   installs a newer version first and refuses an older one. `edge` is valid only
   with an aside and is a preference for layouts with room.
-- `openPage` takes `as: 'float'` (the default), `'window'`, or an ordered list
+- A page takes `as: 'float'` (the default), `'window'`, or an ordered list
   of both, where the first the host can realize wins and `realized` says which.
-  `openUrl` takes `as: 'main'` (the default), `'aside'`, or an ordered list.
+  A URL takes `as: 'main'` (the default), `'aside'`, or an ordered list.
 - A float without a size hint takes its host's default (§7.2); it is centred,
   non-modal and dismissed by a tap outside, and in `compact` it is a bottom
   sheet whatever its position. A window defaults to 960 × 720 dp/pt, clamped
@@ -1076,7 +1077,7 @@ notifications — are on `lx.host`, never on `lx.shell`.
 - URLs are `https:` or a host-authorized `file:`, and their domain must pass the
   lxapp's security policy; any other scheme fails with `E_INVALID_ARG`. The
   Control app opens the browser's pages with
-  `lx.surface.openApp('app.lingxia.browser', { page })`. Host-wide Settings is
+  `lx.surface.open({ app: 'app.lingxia.browser', page })`. Host-wide Settings is
   native chrome, never a Logic destination. Handing a URL to the system still
   passes the host's scheme allowlist.
 
@@ -1085,8 +1086,8 @@ notifications — are on `lx.host`, never on `lx.shell`.
 | Operation | Changes | Switcher | Back | Returns |
 |---|---|---|---|---|
 | `lx.nav.go({ app, … })` | Pushes an app onto the current lxapp surface's app stack | Keeps the current item | `lx.nav.leaveApp()` pops to the previous app | `Promise<void>` |
-| `lx.surface.openApp(appId, { as: 'main' })` | Creates or focuses a dynamic lxapp surface | Its own item | Closing destroys the surface and its app stack | `AppSurface` |
-| `lx.surface.openDeclared(id, { as: 'main' })` on an lxapp declaration | Creates or focuses that declared surface | Its own item | Closing destroys it; reopening uses the declaration | The app's `AppSurface` |
+| `lx.surface.open({ app }, { as: 'main' })` | Creates or focuses a dynamic lxapp surface | Its own item | Closing destroys the surface and its app stack | `AppSurface` |
+| `lx.surface.open({ declared }, { as: 'main' })` on an lxapp declaration | Creates or focuses that declared surface | Its own item | Closing destroys it; reopening uses the declaration | The app's `AppSurface` |
 
 A surface opened as main is a parallel workspace with its own runtime id, item,
 role and handle. App navigation is sequential inside the selected surface and
@@ -1102,10 +1103,10 @@ than moving or cloning it.
   `visible` and `alive`, with `show`, `hide`, `close` and the events of §2.1.
   `onShow` / `onHide` carry `source` (`opener`, `page` or `shell`); `onClose`
   carries the close reason.
-- One live lxapp has one handle, an `AppSurface`: `openApp`, `lx.surface.app`
-  and the `openDeclared` / `lx.surface.declared` of the declaration that shows
-  it return the same object. A declaration whose lxapp is not live returns
-  `undefined` from `lx.surface.declared`.
+- One live lxapp has one handle, an `AppSurface`: `open({ app })`, `get({ app })`
+  and the `open` / `get({ declared })` of the declaration that shows it return
+  the same object. A declaration whose lxapp is not live returns `undefined`
+  from `get({ declared })`.
 - A URL handle covers one tab (`scope: 'tab'`, with `activate()` and `close()`),
   or, when the host does not name the tab, the browser's tab group
   (`scope: 'group'`), whose lifetime the shell owns. A builtin page's handle
@@ -1170,7 +1171,7 @@ declared surface.
   state.
 - Apps control no layout: no weight, colour, size or row. Hover and disabled
   styling are the shell's.
-- A callback opens content explicitly: `openDeclared`, `openApp`, or
+- A callback opens content explicitly: `lx.surface.open({ declared })`, `open({ app })`, or
   `lx.nav.go({ app })`. Hosts never infer a target, open an lxapp, toggle a
   provider or draw a fallback glyph.
 
@@ -1226,7 +1227,7 @@ Code uses these roots; only the case changes between languages (Rust
 | YAML content | `lxapp / page / url / native` | not JS selectors | render |
 | surface key | `key` | `key` | instanceKey, workspaceId |
 | runtime id | `surface_id` | not in Logic; automation `surfaceLayout().identities` | — |
-| app navigation | `navigate_to_app / navigate_back_app` | `nav.go({ app })`, `nav.leaveApp` | navigateToLxApp, openApp |
+| app navigation | `navigate_to_app / navigate_back_app` | `nav.go({ app })`, `nav.leaveApp` | navigateToLxApp, surface.open({ app }) |
 | role | `role` | `SurfacePlacement` (with `window`) | mode, kind |
 | main | `main` | `'main'` | primary, home tab |
 | aside, slot | `aside / slot` | `'aside'` | panel as a role |

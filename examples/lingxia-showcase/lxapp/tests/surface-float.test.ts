@@ -11,7 +11,7 @@ const same = (a: number[], b: number[]) => a.every((channel, i) => Math.abs(chan
 // while that page navigates, and it sits above the page's own top layer. Read from the composited
 // screen, since each sits on its own surface.
 test('a float outlives its opener navigating away and stays above a page dialog', {
-  id: 'SURFACE-FLOAT-STACK-001', covers: ['lx.surface.openPage', 'view:dialog'],
+  id: 'SURFACE-FLOAT-STACK-001', covers: ['lx.surface.open', 'view:dialog'],
   requires: { args: ['androidDevice'] }, reason: 'reads the composited screen through the Android device fixture',
   start: openUnderTabs('sheet'),
 }, async (t) => {
@@ -20,13 +20,13 @@ test('a float outlives its opener navigating away and stays above a page dialog'
   const key = `surface-float-stack-${Date.now()}`;
   try {
     await app.logic.eval(async ({ lx }, key) => {
-      await lx.surface.openPage('surface', { as: 'float', key }).opened;
+      await lx.surface.open({ page: 'surface' }, { as: 'float', key }).opened;
     }, key);
     await expect((await app.page({ name: 'surface' })).view.testId('surface-counter')).toBeVisible();
 
     await app.nav.go({ page: 'motion-target' });
     await app.nav.back();
-    expect(await app.logic.eval(({ lx }, key) => lx.surface.get(key)?.alive === true, key)).toBe(true);
+    expect(await app.logic.eval(({ lx }, key) => lx.surface.get({ key })?.alive === true, key)).toBe(true);
     await expect((await app.page({ name: 'surface' })).view.testId('surface-counter')).toBeVisible();
 
     const float = (await device.nodes()).filter(node => /:id\/surface-(query|show-count|hide-count|lifecycle)$/.test(node.resource));
@@ -49,7 +49,7 @@ test('a float outlives its opener navigating away and stays above a page dialog'
       expect(same(before[i], after[i]), `float pixel ${i} unchanged by the page dialog`).toBe(true);
   } finally {
     await app.logic.eval(async ({ lx }, key) => {
-      const surface = lx.surface.get(key);
+      const surface = lx.surface.get({ key });
       if (surface?.kind === 'page') await surface.close();
     }, key);
   }
@@ -109,7 +109,7 @@ async function decodePng(base64: string): Promise<{ width: number; height: numbe
 // The host screenshot composites every window: a modal float shows its card, and around it the
 // page under a scrim rather than the float window's opaque snapshot.
 test('a host screenshot shows the page dimmed around a modal float card', {
-  id: 'SURFACE-FLOAT-SHOT-001', covers: ['lx.surface.openPage'],
+  id: 'SURFACE-FLOAT-SHOT-001', covers: ['lx.surface.open'],
   start: { page: 'view' },
 }, async (t) => {
   const app = t.app;
@@ -125,7 +125,7 @@ test('a host screenshot shows the page dimmed around a modal float card', {
   expect(lit.length, 'the GPU page is in the screenshot, not black').toBeGreaterThan(4);
   try {
     await app.logic.eval(async ({ lx }, key) => {
-      await lx.surface.openPage('surface', { as: 'float', key, size: { width: '60%', height: '40%' }, interaction: { modal: true } }).opened;
+      await lx.surface.open({ page: 'surface' }, { as: 'float', key, size: { width: '60%', height: '40%' }, interaction: { modal: true } }).opened;
     }, key);
     await expect((await app.page({ name: 'surface' })).view.testId('surface-counter')).toBeAttached();
     await new Promise<void>(resolve => setTimeout(() => resolve(), 600));
@@ -139,7 +139,7 @@ test('a host screenshot shows the page dimmed around a modal float card', {
     expect(card.some(v => v > 60), `the card's GPU page is drawn: ${card}`).toBe(true);
   } finally {
     await app.logic.eval(async ({ lx }, key) => {
-      const surface = lx.surface.get(key);
+      const surface = lx.surface.get({ key });
       if (surface?.kind === 'page') await surface.close();
     }, key);
   }

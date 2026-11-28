@@ -143,7 +143,7 @@ process-wide and **not reentrant**, ingress checks must obey
 - **Ownership**: page ownership and path pins follow
   [`lxapp-container.md`](lxapp-container.md#4-page-ownership-navigation-queue-and-stack-rules). An **isolated surface instance** is never
   path-pinned, so an overlay or window at `/home` never replaces a main or tab page at that route.
-  Because the opener is awaiting `lx.surface.openPage` on its JS worker, the opener creates the
+  Because the opener is awaiting `lx.surface.open({ page })` on its JS worker, the opener creates the
   isolated page's Logic service first, and WebView setup waits (bounded) for it before loading the
   page HTML so the worker channel cannot deadlock.
 - **Page owner and dual surface cascades**: each `PageInstance` records its owner (a page, a

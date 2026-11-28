@@ -35,7 +35,7 @@ async function applyHostChrome(os: typeof lx.host.info.os) {
       icon: 'public/sidebar-downloads.svg',
       label: t('app.sidebar.downloads'),
       onSelect: () => {
-        void lx.surface.openApp('app.lingxia.browser', { page: 'downloads' })
+        void lx.surface.open({ app: 'app.lingxia.browser', page: 'downloads' })
           .catch((error) => console.warn('downloads action failed', error));
       },
     },
@@ -45,7 +45,7 @@ async function applyHostChrome(os: typeof lx.host.info.os) {
       icon: 'public/sidebar-chat.svg',
       label: t('app.sidebar.chat'),
       onSelect: () => {
-        void lx.surface.openDeclared('lingxia-showcase-web')
+        void lx.surface.open({ declared: 'lingxia-showcase-web' })
           .catch((error) => console.warn('chat action failed', error));
       },
     },
@@ -57,7 +57,7 @@ async function applyHostChrome(os: typeof lx.host.info.os) {
       icon: 'public/sidebar-terminal-settings.svg',
       label: t('app.sidebar.terminalSettings'),
       onSelect: () => {
-        void lx.surface.openApp('app.lingxia.terminal-settings', { as: 'aside', edge: 'right' })
+        void lx.surface.open({ app: 'app.lingxia.terminal-settings' }, { as: 'aside', edge: 'right' })
           .catch((error) => console.warn('terminal settings action failed', error));
       },
     });
@@ -67,7 +67,7 @@ async function applyHostChrome(os: typeof lx.host.info.os) {
       icon: 'public/sidebar-terminal.svg',
       label: t('app.sidebar.terminal'),
       onSelect: () => {
-        void lx.surface.openDeclared('terminal')
+        void lx.surface.open({ declared: 'terminal' })
           .catch((error) => console.warn('terminal action failed', error));
       },
     });

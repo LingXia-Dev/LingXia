@@ -144,6 +144,7 @@ export type PageTarget<N = ConfiguredPageName> = {
     tab?: never;
     app?: never;
     url?: never;
+    declared?: never;
 }
     & ({} extends NavParams<N> ? {
         /** The page's params, as its `definePage` declares them. */
@@ -168,6 +169,7 @@ export type TabTarget<N = TabName> = {
     page?: never;
     app?: never;
     url?: never;
+    declared?: never;
     /** The tab page's params from now on, handed to its `onShow` for this switch; a tab not created yet also loads with them. */
     params?: TabParams<N>;
 };
@@ -177,7 +179,7 @@ export type TabParams<N> = {} extends NavParams<N> ? NavParams<N>
     : { 'LingXia type error': `tab '${N & string}' declares a required param; a tab's params must all be optional` };
 
 /**
- * A page's handle, returned at once by `lx.nav.go` and `lx.surface.openPage`.
+ * A page's handle, returned at once by `lx.nav.go` and `lx.surface.open`.
  * It is not a promise: await `.opened` to wait for the page.
  */
 export type PageHandle<R = JsonValue, M = never> = {
@@ -215,10 +217,66 @@ export type PageSurface<R = JsonValue, M = never> = PageHandle<R, M> & Omit<Surf
     readonly realized: 'float' | 'window';
 };
 
-/** `openPage`'s options with the page's params, required when the page declares a required param. */
-export type OpenPageArgs<N> = {} extends NavParams<N>
-    ? [options?: OpenPageOptions & { params?: NavParams<N> }]
-    : [options: OpenPageOptions & { params: NavParams<N> }];
+/** A surface `lingxia.yaml` declares, as `lx.surface.open` and `lx.surface.get` name it. */
+export type DeclaredTarget = {
+    /** The declaration's id. */
+    declared: string;
+    page?: never;
+    tab?: never;
+    app?: never;
+    url?: never;
+    params?: never;
+};
+
+/** What `lx.surface.open` shows: `lx.nav.go`'s page, app and URL targets, or a declared surface. */
+export type SurfaceTarget = PageTarget | AppTarget | UrlTarget | DeclaredTarget;
+
+/** The options `lx.surface.open` takes for target `T`: where and how it shows. */
+export type SurfaceOpenOptions<T> = T extends { declared: string } ? OpenDeclaredOptions
+    : T extends { url: string | URL } ? OpenUrlOptions
+    : T extends { app: string } ? OpenAppOptions
+    : OpenPageOptions;
+
+/** What `lx.surface.open` returns for target `T`: a page's handle at once, any other once it is open. */
+export type SurfaceOpened<T> = T extends { declared: string } ? Promise<DeclaredSurface | AppSurface>
+    : T extends { url: string | URL } ? Promise<TabSurface>
+    : T extends { app: string } ? Promise<AppSurface>
+    : T extends { page: infer N } ? PageSurface<NavResult<N>, NavMessages<N>>
+    : never;
+
+/** `T` exactly as its target shape: a key that shape lacks is an error, and a page's required params are required. */
+export type CheckedSurfaceTarget<T> = T extends { declared: string } ? ExactTarget<T, DeclaredTarget>
+    : T extends { url: string | URL } ? ExactTarget<T, UrlTarget>
+    : T extends { app: string } ? ExactTarget<T, AppTarget>
+    : T extends { page: infer N } ? ExactTarget<T, PageTarget<N>>
+    : SurfaceTarget;
+
+/** How `lx.surface.get` finds a live surface: by the `key` it opened with, an lxapp's id, or a declaration. */
+export type SurfaceQuery = {
+    /** The caller-owned key a page or URL opened with. */
+    key: string;
+    app?: never;
+    declared?: never;
+} | {
+    /** An lxapp live as a surface of its own, declared or not. Control app only. */
+    app: string;
+    key?: never;
+    declared?: never;
+} | {
+    /** A declaration's id. Control app only. */
+    declared: string;
+    /** Which instance, as `open({ declared }, { key })` named it. */
+    key?: string;
+    app?: never;
+};
+
+/** What `lx.surface.get` finds for query `Q`, or `undefined` when it is not live. */
+export type SurfaceFound<Q> = (Q extends { declared: string } ? DeclaredSurface | AppSurface
+    : Q extends { app: string } ? AppSurface
+    : PageSurface | TabSurface) | undefined;
+
+/** `T` with every key `Shape` lacks typed `never`, so the stray key is the one reported. */
+type ExactTarget<T, Shape> = Shape & { [K in Exclude<keyof T, keyof Shape>]: never };
 
 /** Arguments `lx.app.t` takes for a message: its tags keep their text, so they take nothing. */
 type LogicMessageArgs<A> = { [P in keyof A as A[P] extends (...args: any) => any ? never : P]: A[P] };
@@ -269,19 +327,32 @@ declare global {
   /** `lx.surface`: open pages, other lxapps, URLs and declared surfaces beside or over the main area. */
   interface SurfaceApi {
     /**
-     * Open one of this lxapp's pages as a float or a window. Returns at once;
-     * await `.opened` to wait for the page.
-     * @example
-     * ```ts
-     * const sheet = lx.surface.openPage('settings', { as: 'float' });
-     * await sheet.opened;
-     * ```
-     * @throws {E_INVALID_ARG} Malformed options.
+     * Show `target` (in `lx.nav.go`'s shapes) beside or over the main area; `options` say where.
+     * A page returns its handle at once (await `.opened`); a URL, another lxapp (Control app only)
+     * or a `lingxia.yaml` declaration resolves once shown.
+     * @throws {E_INVALID_ARG} A target that is not exactly one of the shapes, or an option that target does not take.
      * @supports surface.window
      * @throws {E_NOT_SUPPORTED} `as: 'window'` where the host has no windows; `reason` is `'placementUnsupported'`.
-     * @throws {E_NOT_FOUND} A page the app does not declare.
+     * @throws {E_NOT_FOUND} A page the app does not declare, an lxapp that cannot be installed, or no such declaration.
+     * @throws {E_PERMISSION_DENIED} An `app` target, or a declaration's `key`, `as` or `edge`, from an lxapp other than the Control app; or the app is taken down (`reason` is `'appUnderMaintenance'` or `'appSuspended'`).
+     * @throws {E_SURFACE_ROLE_LOCKED} The root main surface asked to change role.
+     * @throws {E_SURFACE_CONFLICT} The lxapp is already open in the other role; `reason` is `'appOpenInOtherRole'`.
+     * @throws {E_CAPABILITY_MISSING} A `key` on a declaration whose native provider cannot make instances.
      */
-    openPage<N extends ConfiguredPageName>(page: N, ...options: OpenPageArgs<N>): PageSurface<NavResult<N>, NavMessages<N>>;
+    open<T extends SurfaceTarget>(target: T & CheckedSurfaceTarget<T>, options?: SurfaceOpenOptions<T>): SurfaceOpened<T>;
+    /**
+     * A live surface: one of this lxapp's pages or tabs by the `key` it opened with, an lxapp
+     * live as a surface of its own, or a declaration (or its keyed instance). The same handle
+     * every call; `undefined` when it is not live. `app` and `declared` are the Control app's.
+     * @example
+     * ```ts
+     * lx.surface.open({ page: 'player' }, { as: 'float', key: 'player' });
+     * const live = lx.surface.get({ key: 'player' })?.visible ?? false;
+     * ```
+     * @throws {E_PERMISSION_DENIED} `app` or `declared` from an lxapp other than the Control app.
+     * @throws {E_INVALID_ARG} A query that is not exactly one of the shapes, or a `key` outside 1 to 128 UTF-8 bytes.
+     */
+    get<Q extends SurfaceQuery>(query: Q): SurfaceFound<Q>;
   }
 
   /** `lx.nav`: move this lxapp's page stack, or leave it for a tab, another app or a URL. */

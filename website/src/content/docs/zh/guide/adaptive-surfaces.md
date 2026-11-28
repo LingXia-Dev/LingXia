@@ -76,14 +76,14 @@ lxapp 的 View 从 `env.sizeClass`、Logic 从 `page.env.sizeClass` 读取自己
 
 ## 运行时打开 surface
 
-`lx.surface` 按方法选择行为：
+`lx.surface.open` 的目标说明显示什么（与 `lx.nav.go` 相同的目标形状），选项说明显示在哪里：
 
 ```ts
-lx.surface.openDeclared('assistant')
-lx.surface.openUrl('https://example.com')
-lx.surface.openUrl('https://example.com', { as: 'aside' })
-lx.surface.openPage('inspector', { as: 'float' })
-lx.surface.openPage('editor', { as: 'window', chrome: 'full' })
+lx.surface.open({ declared: 'assistant' })
+lx.surface.open({ url: 'https://example.com' })
+lx.surface.open({ url: 'https://example.com' }, { as: 'aside' })
+lx.surface.open({ page: 'inspector' }, { as: 'float' })
+lx.surface.open({ page: 'editor' }, { as: 'window', chrome: 'full' })
 
 // Logic（在页面中）：仅当 Logic 自己要根据尺寸类别做事时才订阅。
 // sizeClass 或 canDock 变化时调用；页面卸载时自动停止。
@@ -93,12 +93,12 @@ page.env.watch(({ sizeClass }) => { /* … */ })
 View 直接用 `@lingxia/react` 的 `useLxHost().sizeClass` 读取同一个尺寸类别，
 无需订阅，也无需 `setData`。它只在尺寸类别变化时才变；精确宽度交给 CSS 与容器查询。
 
-- `openDeclared(id)` 打开 `lingxia.yaml` 声明的内容；`id` 是该声明的内容 identity。
-- `openUrl(url)` 打开普通应用内浏览器标签；`{ as: 'aside' }` 把浏览器停靠为 aside。
-- `openPage(page)` 把**本** lxapp 的页面作为无 chrome 的 `float`，或桌面 `window` 打开。页面不能成为 `aside`——自己的侧栏面板应声明为 lxapp surface。
+- `{ declared: id }` 打开 `lingxia.yaml` 声明的内容；`id` 是该声明的内容 identity。
+- `{ url }` 打开普通应用内浏览器标签；`{ as: 'aside' }` 把浏览器停靠为 aside。
+- `{ page }` 把**本** lxapp 的页面作为无 chrome 的 `float`，或桌面 `window` 打开。页面不能成为 `aside`——自己的侧栏面板应声明为 lxapp surface。
 - 提供贴边窗口前先问 `lx.supports('surface.window.fullChrome')`。自定义 chrome 用 `var(--lx-page-chrome-top-inset)` 留白。
 - `hide()` 保留状态，`close()` 销毁 surface。page overlay 的 form 在打开时确定，已声明 surface 则继续随 shell 自适应。
-- `lx.surface.get(key)` 只返回本 lxapp **带 `key` 打开**的页面与 URL 句柄。Control app 用 `lx.shell.getApp(appId)` 查找存活的应用，用 `lx.shell.getDeclared(id, key?)` 查找已声明 surface；句柄不携带运行时 id。
+- `lx.surface.get({ key })` 只返回本 lxapp **带 `key` 打开**的页面与 URL 句柄。Control app 用 `lx.surface.get({ app })` 查找存活的应用，用 `lx.surface.get({ declared, key? })` 查找已声明 surface；句柄不携带运行时 id。
 
 `lx.openSurface`、`lx.onSurfaceContext` 与 `lx.surface.watchContext` 已不存在。
 

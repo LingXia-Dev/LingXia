@@ -233,7 +233,7 @@ fn active_runtime_page_by_path<'a>(
         })
         // A window/float page is isolated: not on the nav stack and never
         // "current". Without this, `page: 'surface'` cannot drive a page that
-        // `lx.surface.openPage(..., { as: 'window' })` just opened. Only a
+        // `lx.surface.open({ page }, { as: 'window' })` just opened. Only a
         // page-owned instance qualifies — that owner is what makes an instance
         // isolated — and only while it is mounted or visible, so a torn-down
         // or hidden instance can never stand in for a live one. Instance ids
@@ -1657,7 +1657,7 @@ mod tests {
     }
 
     /// An isolated surface instance: page-owned, off the nav stack, never
-    /// "current" — what `lx.surface.openPage(..., { as: 'window' })` leaves
+    /// "current" — what `lx.surface.open({ page }, { as: 'window' })` leaves
     /// behind.
     fn surface_runtime_page(
         instance_id: &str,

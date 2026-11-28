@@ -19,8 +19,8 @@ export default definePage({
         try {
           const url = 'https://www.deepseek.com/';
           if (choice.id === 'external') await lx.openExternal(url);
-          else if (choice.id === 'aside') await lx.surface.openUrl(url, { as: 'aside' });
-          else await lx.surface.openUrl(url);
+          else if (choice.id === 'aside') await lx.surface.open({ url }, { as: 'aside' });
+          else await lx.surface.open({ url });
         } catch (error) {
           await lx.ui.toast(failureText(error, lx.app.t('api.openPageFailed')));
         }

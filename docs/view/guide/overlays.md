@@ -104,8 +104,8 @@ takes the same steps.
 
 ## Floats and windows
 
-Use `<dialog>` and popovers for anything that belongs to the page. `lx.surface.openPage(page, { as:
-'float' })` opens another page as a surface of its own, outside the page that opened it: keep it for
+Use `<dialog>` and popovers for anything that belongs to the page. `lx.surface.open({ page }, {
+as: 'float' })` opens another page as a surface of its own, outside the page that opened it: keep it for
 content that must stay on screen across pages, like a mini player. A float or window always sits
 above the page and its top layer, so a page's dialog never covers it.
 

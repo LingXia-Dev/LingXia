@@ -144,7 +144,7 @@ export default definePage({
       // reusing a key without closing first leaves the old one on screen with
       // nothing pointing at it.
       async releaseDemoSurfaceKey(key: string) {
-        const existing = lx.surface.get(key);
+        const existing = lx.surface.get({ key });
         if (!existing || !("close" in existing)) return;
         try {
           await existing.close();
@@ -159,7 +159,7 @@ export default definePage({
       ) {
         if (verb === "lxapp") {
           // Another lxapp docked beside the main page; a live app is reused.
-          return lx.surface.openApp("lingxia-showcase-web", {
+          return lx.surface.open({ app: "lingxia-showcase-web" }, {
             as: "aside",
             edge: cfg.edge ?? "right",
           });
@@ -174,7 +174,7 @@ export default definePage({
           ];
           const idx = (asideTabIndex || 0) % demoUrls.length;
           asideTabIndex = (asideTabIndex || 0) + 1;
-          return lx.surface.openUrl(cfg.url ?? demoUrls[idx], {
+          return lx.surface.open({ url: cfg.url ?? demoUrls[idx] }, {
             as: "aside",
             edge: cfg.edge ?? "right",
             size,
@@ -189,7 +189,7 @@ export default definePage({
           const wantsFull = cfg.chrome !== "system"
             && lx.supports('surface.window.fullChrome');
           const chrome = wantsFull ? ("full" as const) : ("system" as const);
-          const window = lx.surface.openPage("surface", {
+          const window = lx.surface.open({ page: "surface" }, {
             as: "window",
             chrome,
             key: DEMO_PAGE_SURFACE_KEY,
@@ -198,7 +198,7 @@ export default definePage({
           await window.opened;
           return window;
         }
-        const float = lx.surface.openPage("surface", {
+        const float = lx.surface.open({ page: "surface" }, {
           as: "float",
           position: cfg.position ?? "center",
           key: DEMO_PAGE_SURFACE_KEY,
@@ -408,8 +408,8 @@ export default definePage({
         }
       },
       async showActiveSurface() {
-        // `lx.surface.get(key)` finds the live surface, so no handle is cached.
-        const surface = lx.surface.get(DEMO_PAGE_SURFACE_KEY);
+        // `lx.surface.get({ key })` finds the live surface, so no handle is cached.
+        const surface = lx.surface.get({ key: DEMO_PAGE_SURFACE_KEY });
         // The demo only ever opens its own page as a surface.
         if (surface?.kind !== "page") {
           return;
@@ -429,7 +429,7 @@ export default definePage({
         }
       },
       async hideActiveSurface() {
-        const surface = lx.surface.get(DEMO_PAGE_SURFACE_KEY);
+        const surface = lx.surface.get({ key: DEMO_PAGE_SURFACE_KEY });
         if (surface?.kind !== "page") {
           return;
         }
@@ -448,7 +448,7 @@ export default definePage({
         }
       },
       async closeActiveSurface() {
-        const surface = lx.surface.get(DEMO_PAGE_SURFACE_KEY);
+        const surface = lx.surface.get({ key: DEMO_PAGE_SURFACE_KEY });
         if (!surface || !("close" in surface)) {
           return;
         }
@@ -459,7 +459,7 @@ export default definePage({
         }
       },
       sendToSurface({ message }: { message: string }) {
-        const surface = lx.surface.get(DEMO_PAGE_SURFACE_KEY);
+        const surface = lx.surface.get({ key: DEMO_PAGE_SURFACE_KEY });
         if (surface?.kind === "page") surface.send({ message });
       },
       // Show modal with custom parameters

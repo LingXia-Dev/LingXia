@@ -183,12 +183,12 @@ export default definePage({
       },
       // Desktop only (the View gates it): the host declares the terminal and its placement.
       async onOpenTerminal() {
-        await lx.surface.openDeclared('terminal');
+        await lx.surface.open({ declared: 'terminal' });
       },
       // The start host must be in the host's domain grant; a denial must not take the page down.
       async onOpenBrowser() {
         try {
-          await lx.surface.openUrl('https://www.deepseek.com');
+          await lx.surface.open({ url: 'https://www.deepseek.com' });
         } catch (error) {
           console.error('openBrowser failed', error);
         }

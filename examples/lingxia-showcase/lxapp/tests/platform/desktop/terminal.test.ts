@@ -59,12 +59,12 @@ async function closeHandles(app: TestApp, key: string): Promise<void> {
 test('publishes and mutates the native nested pane tree without deferred layout', {
   id: 'DESKTOP-TERMINAL-001',
   timeout: 90_000,
-  covers: ['lx.surface.openDeclared', 'lx.host.terminal'],
+  covers: ['lx.surface.open', 'lx.host.terminal'],
 }, async (t) => {
   const app = t.automation.lxapp(SHOWCASE_APP_ID);
   const token = `automation-terminal-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   await app.logic.eval({ timeout: 20_000 }, async ({ lx }, token) => {
-    const handle = await lx.surface.openDeclared('terminal', { key: token, as: 'main' });
+    const handle = await lx.surface.open({ declared: 'terminal' }, { key: token, as: 'main' });
     (globalThis as unknown as Record<string, unknown>).__terminalAutomationHandles = { terminal: handle };
   }, token);
   const surfaceId = await terminalSurfaceId(app, token);
@@ -113,14 +113,14 @@ test('publishes and mutates the native nested pane tree without deferred layout'
 test('keeps a maximized terminal maximized when a tab opens', {
   id: 'DESKTOP-TERMINAL-002',
   timeout: 90_000,
-  covers: ['lx.surface.openDeclared'],
+  covers: ['lx.surface.open'],
 }, async (t) => {
   const app = t.automation.lxapp(SHOWCASE_APP_ID);
   const token = `automation-terminal-tab-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   // An aside is the shape that can be maximized: `main` already fills the
   // content area, so it could not show the state being clobbered.
   await app.logic.eval({ timeout: 20_000 }, async ({ lx }, token) => {
-    const handle = await lx.surface.openDeclared('terminal', { key: token, as: 'aside', edge: 'bottom' });
+    const handle = await lx.surface.open({ declared: 'terminal' }, { key: token, as: 'aside', edge: 'bottom' });
     (globalThis as unknown as Record<string, unknown>).__terminalTabAutomationHandles = { terminal: handle };
   }, token);
   const surfaceId = await terminalSurfaceId(app, token);
@@ -150,7 +150,7 @@ test('keeps a maximized terminal maximized when a tab opens', {
 test('applies a chosen color scheme to native chrome at once', {
   id: 'DESKTOP-TERMINAL-003',
   timeout: 90_000,
-  covers: ['lx.surface.openDeclared', 'lx.surface.openApp'],
+  covers: ['lx.surface.open'],
 }, async (t) => {
   const app = t.automation.lxapp(SHOWCASE_APP_ID);
   const token = `automation-terminal-theme-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -158,14 +158,14 @@ test('applies a chosen color scheme to native chrome at once', {
   // out, which says nothing about which surface never settled — and a native
   // surface and a bundled lxapp settle along different paths.
   await app.logic.eval({ timeout: 20_000 }, async ({ lx }, token) => {
-    const terminal = await lx.surface.openDeclared('terminal', { key: token, as: 'main' });
+    const terminal = await lx.surface.open({ declared: 'terminal' }, { key: token, as: 'main' });
     (globalThis as unknown as Record<string, unknown>).__terminalThemeAutomationHandles = { terminal };
   }, token);
   const terminalId = await terminalSurfaceId(app, token);
   // Opening a bundled lxapp aside has to reach the host and come back, so it
   // is slower than the native surface above and pays a cold start on CI.
   await app.logic.eval({ timeout: 60_000 }, async ({ lx }, settingsAppId) => {
-    const settings = await lx.surface.openApp(settingsAppId, { as: 'aside', edge: 'right' });
+    const settings = await lx.surface.open({ app: settingsAppId }, { as: 'aside', edge: 'right' });
     const held = globalThis as unknown as Record<string, Record<string, unknown>>;
     held.__terminalThemeAutomationHandles.settings = settings;
   }, SETTINGS_APP_ID);
