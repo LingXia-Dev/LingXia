@@ -93,14 +93,7 @@ appLinks:
   hosts:
     - applink.lingxia.app
 
-theme:
-  light:
-    pageBackgroundColor: "#F6F7FB"
-  dark:
-    pageBackgroundColor: "#121C30"
-
 splash:
-  background: "#171C22"
   image: design/splash.png
   mark: design/splash-mark.png
 
