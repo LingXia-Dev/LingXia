@@ -194,4 +194,25 @@ mod tests {
                 .unwrap();
         assert_eq!(manifest.version.as_deref(), Some("2.0.0"));
     }
+
+    /// Audiences live in the generated registry; every route is browser-control only.
+    #[test]
+    fn framework_routes_are_browser_control_only() {
+        let registry = include_str!(concat!(env!("OUT_DIR"), "/lingxia_native_handlers.rs"));
+        let entries: Vec<&str> = registry
+            .lines()
+            .filter(|line| line.contains("register_host_entry("))
+            .collect();
+        assert!(entries.len() > 40, "{registry}");
+        for entry in entries {
+            let pins = entry.contains("(\"shell\", \"pins\"")
+                || entry.contains("(\"shell\", \"reorderPins\"");
+            let audience = if pins {
+                "RouteAudience::ControlAppOrSurface)"
+            } else {
+                "RouteAudience::ControlSurfaceOnly)"
+            };
+            assert!(entry.ends_with(&format!("{audience});")), "{entry}");
+        }
+    }
 }

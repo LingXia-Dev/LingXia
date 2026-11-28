@@ -1,9 +1,9 @@
 # Native development
 
 The Rust side of a host app: the `HostAddon`, `#[lingxia::native]` routes
-(callable from Logic and WebView Views), synchronous routes, per-page
-`PageState<T>`, the generated `@lingxia/native` client, and `lingxia::*`
-facades.
+(callable from Logic and WebView Views), synchronous routes, route state
+(`PageState<T>`, `LxAppState<T>`, `Host<A>`), the generated `@lingxia/native`
+client, and `lingxia::*` facades.
 
 ## Host addon
 
@@ -37,7 +37,9 @@ impl lingxia::HostAddon for AppHostAddon {
 ```
 
 `host!` starts the `lingxia dev` session bridge when the crate's `devtools`
-feature is on; `start_services` is only for the product's own services.
+feature is on; `start_services` is only for the product's own services. Its
+leading name is the addon's type; pass a value after it when the addon has
+fields: `lingxia::host!(AppHostAddon::new())`.
 
 - `install_product_cli` is the only pre-runtime command hook; its request
   handler goes in `install_host_apis` ([Driving a shipped product](../app/agent-control.md)).
@@ -80,7 +82,8 @@ Parameters are recognized by type, in any order, all optional:
   `lingxia::host::HostInvocationContext` to authorize app-owned or granted
   resources;
 - `lingxia::host::HostCancel` (unary only);
-- `PageState<T>` (unary only);
+- route state: `PageState<T>` (unary only), `lingxia::LxAppState<T>`,
+  `lingxia::Host<A>` ([Route state](#route-state));
 - `lingxia::Progress<E>` (required by `stream`) or `ChannelContext` (required by
   `channel`);
 - anything else is the JSON payload (`serde::Deserialize`). Only one: a
@@ -145,13 +148,32 @@ union, and `isNativeError(e, "NOT_FOUND")` narrows `e.data` to `{ id: number }`.
 The scaffold's `build.rs` (`lingxia_native_codegen::build()`) registers every
 `#[lingxia::native]` fn in `src/`, in any module, with its `#[cfg]`s; routes are
 installed before `install_host_apis`. A route in a module the crate root cannot
-reach (nested inside a private module) fails the build with the fix, as does a
-duplicate route name.
+reach (nested inside a private module) fails the build with the fix, as do a
+duplicate route name, a route with no namespace, and a second `route_defaults!`.
+
+### Route names and defaults
+
+`lingxia::route_defaults!` at the top of a file sets the namespace and audience
+for the routes after it in that file (not in inline or child modules; one per
+file). A route without a name is the prefix plus its fn name in camelCase
+(`set_pinned` → `bookmarks.setPinned`); a name without a dot goes under the
+prefix; a name with a dot is absolute. Two routes resolving to one name fail the
+build with both locations:
+
+```rust
+lingxia::route_defaults!(prefix = "bookmarks", audience = "control-surface-only");
+
+#[lingxia::native]                 // "bookmarks.setPinned"
+fn set_pinned(input: PinInput) -> lingxia::Result<()> { Ok(()) }
+
+#[lingxia::native("export_html")]  // "bookmarks.export_html"
+fn export() -> lingxia::Result<String> { Ok(String::new()) }
+```
 
 ### Route audience
 
 `audience` restricts the caller class (see [Control app](../app/control-app.md));
-omitted, it is `app-session-only`:
+omitted on the route and in `route_defaults!`, it is `app-session-only`:
 
 ```rust
 #[lingxia::native("host.setAccount", audience = "control-app-only")]
@@ -174,7 +196,7 @@ fn host_status() -> lingxia::Result<String> {
 
 `control-app-only` excludes control surfaces. An audience limits the caller,
 not what the route may change. An unknown or duplicate `audience` is a compile
-error.
+error; a route's own `audience` overrides the file default.
 
 ### Cancellation
 
@@ -309,6 +331,32 @@ export default definePage({
 and returns `T`, not `Promise<T>`, in Logic. Keep it short and I/O-free
 (formatting, validation, parsing); dev builds warn above 8 ms. It cannot take
 `HostCancel`.
+
+### Route state
+
+- Per page: `PageState<T>`, below.
+- Per lxapp: `lingxia::LxAppState<T>` gives `&T`, opened by `T: lingxia::FromLxApp`
+  on first use and dropped when the lxapp closes. Concurrent first calls share
+  one `open`; a failed `open` fails that call and the next call retries. There
+  is no lock, so `T` brings its own interior mutability. Not on `sync` routes.
+  State that starts empty needs no `open`: `#[derive(Default, lingxia::FromLxApp)]`.
+- Per host: `lingxia::Host<A>` gives `&A`, the addon passed to `host!`; naming
+  another type is a compile error.
+
+```rust
+pub struct Notes { db: Pool }
+
+impl lingxia::FromLxApp for Notes {
+    async fn open(app: &lingxia::LxApp) -> lingxia::Result<Self> {
+        Ok(Notes { db: Pool::open(app.app_data_dir().join("notes.db"))? })
+    }
+}
+
+#[lingxia::native("notes.list")]
+async fn list(notes: lingxia::LxAppState<Notes>) -> lingxia::Result<Vec<Note>> {
+    notes.db.list().await
+}
+```
 
 ### Per-page Rust state (`PageState<T>`)
 

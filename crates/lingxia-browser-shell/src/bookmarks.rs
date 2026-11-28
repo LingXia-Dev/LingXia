@@ -1368,31 +1368,4 @@ mod tests {
         assert_eq!(snapshot.groups.len(), 1);
         assert_eq!(snapshot.entries[1].created_at_ms, 42_000);
     }
-
-    #[test]
-    fn framework_routes_are_browser_control_only() {
-        for route in [
-            list_bookmarks_host(),
-            add_bookmark_host(),
-            remove_bookmark_host(),
-            toggle_bookmark_route_host(),
-            bookmark_status_host(),
-            rename_bookmark_host(),
-            move_bookmark_host(),
-            reorder_bookmarks_host(),
-            set_pinned_host(),
-            create_group_host(),
-            rename_group_host(),
-            delete_group_host(),
-            reorder_groups_host(),
-            import_html_bookmarks_host(),
-            export_html_bookmarks_host(),
-            watch_bookmarks_host(),
-        ] {
-            assert_eq!(
-                route.audience(),
-                lxapp::host::RouteAudience::ControlSurfaceOnly
-            );
-        }
-    }
 }

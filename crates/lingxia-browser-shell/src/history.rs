@@ -585,19 +585,4 @@ mod tests {
         let header = std::fs::read(history_path(dir.path())).unwrap();
         assert!(header.starts_with(b"SQLite format 3\0"));
     }
-
-    #[test]
-    fn framework_routes_are_browser_control_only() {
-        for route in [
-            list_history_host(),
-            remove_history_entry_host(),
-            clear_history_host(),
-            watch_history_host(),
-        ] {
-            assert_eq!(
-                route.audience(),
-                lxapp::host::RouteAudience::ControlSurfaceOnly
-            );
-        }
-    }
 }

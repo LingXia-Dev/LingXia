@@ -453,7 +453,8 @@ cloud = []
     fn host_template_calls_its_own_route() {
         let source = include_str!("../../../templates/native/src/lib.rs");
         let manifest = include_str!("../../../templates/native/Cargo.toml.template");
-        assert!(source.contains("#[lingxia::native(\"hello.greet\")]"));
+        assert!(source.contains("lingxia::route_defaults!(prefix = \"hello\");"));
+        assert!(source.contains("#[lingxia::native]\nfn greet("));
         assert!(manifest.contains("serde = { version = \"1\", features = [\"derive\"] }"));
         // `host!` starts the dev session; the addon carries only product services.
         assert!(!source.contains("start_dev_session_bridge_from_env"));

@@ -1,8 +1,9 @@
 //! Code generation for `#[lingxia::native]` host handlers.
 //!
-//! Scans Rust source files for `#[lingxia::native("route", ...)]` handlers and
-//! their DTO types (`struct`, `enum`, `type`). The lingxia CLI writes the clients
-//! an lxapp imports; the crate's build script writes the Rust registry:
+//! Scans Rust source files for `#[lingxia::native]` handlers, each file's
+//! `route_defaults!`, and their DTO types (`struct`, `enum`, `type`). The lingxia CLI
+//! writes the clients an lxapp imports; the crate's build script writes the Rust
+//! registry, which supplies each route's name and audience:
 //!
 //! - `native.logic.ts` — Logic client (`sync`, `NativeTask`, `NativeChannel`, `createNative(pageId)`)
 //! - `native.view.ts` — WebView View client over `@lingxia/bridge`, same shapes
@@ -21,7 +22,10 @@ use anyhow::{Context, Result, anyhow, bail};
 use syn::ext::IdentExt;
 use syn::punctuated::Punctuated;
 use syn::{Attribute, Expr, Fields, ItemEnum, ItemFn, ItemStruct, Lit, ReturnType, Token};
-use syntax::{Shape, classify, watch_event};
+use syntax::{
+    RouteAttr, RouteAudience, RouteDefaults, Shape, classify, parse_route_attr,
+    parse_route_defaults, resolve_route_name, watch_event,
+};
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -178,6 +182,7 @@ impl SourceLoc {
 #[derive(Debug, Clone)]
 struct NativeRoute {
     route: String,
+    audience: RouteAudience,
     kind: RouteKind,
     input: Option<String>,
     output: Option<String>,
@@ -547,6 +552,7 @@ fn scan_file_into(source: &str, file_label: &str, manifest: &mut NativeManifest)
         source,
         file_label,
         &file_module(file_label),
+        true,
         manifest,
     )
 }
@@ -584,26 +590,57 @@ fn item_attrs(item: &syn::Item) -> &[Attribute] {
     }
 }
 
+/// `file_root`: these are a file's top-level items, where `route_defaults!` may stand and
+/// covers the items after it; an inline `mod` starts without defaults.
 fn scan_items(
     items: &[syn::Item],
     source: &str,
     file_label: &str,
     module: &[String],
+    file_root: bool,
     manifest: &mut NativeManifest,
 ) -> Result<()> {
+    let mut defaults: Option<(RouteDefaults, usize)> = None;
     for item in items {
         if is_test_only(item_attrs(item)) {
             continue;
         }
         match item {
+            syn::Item::Macro(item_macro) if is_route_defaults(&item_macro.mac.path) => {
+                let line = source
+                    .lines()
+                    .enumerate()
+                    .filter(|(_, line)| line.contains("route_defaults!"))
+                    .nth(usize::from(defaults.is_some()))
+                    .map_or(0, |(index, _)| index + 1);
+                let located = |message: String| anyhow!("{file_label}:{line}: {message}");
+                if !file_root {
+                    return Err(located(
+                        "route_defaults! goes at the top level of a file; it does not apply inside an inline `mod`".into(),
+                    ));
+                }
+                if let Some((_, first)) = defaults {
+                    return Err(located(format!(
+                        "a second route_defaults! in this file; the first is at line {first}"
+                    )));
+                }
+                let parser = Punctuated::<Expr, Token![,]>::parse_terminated;
+                let parsed = item_macro
+                    .mac
+                    .parse_body_with(parser)
+                    .and_then(|args| parse_route_defaults(&args))
+                    .map_err(|err| located(err.to_string()))?;
+                defaults = Some((parsed, line));
+            }
             syn::Item::Fn(item_fn) => {
-                if let Some((route, kind)) = parse_attr(&item_fn.attrs) {
+                if let Some((attr, framework)) = parse_attr(&item_fn.attrs) {
                     let ident = item_fn.sig.ident.to_string();
                     let loc = SourceLoc {
                         file: file_label.to_string(),
                         line: find_item_line(source, "fn", &ident),
                     };
-                    let mut route = extract_route_info(&route, kind, item_fn, loc)?;
+                    let defaults = defaults.as_ref().map(|(defaults, _)| defaults);
+                    let mut route = extract_route_info(&attr, framework, defaults, item_fn, loc)?;
                     route.module = module.to_vec();
                     manifest.routes.push(route);
                 }
@@ -655,7 +692,7 @@ fn scan_items(
                 let mut inner = module.to_vec();
                 inner.push(item_mod.ident.unraw().to_string());
                 if let Some((_, sub_items)) = &item_mod.content {
-                    scan_items(sub_items, source, file_label, &inner, manifest)?;
+                    scan_items(sub_items, source, file_label, &inner, false, manifest)?;
                 }
                 let decl = ModDecl {
                     vis: ModVis::of(&item_mod.vis),
@@ -682,38 +719,36 @@ fn collect_rs_files(dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
     Ok(())
 }
 
-fn parse_attr(attrs: &[Attribute]) -> Option<(String, RouteKind)> {
-    for attr in attrs {
-        if !is_native_attr(attr) {
-            continue;
+/// The route attribute, and whether it is `framework_native`. An attribute that does not
+/// parse is skipped: the macro reports it at its span.
+fn parse_attr(attrs: &[Attribute]) -> Option<(RouteAttr, bool)> {
+    let attr = attrs.iter().find(|attr| is_native_attr(attr))?;
+    let framework = attr
+        .path()
+        .segments
+        .last()
+        .is_some_and(|last| last.ident == "framework_native");
+    let parser = Punctuated::<Expr, Token![,]>::parse_terminated;
+    let args = match &attr.meta {
+        syn::Meta::Path(_) => Punctuated::new(),
+        meta => meta.require_list().ok()?.parse_args_with(parser).ok()?,
+    };
+    parse_route_attr(&args, "native")
+        .ok()
+        .map(|attr| (attr, framework))
+}
+
+/// `route_defaults!`, bare or as `lingxia::route_defaults!`.
+fn is_route_defaults(path: &syn::Path) -> bool {
+    let mut segments = path.segments.iter().rev();
+    segments
+        .next()
+        .is_some_and(|last| last.ident == "route_defaults")
+        && match (segments.next(), segments.next()) {
+            (None, _) => true,
+            (Some(prefix), None) => prefix.ident == "lingxia",
+            _ => false,
         }
-        let parser = Punctuated::<Expr, Token![,]>::parse_terminated;
-        let args = attr
-            .meta
-            .require_list()
-            .ok()?
-            .parse_args_with(parser)
-            .ok()?;
-        let Expr::Lit(route) = args.first()? else {
-            return None;
-        };
-        let Lit::Str(route) = &route.lit else {
-            return None;
-        };
-        let kind = if args.iter().skip(1).any(is_channel_flag) {
-            RouteKind::Channel
-        } else if args.iter().skip(1).any(is_stream_flag) {
-            RouteKind::Stream
-        } else if args.iter().skip(1).any(|arg| is_flag(arg, "watch")) {
-            RouteKind::Watch
-        } else if args.iter().skip(1).any(is_sync_flag) {
-            RouteKind::SyncCall
-        } else {
-            RouteKind::Call
-        };
-        return Some((route.value(), kind));
-    }
-    None
 }
 
 /// `native` / `framework_native`, bare or as `lingxia::…`.
@@ -732,34 +767,39 @@ fn is_native_attr(attr: &Attribute) -> bool {
         }
 }
 
-fn is_stream_flag(expr: &Expr) -> bool {
-    matches!(expr, Expr::Path(path) if path.path.is_ident("stream"))
-}
-
-fn is_channel_flag(expr: &Expr) -> bool {
-    matches!(expr, Expr::Path(path) if path.path.is_ident("channel"))
-}
-
-fn is_sync_flag(expr: &Expr) -> bool {
-    is_flag(expr, "sync")
-}
-
-fn is_flag(expr: &Expr, name: &str) -> bool {
-    matches!(expr, Expr::Path(path) if path.path.is_ident(name))
-}
-
 fn extract_route_info(
-    route: &str,
-    kind: RouteKind,
+    attr: &RouteAttr,
+    framework: bool,
+    defaults: Option<&RouteDefaults>,
     item_fn: &ItemFn,
     loc: SourceLoc,
 ) -> Result<NativeRoute> {
-    let shape = match kind {
-        RouteKind::Call => Shape::Call,
-        RouteKind::SyncCall => Shape::Sync,
-        RouteKind::Stream => Shape::Stream,
-        RouteKind::Watch => Shape::Watch,
-        RouteKind::Channel => Shape::Channel,
+    let shape = attr.shape;
+    let kind = match shape {
+        Shape::Call => RouteKind::Call,
+        Shape::Sync => RouteKind::SyncCall,
+        Shape::Stream => RouteKind::Stream,
+        Shape::Watch => RouteKind::Watch,
+        Shape::Channel => RouteKind::Channel,
+    };
+    let fn_ident = item_fn.sig.ident.unraw().to_string();
+    let route = resolve_route_name(
+        attr.name.as_ref().map(|name| name.value()).as_deref(),
+        &fn_ident,
+        defaults.and_then(|defaults| defaults.prefix.as_deref()),
+    )
+    .map_err(|err| anyhow!("{}: {err}", loc.display()))?;
+    let route = route.as_str();
+    let audience = match attr
+        .audience
+        .or(defaults.and_then(|defaults| defaults.audience))
+    {
+        Some(audience) => audience,
+        None if framework => bail!(
+            "{}: framework route `{route}` needs `audience = \"…\"`, on the route or in route_defaults!",
+            loc.display()
+        ),
+        None => RouteAudience::AppSessionOnly,
     };
     let located = |err: syn::Error| anyhow!("{}:{} `{route}`: {err}", loc.file, loc.line);
     let params = classify(&item_fn.sig, shape).map_err(located)?;
@@ -788,6 +828,7 @@ fn extract_route_info(
 
     Ok(NativeRoute {
         route: route.to_string(),
+        audience,
         kind,
         input,
         output,
@@ -1490,9 +1531,14 @@ fn render_rust_module(manifest: &NativeManifest) -> Result<String> {
             out.push_str(&format!("        {cfg}\n"));
         }
         let path: String = r.module.iter().map(|m| format!("{m}::")).collect();
+        let (namespace, method) = r
+            .route
+            .rsplit_once('.')
+            .ok_or_else(|| anyhow!("{}: route `{}` has no namespace", r.loc.display(), r.route))?;
         out.push_str(&format!(
-            "        ::lingxia::host::register_host_entry(crate::{path}{}_host());\n",
-            r.fn_ident
+            "        ::lingxia::host::register_host_entry(crate::{path}__lingxia_route_{}({namespace:?}, {method:?}, ::lingxia::host::RouteAudience::{}));\n",
+            r.fn_ident,
+            r.audience.variant()
         ));
     }
     out.push_str("    }\n");
@@ -2972,14 +3018,18 @@ mod tests {
         ]);
         let registry = render(&manifest, OutputKind::RustModule).unwrap();
         let net = registry
-            .find("crate::net::proxy::get_host()")
+            .find(
+                "crate::net::proxy::__lingxia_route_get(\"net\", \"get\", ::lingxia::host::RouteAudience::ControlSurfaceOnly)",
+            )
             .expect(&registry);
         let feature = registry
             .find("# [cfg (feature = \"net\")]")
             .expect(&registry);
         assert!(feature < net, "{registry}");
         let ping = registry
-            .find("crate::tools::inner::ping_host()")
+            .find(
+                "crate::tools::inner::__lingxia_route_ping(\"tools\", \"ping\", ::lingxia::host::RouteAudience::AppSessionOnly)",
+            )
             .expect(&registry);
         let unix = registry.find("# [cfg (unix)]").expect(&registry);
         assert!(unix < ping && ping < feature, "{registry}");
@@ -3232,11 +3282,92 @@ mod tests {
         );
         let generated = render(&manifest, OutputKind::RustModule).unwrap();
         assert!(generated.contains("mod __lingxia_native"));
-        assert!(
-            generated.contains("::lingxia::host::register_host_entry(crate::open_device_host())")
+        assert!(generated.contains(
+            "::lingxia::host::register_host_entry(crate::__lingxia_route_open_device(\"device\", \"open\", ::lingxia::host::RouteAudience::AppSessionOnly))"
+        ));
+        assert!(generated.contains(
+            "::lingxia::host::register_host_entry(crate::__lingxia_route_close_device(\"device\", \"close\", ::lingxia::host::RouteAudience::AppSessionOnly))"
+        ));
+    }
+
+    fn scan_error(source: &str) -> String {
+        let mut manifest = NativeManifest::default();
+        scan_file_into(source, "lib.rs", &mut manifest)
+            .unwrap_err()
+            .to_string()
+    }
+
+    #[test]
+    fn route_defaults_name_and_scope_the_rest_of_the_file() {
+        let manifest = scan_source(
+            r#"
+            #[lingxia::native("early.route")]
+            fn early() -> lingxia::Result<()> { todo!() }
+
+            lingxia::route_defaults!(prefix = "bookmarks", audience = "control-surface-only");
+
+            #[lingxia::framework_native]
+            fn set_pinned() -> lingxia::Result<()> { todo!() }
+            #[lingxia::native("export_html")]
+            fn export() -> lingxia::Result<()> { todo!() }
+            #[lingxia::native("other.absolute", audience = "app-session-only")]
+            fn absolute() -> lingxia::Result<()> { todo!() }
+
+            mod child {
+                #[lingxia::native("child.ping")]
+                fn ping() -> lingxia::Result<()> { todo!() }
+            }
+        "#,
+        );
+        let routes: Vec<_> = manifest
+            .routes
+            .iter()
+            .map(|r| (r.route.as_str(), r.audience))
+            .collect();
+        assert_eq!(
+            routes,
+            [
+                ("bookmarks.export_html", RouteAudience::ControlSurfaceOnly),
+                ("bookmarks.setPinned", RouteAudience::ControlSurfaceOnly),
+                ("child.ping", RouteAudience::AppSessionOnly),
+                ("early.route", RouteAudience::AppSessionOnly),
+                ("other.absolute", RouteAudience::AppSessionOnly),
+            ]
+        );
+    }
+
+    #[test]
+    fn route_defaults_misuse_and_unnamed_routes_are_errors() {
+        let second = scan_error(
+            "lingxia::route_defaults!(prefix = \"a\");\nroute_defaults!(prefix = \"b\");",
         );
         assert!(
-            generated.contains("::lingxia::host::register_host_entry(crate::close_device_host())")
+            second.contains("lib.rs:2: a second route_defaults!"),
+            "{second}"
+        );
+        assert!(second.contains("first is at line 1"), "{second}");
+
+        let nested = scan_error("mod inner { lingxia::route_defaults!(prefix = \"a\"); }");
+        assert!(nested.contains("inline `mod`"), "{nested}");
+
+        let unnamed =
+            scan_error("#[lingxia::native]\nfn load() -> lingxia::Result<()> { todo!() }");
+        assert!(
+            unnamed.contains("lib.rs:2: `load` has no route name"),
+            "{unnamed}"
+        );
+
+        let bare = scan_error(
+            "#[lingxia::native(\"load\")]\nfn load() -> lingxia::Result<()> { todo!() }",
+        );
+        assert!(bare.contains("route `load` has no namespace"), "{bare}");
+
+        let framework = scan_error(
+            "lingxia::route_defaults!(prefix = \"fw\");\n#[lingxia::framework_native]\nfn load() -> lingxia::Result<()> { todo!() }",
+        );
+        assert!(
+            framework.contains("framework route `fw.load` needs `audience"),
+            "{framework}"
         );
     }
 
@@ -3345,6 +3476,20 @@ mod tests {
         let _ = fs::remove_dir_all(&root);
         assert!(
             err.contains("`notes.get` is declared twice, at a.rs:3 and lib.rs:3"),
+            "{err}"
+        );
+
+        // Two fn names that camelCase to one route under the same prefix.
+        fs::create_dir_all(&src).unwrap();
+        fs::write(
+            src.join("lib.rs"),
+            "lingxia::route_defaults!(prefix = \"bookmarks\");\n#[lingxia::native]\npub fn set_pinned() {}\n#[lingxia::native(\"setPinned\")]\npub fn pin() {}\n",
+        )
+        .unwrap();
+        let err = scan(&src).unwrap_err().to_string();
+        let _ = fs::remove_dir_all(&root);
+        assert!(
+            err.contains("`bookmarks.setPinned` is declared twice, at lib.rs:3 and lib.rs:5"),
             "{err}"
         );
     }

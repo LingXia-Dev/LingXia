@@ -104,23 +104,3 @@ fn reset_download_directory(app: Arc<LxApp>) -> lingxia_error::Result<DownloadSe
         .map_err(|e| lingxia_error::Error::internal(e.to_string()))?;
     download_settings_result(&app)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn framework_routes_are_browser_control_only() {
-        for route in [
-            get_app_info_host(),
-            get_download_settings_host(),
-            choose_download_directory_host(),
-            reset_download_directory_host(),
-        ] {
-            assert_eq!(
-                route.audience(),
-                lxapp::host::RouteAudience::ControlSurfaceOnly
-            );
-        }
-    }
-}

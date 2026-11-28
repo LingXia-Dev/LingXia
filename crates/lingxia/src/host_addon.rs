@@ -2,6 +2,7 @@ use crate::LxApp;
 #[cfg(feature = "devtool")]
 use crate::host::NativeDevtoolsAuthority;
 use crate::host::NativeHostRuntimeAuthority;
+use std::any::Any;
 use std::sync::{Arc, Mutex, OnceLock};
 
 /// Host lifecycle extension points that can register additional runtime behavior.
@@ -77,6 +78,7 @@ pub trait HostAddon: Send + Sync {
 
 static HOST_ADDONS: OnceLock<Mutex<Vec<Arc<dyn HostAddon>>>> = OnceLock::new();
 static HOST_ROUTES: Mutex<Vec<fn()>> = Mutex::new(Vec::new());
+static HOSTS: Mutex<Vec<Arc<dyn Any + Send + Sync>>> = Mutex::new(Vec::new());
 
 fn host_addons() -> &'static Mutex<Vec<Arc<dyn HostAddon>>> {
     HOST_ADDONS.get_or_init(|| Mutex::new(Vec::new()))
@@ -91,27 +93,75 @@ pub fn register_host_addon(addon: Box<dyn HostAddon>) {
 }
 
 /// `lingxia::host!`: the crate's generated route registry, installed before any addon's
-/// [`HostAddon::install_host_apis`], and its addon.
+/// [`HostAddon::install_host_apis`], and its addon, which routes reach as [`Host<A>`].
 #[doc(hidden)]
-pub fn __register_host(addon: Box<dyn HostAddon>, install_routes: fn()) {
+pub fn __register_host<A: HostAddon + 'static>(addon: A, install_routes: fn()) {
     HOST_ROUTES
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .push(install_routes);
-    register_host_addon(addon);
+    let addon = Arc::new(addon);
+    HOSTS
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .push(addon.clone());
+    host_addons()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .push(addon);
+}
+
+/// A route's `&A`: the addon passed to `lingxia::host!(A)`, so host-wide state lives on it.
+pub struct Host<A: HostAddon + 'static>(Arc<A>);
+
+impl<A: HostAddon + 'static> Host<A> {
+    #[doc(hidden)]
+    pub fn __acquire() -> crate::Result<Self> {
+        HOSTS
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .iter()
+            .find_map(|host| Arc::clone(host).downcast::<A>().ok())
+            .map(Self)
+            .ok_or_else(|| {
+                crate::Error::not_found(format!(
+                    "Host<{}>: no `lingxia::host!` registered it",
+                    std::any::type_name::<A>()
+                ))
+            })
+    }
+}
+
+impl<A: HostAddon + 'static> Clone for Host<A> {
+    fn clone(&self) -> Self {
+        Self(Arc::clone(&self.0))
+    }
+}
+
+impl<A: HostAddon + 'static> std::ops::Deref for Host<A> {
+    type Target = A;
+
+    fn deref(&self) -> &A {
+        &self.0
+    }
 }
 
 /// A host crate's whole registration, written once in its `lib.rs`:
-/// `lingxia::host!(AppHostAddon);`.
+/// `lingxia::host!(AppHostAddon);`, or with its value, `lingxia::host!(AppHostAddon::new())`.
 ///
 /// Installs every `#[lingxia::native]` route in the crate (the registry its `build.rs`
 /// writes with `lingxia_native_codegen::build()`), registers the addon, and exports the
 /// entrypoint each platform SDK calls. Harmony's needs `napi-derive-ohos` in the crate.
 /// With the crate's `devtools` feature it also starts the `lingxia dev` session bridge.
+/// The leading name is the addon's type: a route's `Host<A>` must name it.
 #[macro_export]
 macro_rules! host {
-    ($addon:expr) => {
+    ($addon:ident $($value:tt)*) => {
         include!(concat!(env!("OUT_DIR"), "/lingxia_native_handlers.rs"));
+
+        #[doc(hidden)]
+        #[allow(dead_code)]
+        pub(crate) type __LingxiaHostAddon = $addon;
 
         #[cfg(target_os = "android")]
         pub use $crate::android::*;
@@ -140,7 +190,8 @@ macro_rules! host {
                 #[allow(unexpected_cfgs)]
                 #[cfg(feature = "devtools")]
                 $crate::register_host_addon(::std::boxed::Box::new(__LingxiaDevSession));
-                $crate::__register_host(::std::boxed::Box::new($addon), __lingxia_native::install)
+                let addon: $addon = $addon $($value)*;
+                $crate::__register_host(addon, __lingxia_native::install)
             });
         }
 
@@ -362,5 +413,31 @@ mod tests {
         register_host_addon(Box::new(ProductCliAddon));
         run_install_product_cli(&mut crate::product_cli::ProductCli::new());
         assert_eq!(PRODUCT_CLI_INSTALLS.load(Ordering::SeqCst), before + 1);
+    }
+}
+
+#[cfg(test)]
+mod host_tests {
+    use super::{__register_host, Host, HostAddon};
+
+    struct CountingHost {
+        limit: u32,
+    }
+
+    impl HostAddon for CountingHost {}
+
+    struct UnregisteredHost;
+
+    impl HostAddon for UnregisteredHost {}
+
+    #[test]
+    fn a_route_reaches_the_registered_addon_by_its_type() {
+        __register_host(CountingHost { limit: 7 }, || {});
+        let host = Host::<CountingHost>::__acquire().expect("registered addon");
+        assert_eq!(host.limit, 7);
+        let missing = Host::<UnregisteredHost>::__acquire()
+            .err()
+            .expect("an addon no host! registered");
+        assert_eq!(missing.code(), "E_NOT_FOUND");
     }
 }

@@ -23,17 +23,22 @@ extern crate self as lingxia;
 #[path = "../../lingxia-platform/tests/support/apple_host_stubs.rs"]
 mod apple_host_stubs;
 
+pub use host_addon::Host;
 pub use host_addon::{__register_host, HostAddon, register_host_addon};
+pub use lingxia_native_macros::FromLxApp;
 pub use lingxia_native_macros::NativeError;
 #[doc(hidden)]
 pub use lingxia_native_macros::framework_native;
 pub use lingxia_native_macros::native;
+pub use lingxia_native_macros::route_defaults;
 #[cfg(feature = "devtool")]
 pub use lxapp::host::NativeDevtoolsAuthority;
 pub use lxapp::host::NativeHostRuntimeAuthority;
 
 pub use lxapp::host;
-pub use lxapp::host::{ChannelContext, ChannelMessage, PageState, Progress};
+pub use lxapp::host::{
+    ChannelContext, ChannelMessage, FromLxApp, LxAppState, PageState, Progress,
+};
 /// Mark a development Runner host before SDK initialization.
 pub use lxapp::register_runner_host;
 // Required by expansions of `#[lingxia::native]`; host applications should

@@ -194,29 +194,64 @@ fn native_error_sends_its_code_and_data_and_hides_internals() {
     assert!(std::error::Error::source(&internal).is_some());
 }
 
+/// The registry passes each route its name and audience.
+fn registers(
+    route: fn(
+        &'static str,
+        &'static str,
+        lingxia::host::RouteAudience,
+    ) -> lingxia::host::HostRegistrationEntry,
+) {
+    let _ = route(
+        "facade",
+        "route",
+        lingxia::host::RouteAudience::AppSessionOnly,
+    );
+}
+
+struct FacadeStore;
+
+impl lingxia::FromLxApp for FacadeStore {
+    async fn open(_app: &lingxia::LxApp) -> lingxia::Result<Self> {
+        Ok(FacadeStore)
+    }
+}
+
+#[derive(Default, lingxia::FromLxApp)]
+struct FacadeCounter(std::sync::atomic::AtomicU32);
+
+#[lingxia::native("facade.appState")]
+async fn facade_app_state(
+    _store: lingxia::LxAppState<FacadeStore>,
+    counter: lingxia::LxAppState<FacadeCounter>,
+) -> lingxia::Result<u32> {
+    Ok(counter.0.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
+}
+
 #[test]
 fn native_macro_accepts_lingxia_result_handlers() {
-    let _ = facade_app_error_host();
-    let _ = facade_anyhow_error_host();
-    let _ = imported_native::facade_imported_error_host();
+    registers(__lingxia_route_facade_app_error);
+    registers(__lingxia_route_facade_anyhow_error);
+    registers(imported_native::__lingxia_route_facade_imported_error);
     assert_eq!(
         lingxia::Error::from(imported_native::ImportedError::Busy).code(),
         "Busy"
     );
-    let _ = facade_echo_host();
-    let _ = facade_sync_echo_host();
-    let _ = facade_scope_host();
-    let _ = facade_stream_host();
-    let _ = facade_scope_stream_host();
-    let _ = facade_watch_host();
-    let _ = facade_bare_watch_host();
-    let _ = facade_ping_host();
-    let _ = facade_touch_host();
-    let _ = facade_async_watch_host();
-    let _ = facade_channel_host();
-    let _ = facade_scope_channel_host();
-    let _ = facade_control_host();
-    let _ = facade_control_or_surface_host();
+    registers(__lingxia_route_facade_echo);
+    registers(__lingxia_route_facade_sync_echo);
+    registers(__lingxia_route_facade_scope);
+    registers(__lingxia_route_facade_stream);
+    registers(__lingxia_route_facade_scope_stream);
+    registers(__lingxia_route_facade_watch);
+    registers(__lingxia_route_facade_bare_watch);
+    registers(__lingxia_route_facade_ping);
+    registers(__lingxia_route_facade_touch);
+    registers(__lingxia_route_facade_async_watch);
+    registers(__lingxia_route_facade_channel);
+    registers(__lingxia_route_facade_scope_channel);
+    registers(__lingxia_route_facade_control);
+    registers(__lingxia_route_facade_control_or_surface);
+    registers(__lingxia_route_facade_app_state);
 }
 
 #[test]

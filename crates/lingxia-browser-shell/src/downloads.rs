@@ -308,25 +308,4 @@ mod tests {
             "file:///home/user/downloads"
         );
     }
-
-    #[test]
-    fn framework_routes_are_browser_control_only() {
-        for route in [
-            list_downloads_host(),
-            clear_completed_downloads_host(),
-            remove_download_route_host(),
-            cancel_download_route_host(),
-            pause_download_route_host(),
-            retry_download_route_host(),
-            resume_download_route_host(),
-            open_download_route_host(),
-            reveal_download_route_host(),
-            watch_downloads_host(),
-        ] {
-            assert_eq!(
-                route.audience(),
-                lxapp::host::RouteAudience::ControlSurfaceOnly
-            );
-        }
-    }
 }

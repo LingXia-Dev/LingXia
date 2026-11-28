@@ -17,6 +17,8 @@ impl lingxia::HostAddon for AppHostAddon {
     }
 }
 
+lingxia::route_defaults!(prefix = "hello");
+
 #[derive(serde::Deserialize)]
 struct Greeting {
     name: String,
@@ -24,7 +26,7 @@ struct Greeting {
 }
 
 /// The home page calls this as `native.hello.greet({ name, count })`.
-#[lingxia::native("hello.greet")]
+#[lingxia::native]
 fn greet(input: Greeting) -> String {
     format!("Hello, {}! Greeting number {}.", input.name, input.count)
 }

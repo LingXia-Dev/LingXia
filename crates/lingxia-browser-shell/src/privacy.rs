@@ -269,25 +269,3 @@ fn clear_favicons(since_ms: Option<u64>) -> lingxia_error::Result<()> {
     }
     Ok(())
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn framework_routes_are_browser_control_only() {
-        for route in [
-            get_privacy_usage_host(),
-            clear_cache_host(),
-            clear_all_site_data_host(),
-            clear_browsing_data_host(),
-            clear_site_data_host(),
-            get_site_data_context_host(),
-        ] {
-            assert_eq!(
-                route.audience(),
-                lxapp::host::RouteAudience::ControlSurfaceOnly
-            );
-        }
-    }
-}

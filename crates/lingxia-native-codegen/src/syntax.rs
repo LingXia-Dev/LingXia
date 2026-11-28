@@ -3,10 +3,290 @@
 //! The macro and the TypeScript codegen both read routes through this module, so a
 //! parameter can never be a payload to one and an extractor to the other.
 
+use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::{
-    FnArg, GenericArgument, PatType, PathArguments, ReturnType, Signature, Type, TypeParamBound,
+    Expr, FnArg, GenericArgument, Lit, LitStr, PatType, PathArguments, ReturnType, Signature,
+    Token, Type, TypeParamBound,
 };
+
+/// Who may call a route; immutable registration metadata, so a published contract.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RouteAudience {
+    AppSessionOnly,
+    ControlAppOnly,
+    ControlSurfaceOnly,
+    ControlAppOrSurface,
+}
+
+impl RouteAudience {
+    pub fn parse(value: &LitStr) -> syn::Result<Self> {
+        match value.value().as_str() {
+            "app-session-only" => Ok(Self::AppSessionOnly),
+            "control-app-only" => Ok(Self::ControlAppOnly),
+            "control-surface-only" => Ok(Self::ControlSurfaceOnly),
+            "control-app-or-surface" => Ok(Self::ControlAppOrSurface),
+            other => Err(syn::Error::new_spanned(
+                value,
+                format!(
+                    "unknown audience `{other}`; expected one of `app-session-only`, `control-app-only`, `control-surface-only`, or `control-app-or-surface`"
+                ),
+            )),
+        }
+    }
+
+    /// The `lingxia::host::RouteAudience` variant.
+    pub fn variant(self) -> &'static str {
+        match self {
+            Self::AppSessionOnly => "AppSessionOnly",
+            Self::ControlAppOnly => "ControlAppOnly",
+            Self::ControlSurfaceOnly => "ControlSurfaceOnly",
+            Self::ControlAppOrSurface => "ControlAppOrSurface",
+        }
+    }
+}
+
+/// A route attribute's arguments, before `route_defaults!` fills the name and audience.
+#[derive(Debug, Clone)]
+pub struct RouteAttr {
+    /// The route string: absolute with a dot, else a method under the file's prefix.
+    pub name: Option<LitStr>,
+    pub shape: Shape,
+    pub audience: Option<RouteAudience>,
+}
+
+/// Parses `#[native("name"?, mode flags, audience = "…"?)]`.
+pub fn parse_route_attr(
+    args: &Punctuated<Expr, Token![,]>,
+    macro_name: &str,
+) -> syn::Result<RouteAttr> {
+    let mut name = None;
+    let mut mode: Option<(Shape, &Expr)> = None;
+    let mut sync: Option<&Expr> = None;
+    let mut audience = None;
+    for (index, arg) in args.iter().enumerate() {
+        match arg {
+            Expr::Lit(lit) if index == 0 => {
+                let Lit::Str(value) = &lit.lit else {
+                    return Err(syn::Error::new_spanned(
+                        &lit.lit,
+                        format!("the route name in #[{macro_name}(...)] is a string"),
+                    ));
+                };
+                check_route_name(value)?;
+                name = Some(value.clone());
+            }
+            Expr::Path(path) if path.path.is_ident("blocking") => {
+                return Err(syn::Error::new_spanned(
+                    arg,
+                    "a plain `fn` route runs on a blocking thread; remove `blocking`",
+                ));
+            }
+            Expr::Path(path) if path.path.is_ident("sync") => {
+                if sync.replace(arg).is_some() {
+                    return Err(syn::Error::new_spanned(
+                        arg,
+                        format!("duplicate sync flag in #[{macro_name}(...)]"),
+                    ));
+                }
+            }
+            Expr::Path(path)
+                if ["stream", "watch", "channel"]
+                    .iter()
+                    .any(|flag| path.path.is_ident(flag)) =>
+            {
+                let shape = if path.path.is_ident("stream") {
+                    Shape::Stream
+                } else if path.path.is_ident("watch") {
+                    Shape::Watch
+                } else {
+                    Shape::Channel
+                };
+                if mode.replace((shape, arg)).is_some() {
+                    return Err(syn::Error::new_spanned(
+                        arg,
+                        format!("duplicate or conflicting mode flag in #[{macro_name}(...)]"),
+                    ));
+                }
+            }
+            Expr::Assign(assign) if matches!(assign.left.as_ref(), Expr::Path(path) if path.path.is_ident("audience")) =>
+            {
+                if audience.is_some() {
+                    return Err(syn::Error::new_spanned(
+                        arg,
+                        format!("duplicate audience option in #[{macro_name}(...)]"),
+                    ));
+                }
+                audience = Some(RouteAudience::parse(string_value(
+                    &assign.right,
+                    "audience",
+                    macro_name,
+                )?)?);
+            }
+            _ => {
+                return Err(syn::Error::new_spanned(
+                    arg,
+                    format!(
+                        "expected a route name, a mode flag (`sync`, `stream`, `watch`, or `channel`) or `audience = \"…\"` in #[{macro_name}(...)]"
+                    ),
+                ));
+            }
+        }
+    }
+    let shape = match (mode, sync) {
+        (Some(_), Some(flag)) => {
+            return Err(syn::Error::new_spanned(
+                flag,
+                format!("sync is only supported for unary #[{macro_name}] handlers"),
+            ));
+        }
+        (Some((shape, _)), None) => shape,
+        (None, Some(_)) => Shape::Sync,
+        (None, None) => Shape::Call,
+    };
+    Ok(RouteAttr {
+        name,
+        shape,
+        audience,
+    })
+}
+
+/// `route_defaults!(prefix = "…", audience = "…")`; either may be left out.
+#[derive(Debug, Clone, Default)]
+pub struct RouteDefaults {
+    pub prefix: Option<String>,
+    pub audience: Option<RouteAudience>,
+}
+
+pub fn parse_route_defaults(args: &Punctuated<Expr, Token![,]>) -> syn::Result<RouteDefaults> {
+    const MACRO: &str = "route_defaults!";
+    let mut defaults = RouteDefaults::default();
+    for arg in args {
+        let Expr::Assign(assign) = arg else {
+            return Err(syn::Error::new_spanned(
+                arg,
+                "expected `prefix = \"…\"` or `audience = \"…\"`",
+            ));
+        };
+        let key = match assign.left.as_ref() {
+            Expr::Path(path) if path.path.is_ident("prefix") => "prefix",
+            Expr::Path(path) if path.path.is_ident("audience") => "audience",
+            other => {
+                return Err(syn::Error::new_spanned(
+                    other,
+                    "expected `prefix` or `audience`",
+                ));
+            }
+        };
+        let value = string_value(&assign.right, key, MACRO)?;
+        let repeated = if key == "prefix" {
+            check_namespace(value, &value.value())?;
+            defaults.prefix.replace(value.value()).is_some()
+        } else {
+            defaults
+                .audience
+                .replace(RouteAudience::parse(value)?)
+                .is_some()
+        };
+        if repeated {
+            return Err(syn::Error::new_spanned(
+                arg,
+                format!("duplicate `{key}` in {MACRO}"),
+            ));
+        }
+    }
+    if defaults.prefix.is_none() && defaults.audience.is_none() {
+        return Err(syn::Error::new_spanned(
+            args,
+            "route_defaults! needs `prefix = \"…\"`, `audience = \"…\"`, or both",
+        ));
+    }
+    Ok(defaults)
+}
+
+/// The full route name: an explicit name with a dot is absolute; otherwise the method,
+/// given or from the fn name in camelCase, goes under `prefix`.
+pub fn resolve_route_name(
+    name: Option<&str>,
+    fn_ident: &str,
+    prefix: Option<&str>,
+) -> Result<String, String> {
+    match (name, prefix) {
+        (Some(name), _) if name.contains('.') => Ok(name.to_string()),
+        (Some(method), Some(prefix)) => Ok(format!("{prefix}.{method}")),
+        (None, Some(prefix)) => Ok(format!("{prefix}.{}", camel_case(fn_ident))),
+        (Some(method), None) => Err(format!(
+            "route `{method}` has no namespace; write \"namespace.{method}\" or add `lingxia::route_defaults!(prefix = \"…\")` above it"
+        )),
+        (None, None) => Err(format!(
+            "`{fn_ident}` has no route name; write #[native(\"namespace.method\")] or add `lingxia::route_defaults!(prefix = \"…\")` above it"
+        )),
+    }
+}
+
+fn camel_case(ident: &str) -> String {
+    let ident = ident.strip_prefix("r#").unwrap_or(ident);
+    let mut out = String::with_capacity(ident.len());
+    let mut upper = false;
+    for ch in ident.chars() {
+        if ch == '_' {
+            upper = !out.is_empty();
+        } else if upper {
+            out.extend(ch.to_uppercase());
+            upper = false;
+        } else {
+            out.push(ch);
+        }
+    }
+    out
+}
+
+fn string_value<'a>(expr: &'a Expr, key: &str, macro_name: &str) -> syn::Result<&'a LitStr> {
+    match expr {
+        Expr::Lit(syn::ExprLit {
+            lit: Lit::Str(value),
+            ..
+        }) => Ok(value),
+        _ => Err(syn::Error::new_spanned(
+            expr,
+            format!("{key} must be a string literal in {macro_name}"),
+        )),
+    }
+}
+
+fn check_route_name(value: &LitStr) -> syn::Result<()> {
+    let name = value.value();
+    let (namespace, method) = match name.rsplit_once('.') {
+        Some((namespace, method)) => (Some(namespace), method),
+        None => (None, name.as_str()),
+    };
+    if let Some(namespace) = namespace {
+        check_namespace(value, namespace)?;
+    }
+    if method.trim().is_empty() {
+        return Err(syn::Error::new_spanned(
+            value,
+            "a route name needs a non-empty method",
+        ));
+    }
+    Ok(())
+}
+
+fn check_namespace(span: &LitStr, namespace: &str) -> syn::Result<()> {
+    if namespace.trim().is_empty() || namespace.split('.').any(|part| part.trim().is_empty()) {
+        return Err(syn::Error::new_spanned(
+            span,
+            "a route namespace must not be empty",
+        ));
+    }
+    if namespace == "channel" {
+        return Err(syn::Error::new_spanned(
+            span,
+            "namespace 'channel' is reserved by the JS API; choose a different namespace",
+        ));
+    }
+    Ok(())
+}
 
 /// How a route is invoked, from its attribute flags.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -30,6 +310,10 @@ pub enum Param {
     Cancel,
     /// `PageState<T>`; the whole type.
     PageState(Type),
+    /// `LxAppState<T>`; the whole type.
+    LxAppState(Type),
+    /// `Host<A>`; the addon type `A`.
+    Host(Type),
     /// `Progress<Event>`; an absent generic stays `None`.
     Progress(Option<Type>),
     /// `ChannelContext<In, Out>`; one generic means both directions carry it.
@@ -101,7 +385,7 @@ pub fn classify(sig: &Signature, shape: Shape) -> syn::Result<Params> {
         };
 
         let name = name(&param);
-        if !matches!(param, Param::PageState(_)) {
+        if !matches!(param, Param::PageState(_) | Param::LxAppState(_)) {
             if seen.contains(&name) {
                 return Err(syn::Error::new_spanned(
                     arg,
@@ -140,6 +424,11 @@ fn extractor(ty: &Type) -> syn::Result<Option<Param>> {
         "HostInvocationContext" => Param::Invocation,
         "HostCancel" => Param::Cancel,
         "PageState" => Param::PageState(ty.clone()),
+        "LxAppState" => Param::LxAppState(ty.clone()),
+        "Host" => match generics(ty)?.as_slice() {
+            [addon] => Param::Host(addon.clone()),
+            _ => return Ok(None),
+        },
         "Progress" => {
             let args = generics(ty)?;
             if args.len() > 1 {
@@ -171,6 +460,9 @@ fn misplaced(param: &Param, shape: Shape) -> Option<&'static str> {
         (Param::PageState(_), Shape::Stream | Shape::Watch | Shape::Channel) => {
             Some("PageState<T> is supported on unary routes only")
         }
+        (Param::LxAppState(_), Shape::Sync) => Some(
+            "#[native(..., sync)] cannot take LxAppState<T>: its first use awaits `open`; drop `sync`",
+        ),
         (Param::Progress(_), shape) if shape != Shape::Stream => {
             Some("`Progress` needs `#[native(..., stream)]`")
         }
@@ -187,6 +479,8 @@ fn name(param: &Param) -> &'static str {
         Param::Invocation => "HostInvocationContext",
         Param::Cancel => "HostCancel",
         Param::PageState(_) => "PageState",
+        Param::LxAppState(_) => "LxAppState",
+        Param::Host(_) => "Host",
         Param::Progress(_) => "Progress",
         Param::Channel { .. } => "ChannelContext",
         Param::Payload(_) => "payload",
@@ -427,6 +721,107 @@ mod tests {
                     .contains("impl Stream<Item = Event>"),
                 "{wrong}"
             );
+        }
+    }
+
+    fn args(tokens: impl ToTokens) -> Punctuated<Expr, Token![,]> {
+        let parser = Punctuated::<Expr, Token![,]>::parse_terminated;
+        syn::parse::Parser::parse2(parser, tokens.into_token_stream()).unwrap()
+    }
+
+    fn attr(tokens: impl ToTokens) -> syn::Result<RouteAttr> {
+        parse_route_attr(&args(tokens), "native")
+    }
+
+    #[test]
+    fn route_attributes_parse_every_audience_and_mode() {
+        use quote::quote;
+        let cases = [
+            (quote!("demo.app"), None, Shape::Call),
+            (quote!("demo.load", sync), None, Shape::Sync),
+            (
+                quote!("demo.host", audience = "control-app-only"),
+                Some(RouteAudience::ControlAppOnly),
+                Shape::Call,
+            ),
+            (
+                quote!(stream, audience = "control-surface-only"),
+                Some(RouteAudience::ControlSurfaceOnly),
+                Shape::Stream,
+            ),
+            (
+                quote!("any", audience = "control-app-or-surface", channel),
+                Some(RouteAudience::ControlAppOrSurface),
+                Shape::Channel,
+            ),
+            (
+                quote!(watch, audience = "app-session-only"),
+                Some(RouteAudience::AppSessionOnly),
+                Shape::Watch,
+            ),
+        ];
+        for (tokens, audience, shape) in cases {
+            let parsed = attr(tokens).expect("route attribute");
+            assert_eq!((parsed.audience, parsed.shape), (audience, shape));
+        }
+    }
+
+    #[test]
+    fn bad_route_attributes_are_errors() {
+        use quote::quote;
+        for (tokens, expected) in [
+            (quote!("demo.x", audience = "guest"), "unknown audience"),
+            (quote!("demo.x", audience = DEFAULT), "string literal"),
+            (
+                quote!(audience = "app-session-only", audience = "control-app-only"),
+                "duplicate audience",
+            ),
+            (quote!(stream, watch), "conflicting mode"),
+            (quote!(sync, stream), "sync is only supported"),
+            (quote!("demo.x", blocking), "remove `blocking`"),
+            (quote!("channel.x"), "reserved"),
+            (quote!(".x"), "must not be empty"),
+            (quote!("demo."), "non-empty method"),
+            (quote!(stream, "demo.x"), "expected a route name"),
+        ] {
+            let error = attr(tokens).expect_err(expected).to_string();
+            assert!(error.contains(expected), "{error}");
+        }
+    }
+
+    #[test]
+    fn route_names_resolve_against_the_prefix() {
+        assert_eq!(
+            resolve_route_name(None, "set_pinned", Some("bookmarks")).unwrap(),
+            "bookmarks.setPinned"
+        );
+        assert_eq!(
+            resolve_route_name(Some("export_html"), "export", Some("bookmarks")).unwrap(),
+            "bookmarks.export_html"
+        );
+        assert_eq!(
+            resolve_route_name(Some("other.get"), "get", Some("bookmarks")).unwrap(),
+            "other.get"
+        );
+        assert!(resolve_route_name(None, "load", None).is_err());
+        assert!(resolve_route_name(Some("load"), "load", None).is_err());
+    }
+
+    #[test]
+    fn route_defaults_take_a_prefix_an_audience_or_both() {
+        let parse = |tokens| parse_route_defaults(&args(tokens));
+        use quote::quote;
+        let both = parse(quote!(prefix = "a.b", audience = "control-app-only")).unwrap();
+        assert_eq!(both.prefix.as_deref(), Some("a.b"));
+        assert_eq!(both.audience, Some(RouteAudience::ControlAppOnly));
+        for (tokens, expected) in [
+            (quote!(), "needs `prefix"),
+            (quote!(prefix = "a", prefix = "b"), "duplicate `prefix`"),
+            (quote!(prefix = "channel"), "reserved"),
+            (quote!(name = "a"), "expected `prefix` or `audience`"),
+        ] {
+            let error = parse(tokens).expect_err(expected).to_string();
+            assert!(error.contains(expected), "{error}");
         }
     }
 

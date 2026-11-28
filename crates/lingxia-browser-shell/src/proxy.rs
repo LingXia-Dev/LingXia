@@ -1137,19 +1137,4 @@ mod tests {
             assert_eq!(host_of_source(url), host);
         }
     }
-
-    #[test]
-    fn framework_routes_are_browser_control_only() {
-        for route in [
-            get_proxy_settings_host(),
-            update_proxy_settings_host(),
-            refresh_gfwlist_host(),
-            watch_proxy_settings_host(),
-        ] {
-            assert_eq!(
-                route.audience(),
-                lxapp::host::RouteAudience::ControlSurfaceOnly
-            );
-        }
-    }
 }

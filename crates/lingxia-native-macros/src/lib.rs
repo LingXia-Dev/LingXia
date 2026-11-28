@@ -1,30 +1,59 @@
-use lingxia_native_codegen::syntax::{Param, Params, Shape, classify, returns_result, watch_event};
+use lingxia_native_codegen::syntax::{
+    Param, Params, Shape, classify, parse_route_attr, parse_route_defaults, returns_result,
+    watch_event,
+};
 use proc_macro::TokenStream;
 use quote::{format_ident, quote, quote_spanned};
 use syn::parse::Parser;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
-use syn::{Expr, ItemFn, Lit, LitStr, Token, Type, parse_macro_input};
+use syn::{Expr, ItemFn, Token, Type, parse_macro_input};
 
+/// A native route. Its name and audience are registered by the crate's generated
+/// registry, which also applies the file's `route_defaults!`.
 #[proc_macro_attribute]
 pub fn native(attr: TokenStream, item: TokenStream) -> TokenStream {
-    expand_host_attribute(attr, item, "native", AudienceRequirement::Optional)
+    expand_host_attribute(attr, item, "native")
 }
 
-/// Framework-owned routes must make their registration audience explicit.
-///
-/// This is deliberately separate from [`native`]: downstream host extensions
-/// keep the backwards-compatible `AppSessionOnly` default, while framework code
-/// cannot accidentally inherit it.
+/// A framework-owned route; the registry requires it to state an audience, here or in
+/// `route_defaults!`, so it never inherits the `app-session-only` default.
 #[doc(hidden)]
 #[proc_macro_attribute]
 pub fn framework_native(attr: TokenStream, item: TokenStream) -> TokenStream {
-    expand_host_attribute(
-        attr,
-        item,
-        "framework_native",
-        AudienceRequirement::Required,
-    )
+    expand_host_attribute(attr, item, "framework_native")
+}
+
+/// `route_defaults!(prefix = "…", audience = "…")`: read by the registry codegen for the
+/// rest of the file; checked here and expands to nothing.
+#[proc_macro]
+pub fn route_defaults(input: TokenStream) -> TokenStream {
+    let parser = Punctuated::<Expr, Token![,]>::parse_terminated;
+    match parser
+        .parse(input)
+        .and_then(|args| parse_route_defaults(&args))
+    {
+        Ok(_) => TokenStream::new(),
+        Err(err) => err.to_compile_error().into(),
+    }
+}
+
+/// `#[derive(Default, lingxia::FromLxApp)]`: the lxapp's state opens as `Self::default()`.
+#[proc_macro_derive(FromLxApp)]
+pub fn derive_from_lxapp(item: TokenStream) -> TokenStream {
+    let item = parse_macro_input!(item as syn::DeriveInput);
+    let ident = &item.ident;
+    let (impl_generics, ty_generics, where_clause) = item.generics.split_for_impl();
+    // Spanned at the type: a missing `Default` is reported there.
+    let default = quote_spanned! {ident.span()=> <Self as ::core::default::Default>::default() };
+    quote! {
+        impl #impl_generics ::lingxia::FromLxApp for #ident #ty_generics #where_clause {
+            async fn open(_app: &::lingxia::LxApp) -> ::lingxia::Result<Self> {
+                ::core::result::Result::Ok(#default)
+            }
+        }
+    }
+    .into()
 }
 
 /// An app error a route returns: each variant's serde `code` tag is its code, its fields
@@ -64,199 +93,40 @@ fn expand_native_error(item: &syn::ItemEnum) -> syn::Result<proc_macro2::TokenSt
     })
 }
 
-fn expand_host_attribute(
-    attr: TokenStream,
-    item: TokenStream,
-    macro_name: &str,
-    audience_requirement: AudienceRequirement,
-) -> TokenStream {
+fn expand_host_attribute(attr: TokenStream, item: TokenStream, macro_name: &str) -> TokenStream {
     let parser = Punctuated::<Expr, Token![,]>::parse_terminated;
-    let args = match parser.parse(attr) {
-        Ok(args) => args,
+    let options = match parser
+        .parse(attr)
+        .and_then(|args| parse_host_attr(&args, macro_name))
+    {
+        Ok(options) => options,
         Err(err) => return err.to_compile_error().into(),
     };
-
-    let (route_lit, options) = match parse_host_attr(args, macro_name, audience_requirement) {
-        Ok(parsed) => parsed,
-        Err(err) => return err.to_compile_error().into(),
-    };
-
-    let route = route_lit.value();
-    let Some((namespace, method)) = route.rsplit_once('.') else {
-        return syn::Error::new(
-            route_lit.span(),
-            format!("{macro_name} route must look like \"namespace.method\""),
-        )
-        .to_compile_error()
-        .into();
-    };
-    if namespace.trim().is_empty() || method.trim().is_empty() {
-        return syn::Error::new(
-            route_lit.span(),
-            format!("{macro_name} route must contain non-empty namespace and method"),
-        )
-        .to_compile_error()
-        .into();
-    }
-    if namespace == "channel" {
-        return syn::Error::new(
-            route_lit.span(),
-            format!("{macro_name} namespace 'channel' is reserved by the JS API; choose a different namespace"),
-        )
-        .to_compile_error()
-        .into();
-    }
-
     let input_fn = parse_macro_input!(item as ItemFn);
     match options.mode {
-        HostMode::Stream => {
-            expand_stream(route_lit.clone(), namespace, method, options, input_fn).into()
-        }
-        HostMode::Watch => {
-            expand_watch(route_lit.clone(), namespace, method, options, input_fn).into()
-        }
-        HostMode::Channel => {
-            expand_channel(route_lit.clone(), namespace, method, options, input_fn).into()
-        }
-        HostMode::Unary => {
-            expand_host(route_lit.clone(), namespace, method, options, input_fn).into()
-        }
+        HostMode::Stream => expand_stream(input_fn).into(),
+        HostMode::Watch => expand_watch(input_fn).into(),
+        HostMode::Channel => expand_channel(input_fn).into(),
+        HostMode::Unary => expand_host(options, input_fn).into(),
     }
 }
 
 fn parse_host_attr(
-    args: Punctuated<Expr, Token![,]>,
+    args: &Punctuated<Expr, Token![,]>,
     macro_name: &str,
-    audience_requirement: AudienceRequirement,
-) -> syn::Result<(LitStr, HostOptions)> {
-    let Some(first) = args.first() else {
-        return Err(syn::Error::new(
-            proc_macro2::Span::call_site(),
-            format!("expected #[{macro_name}(\"namespace.method\")]"),
-        ));
+) -> syn::Result<HostOptions> {
+    let attr = parse_route_attr(args, macro_name)?;
+    let (mode, sync) = match attr.shape {
+        Shape::Call => (HostMode::Unary, false),
+        Shape::Sync => (HostMode::Unary, true),
+        Shape::Stream => (HostMode::Stream, false),
+        Shape::Watch => (HostMode::Watch, false),
+        Shape::Channel => (HostMode::Channel, false),
     };
-    let Expr::Lit(first_lit) = first else {
-        return Err(syn::Error::new_spanned(
-            first,
-            format!("expected #[{macro_name}(\"namespace.method\")]"),
-        ));
-    };
-    let Lit::Str(route_lit) = &first_lit.lit else {
-        return Err(syn::Error::new_spanned(
-            &first_lit.lit,
-            format!("expected #[{macro_name}(\"namespace.method\")]"),
-        ));
-    };
-
-    let mut mode = HostMode::Unary;
-    let mut sync = false;
-    let mut audience = None;
-    for arg in args.iter().skip(1) {
-        match arg {
-            Expr::Path(path) if path.path.is_ident("stream") => {
-                if !matches!(mode, HostMode::Unary) {
-                    return Err(syn::Error::new_spanned(
-                        arg,
-                        format!("duplicate or conflicting mode flag in #[{macro_name}(...)]"),
-                    ));
-                }
-                mode = HostMode::Stream;
-            }
-            Expr::Path(path) if path.path.is_ident("channel") => {
-                if !matches!(mode, HostMode::Unary) {
-                    return Err(syn::Error::new_spanned(
-                        arg,
-                        format!("duplicate or conflicting mode flag in #[{macro_name}(...)]"),
-                    ));
-                }
-                mode = HostMode::Channel;
-            }
-            Expr::Path(path) if path.path.is_ident("watch") => {
-                if !matches!(mode, HostMode::Unary) {
-                    return Err(syn::Error::new_spanned(
-                        arg,
-                        format!("duplicate or conflicting mode flag in #[{macro_name}(...)]"),
-                    ));
-                }
-                mode = HostMode::Watch;
-            }
-            Expr::Path(path) if path.path.is_ident("blocking") => {
-                return Err(syn::Error::new_spanned(
-                    arg,
-                    "a plain `fn` route runs on a blocking thread; remove `blocking`",
-                ));
-            }
-            Expr::Path(path) if path.path.is_ident("sync") => {
-                if sync {
-                    return Err(syn::Error::new_spanned(
-                        arg,
-                        format!("duplicate sync flag in #[{macro_name}(...)]"),
-                    ));
-                }
-                sync = true;
-            }
-            Expr::Assign(assign) if matches!(assign.left.as_ref(), Expr::Path(path) if path.path.is_ident("audience")) =>
-            {
-                if audience.is_some() {
-                    return Err(syn::Error::new_spanned(
-                        arg,
-                        format!("duplicate audience option in #[{macro_name}(...)]"),
-                    ));
-                }
-                let Expr::Lit(value) = assign.right.as_ref() else {
-                    return Err(syn::Error::new_spanned(
-                        &assign.right,
-                        format!("audience must be a string literal in #[{macro_name}(...)]"),
-                    ));
-                };
-                let Lit::Str(value) = &value.lit else {
-                    return Err(syn::Error::new_spanned(
-                        &value.lit,
-                        format!("audience must be a string literal in #[{macro_name}(...)]"),
-                    ));
-                };
-                audience = Some(RouteAudience::parse(value, macro_name)?);
-            }
-            _ => {
-                return Err(syn::Error::new_spanned(
-                    arg,
-                    format!(
-                        "expected a mode flag (`sync`, `stream`, `watch`, or `channel`) or `audience = \"…\"` in #[{macro_name}(...)]"
-                    ),
-                ));
-            }
-        }
-    }
-
-    if sync && !matches!(mode, HostMode::Unary) {
-        return Err(syn::Error::new_spanned(
-            route_lit,
-            format!("sync is only supported for unary #[{macro_name}] handlers"),
-        ));
-    }
-
-    let audience = match (audience, audience_requirement) {
-        (Some(audience), _) => audience,
-        (None, AudienceRequirement::Optional) => RouteAudience::AppSessionOnly,
-        (None, AudienceRequirement::Required) => {
-            return Err(syn::Error::new_spanned(
-                route_lit,
-                format!("#[{macro_name}] requires `audience = \"…\"`"),
-            ));
-        }
-    };
-
-    Ok((
-        route_lit.clone(),
-        HostOptions {
-            mode,
-            sync,
-            audience,
-        },
-    ))
+    Ok(HostOptions { mode, sync })
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum HostMode {
     Unary,
     Stream,
@@ -265,70 +135,33 @@ enum HostMode {
 }
 
 #[derive(Clone, Copy)]
-enum AudienceRequirement {
-    Optional,
-    Required,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum RouteAudience {
-    AppSessionOnly,
-    ControlAppOnly,
-    ControlSurfaceOnly,
-    ControlAppOrSurface,
-}
-
-impl RouteAudience {
-    fn parse(value: &LitStr, macro_name: &str) -> syn::Result<Self> {
-        match value.value().as_str() {
-            "app-session-only" => Ok(Self::AppSessionOnly),
-            "control-app-only" => Ok(Self::ControlAppOnly),
-            "control-surface-only" => Ok(Self::ControlSurfaceOnly),
-            "control-app-or-surface" => Ok(Self::ControlAppOrSurface),
-            _ => Err(syn::Error::new_spanned(
-                value,
-                format!(
-                    "unknown audience `{}` in #[{macro_name}(...)]; expected one of `app-session-only`, `control-app-only`, `control-surface-only`, or `control-app-or-surface`",
-                    value.value()
-                ),
-            )),
-        }
-    }
-
-    fn tokens(self) -> proc_macro2::TokenStream {
-        match self {
-            Self::AppSessionOnly => quote!(::lingxia::host::RouteAudience::AppSessionOnly),
-            Self::ControlAppOnly => quote!(::lingxia::host::RouteAudience::ControlAppOnly),
-            Self::ControlSurfaceOnly => {
-                quote!(::lingxia::host::RouteAudience::ControlSurfaceOnly)
-            }
-            Self::ControlAppOrSurface => {
-                quote!(::lingxia::host::RouteAudience::ControlAppOrSurface)
-            }
-        }
-    }
-}
-
-#[derive(Clone, Copy)]
 struct HostOptions {
     mode: HostMode,
     sync: bool,
-    audience: RouteAudience,
 }
 
-fn expand_host(
-    route_lit: LitStr,
-    namespace: &str,
-    method: &str,
-    options: HostOptions,
-    input_fn: ItemFn,
+/// `pub(crate) fn __lingxia_route_{fn}(namespace, method, audience)`: the registry supplies the
+/// route's name and audience; `entry` builds the registration from them and `handler`.
+fn registration_helper(
+    fn_ident: &syn::Ident,
+    entry: proc_macro2::TokenStream,
 ) -> proc_macro2::TokenStream {
+    let helper_ident = format_ident!("__lingxia_route_{}", fn_ident);
+    quote! {
+        #[doc(hidden)]
+        pub(crate) fn #helper_ident(
+            namespace: &'static str,
+            method: &'static str,
+            audience: ::lingxia::host::RouteAudience,
+        ) -> ::lingxia::host::HostRegistrationEntry {
+            #entry
+        }
+    }
+}
+
+fn expand_host(options: HostOptions, input_fn: ItemFn) -> proc_macro2::TokenStream {
     let fn_ident = input_fn.sig.ident.clone();
-    let helper_ident = format_ident!("{}_host", fn_ident);
     let handler_ident = format_ident!("__LingxiaHostHandler_{}", fn_ident);
-    let namespace_lit = LitStr::new(namespace, route_lit.span());
-    let method_lit = LitStr::new(method, route_lit.span());
-    let audience = options.audience.tokens();
 
     let shape = if options.sync {
         Shape::Sync
@@ -351,6 +184,20 @@ fn expand_host(
 
     if options.sync {
         let call_expr = call_plan.call_expr(&fn_ident, false);
+        let checks = call_plan.host_checks();
+        let helper = registration_helper(
+            &fn_ident,
+            quote! {
+                ::lingxia::host::HostRegistrationEntry::SyncHandler(
+                    ::lingxia::host::SyncHostRegistration::new(
+                        namespace,
+                        method,
+                        audience,
+                        std::sync::Arc::new(#handler_ident),
+                    )
+                )
+            },
+        );
         return quote! {
             #input_fn
 
@@ -368,35 +215,26 @@ fn expand_host(
                 }
             }
 
-            #[doc(hidden)]
-            pub(crate) fn #helper_ident() -> ::lingxia::host::HostRegistrationEntry {
-                ::lingxia::host::HostRegistrationEntry::SyncHandler(
-                    ::lingxia::host::SyncHostRegistration::new(
-                        #namespace_lit,
-                        #method_lit,
-                        #audience,
-                        std::sync::Arc::new(#handler_ident),
-                    )
-                )
-            }
+            #checks
+            #helper
         };
     }
 
     let call_expr = call_plan.call_expr(&fn_ident, is_async);
-    let ctor_ident = match options.mode {
-        HostMode::Unary => format_ident!("new"),
-        HostMode::Stream | HostMode::Watch | HostMode::Channel => {
-            unreachable!("stream, watch and channel modes have their own expansion")
-        }
-    };
-    let serialize_expr = match options.mode {
-        HostMode::Unary => quote! {
-            ::lingxia::host::serialize_result(__lingxia_result)
+    let checks = call_plan.host_checks();
+    let helper = registration_helper(
+        &fn_ident,
+        quote! {
+            ::lingxia::host::HostRegistrationEntry::Handler(
+                ::lingxia::host::HostRegistration::new(
+                    namespace,
+                    method,
+                    audience,
+                    std::sync::Arc::new(#handler_ident),
+                )
+            )
         },
-        HostMode::Stream | HostMode::Watch | HostMode::Channel => {
-            unreachable!("stream, watch and channel modes have their own expansion")
-        }
-    };
+    );
     quote! {
         #input_fn
 
@@ -413,22 +251,13 @@ fn expand_host(
             ) -> ::lingxia::host::HostFuture<'a> {
                 Box::pin(async move {
                     let __lingxia_result = #call_expr;
-                    #serialize_expr
+                    ::lingxia::host::serialize_result(__lingxia_result)
                 })
             }
         }
 
-        #[doc(hidden)]
-        pub(crate) fn #helper_ident() -> ::lingxia::host::HostRegistrationEntry {
-            ::lingxia::host::HostRegistrationEntry::Handler(
-                ::lingxia::host::HostRegistration::#ctor_ident(
-                    #namespace_lit,
-                    #method_lit,
-                    #audience,
-                    std::sync::Arc::new(#handler_ident),
-                )
-            )
-        }
+        #checks
+        #helper
     }
 }
 
@@ -511,6 +340,40 @@ impl Plan {
         )
     }
 
+    /// `let ident: ty = value?;`, or on a channel, close it with the error.
+    fn bind(
+        &self,
+        ident: &syn::Ident,
+        ty: &Type,
+        value: proc_macro2::TokenStream,
+    ) -> proc_macro2::TokenStream {
+        if self.shape == Shape::Channel {
+            quote! {
+                let #ident: #ty = match #value {
+                    Ok(v) => v,
+                    Err(e) => {
+                        __lingxia_close.close_with(e);
+                        return;
+                    }
+                };
+            }
+        } else {
+            quote! { let #ident: #ty = #value?; }
+        }
+    }
+
+    /// Each `Host<A>` names the addon passed to `lingxia::host!`; a different type fails
+    /// to compile at the parameter.
+    fn host_checks(&self) -> proc_macro2::TokenStream {
+        let checks = self.params.0.iter().filter_map(|param| match param {
+            Param::Host(addon_ty) => Some(quote_spanned! {addon_ty.span()=>
+                const _: fn(&crate::__LingxiaHostAddon) -> &#addon_ty = |addon| addon;
+            }),
+            _ => None,
+        });
+        quote! { #(#checks)* }
+    }
+
     /// A plain `fn` runs on the blocking pool unless it is `sync` (the Logic JS thread).
     fn call_expr(&self, fn_ident: &syn::Ident, is_async: bool) -> proc_macro2::TokenStream {
         let mut call_args = Vec::new();
@@ -541,6 +404,21 @@ impl Plan {
                         quote! { let __lingxia_payload: #input_ty = #parse?; }
                     });
                     call_args.push(quote! { __lingxia_payload });
+                }
+                Param::LxAppState(state_ty) => {
+                    let ident = format_ident!("__lingxia_lxapp_state_{index}");
+                    let open = quote_spanned! {state_ty.span()=>
+                        <#state_ty>::__acquire(&__lingxia_invocation).await
+                    };
+                    prelude.push(self.bind(&ident, state_ty, open));
+                    call_args.push(quote! { #ident });
+                }
+                Param::Host(addon_ty) => {
+                    let ident = format_ident!("__lingxia_host_{index}");
+                    let ty = quote! { ::lingxia::Host<#addon_ty> };
+                    let ty: Type = syn::parse_quote!(#ty);
+                    prelude.push(self.bind(&ident, &ty, quote! { <#ty>::__acquire() }));
+                    call_args.push(quote! { #ident });
                 }
                 Param::PageState(state_ty) => {
                     let ident = format_ident!("__lingxia_page_state_{index}");
@@ -581,13 +459,7 @@ impl Plan {
 
 // ===== Stream and watch expansion =====
 
-fn expand_stream(
-    route_lit: LitStr,
-    namespace: &str,
-    method: &str,
-    options: HostOptions,
-    input_fn: ItemFn,
-) -> proc_macro2::TokenStream {
+fn expand_stream(input_fn: ItemFn) -> proc_macro2::TokenStream {
     let plan = match Plan::new(&input_fn, Shape::Stream) {
         Ok(p) => p,
         Err(err) => return err.to_compile_error(),
@@ -600,16 +472,10 @@ fn expand_stream(
             move |__lingxia_progress| async move { #call_expr },
         ))
     };
-    stream_route(route_lit, namespace, method, options, input_fn, body)
+    stream_route(&plan, input_fn, body)
 }
 
-fn expand_watch(
-    route_lit: LitStr,
-    namespace: &str,
-    method: &str,
-    options: HostOptions,
-    input_fn: ItemFn,
-) -> proc_macro2::TokenStream {
+fn expand_watch(input_fn: ItemFn) -> proc_macro2::TokenStream {
     let plan = match Plan::new(&input_fn, Shape::Watch) {
         Ok(p) => p,
         Err(err) => return err.to_compile_error(),
@@ -622,24 +488,31 @@ fn expand_watch(
         let __lingxia_events = #call_expr?;
         Ok(::lingxia::host::__stream::watch(__lingxia_events, __lingxia_cancel))
     };
-    stream_route(route_lit, namespace, method, options, input_fn, body)
+    stream_route(&plan, input_fn, body)
 }
 
 /// A route on the stream wire: `body` builds its `HostOutput`.
 fn stream_route(
-    route_lit: LitStr,
-    namespace: &str,
-    method: &str,
-    options: HostOptions,
+    plan: &Plan,
     input_fn: ItemFn,
     body: proc_macro2::TokenStream,
 ) -> proc_macro2::TokenStream {
     let fn_ident = &input_fn.sig.ident;
-    let helper_ident = format_ident!("{}_host", fn_ident);
     let handler_ident = format_ident!("__LingxiaStreamHandler_{}", fn_ident);
-    let namespace_lit = LitStr::new(namespace, route_lit.span());
-    let method_lit = LitStr::new(method, route_lit.span());
-    let audience = options.audience.tokens();
+    let checks = plan.host_checks();
+    let helper = registration_helper(
+        fn_ident,
+        quote! {
+            ::lingxia::host::HostRegistrationEntry::Handler(
+                ::lingxia::host::HostRegistration::stream(
+                    namespace,
+                    method,
+                    audience,
+                    std::sync::Arc::new(#handler_ident),
+                )
+            )
+        },
+    );
 
     quote! {
         #input_fn
@@ -659,35 +532,16 @@ fn stream_route(
             }
         }
 
-        #[doc(hidden)]
-        pub(crate) fn #helper_ident() -> ::lingxia::host::HostRegistrationEntry {
-            ::lingxia::host::HostRegistrationEntry::Handler(
-                ::lingxia::host::HostRegistration::stream(
-                    #namespace_lit,
-                    #method_lit,
-                    #audience,
-                    std::sync::Arc::new(#handler_ident),
-                )
-            )
-        }
+        #checks
+        #helper
     }
 }
 
 // ===== Channel expansion =====
 
-fn expand_channel(
-    route_lit: LitStr,
-    namespace: &str,
-    method: &str,
-    options: HostOptions,
-    input_fn: ItemFn,
-) -> proc_macro2::TokenStream {
+fn expand_channel(input_fn: ItemFn) -> proc_macro2::TokenStream {
     let fn_ident = input_fn.sig.ident.clone();
-    let helper_ident = format_ident!("{}_host", fn_ident);
     let handler_ident = format_ident!("__LingxiaChannelHandler_{}", fn_ident);
-    let namespace_lit = LitStr::new(namespace, route_lit.span());
-    let method_lit = LitStr::new(method, route_lit.span());
-    let audience = options.audience.tokens();
 
     let plan = match Plan::new(&input_fn, Shape::Channel) {
         Ok(p) => p,
@@ -697,6 +551,20 @@ fn expand_channel(
     let channel_ident = format_ident!("__lingxia_channel");
     let call_expr = plan.call_expr(&fn_ident, input_fn.sig.asyncness.is_some());
     let (inbound_ty, outbound_ty) = plan.channel_types();
+    let checks = plan.host_checks();
+    let helper = registration_helper(
+        &fn_ident,
+        quote! {
+            ::lingxia::host::HostRegistrationEntry::Channel(
+                ::lingxia::host::ChannelRegistration::new(
+                    namespace,
+                    method,
+                    audience,
+                    std::sync::Arc::new(#handler_ident),
+                )
+            )
+        },
+    );
 
     quote! {
         #input_fn
@@ -728,17 +596,8 @@ fn expand_channel(
             }
         }
 
-        #[doc(hidden)]
-        pub(crate) fn #helper_ident() -> ::lingxia::host::HostRegistrationEntry {
-            ::lingxia::host::HostRegistrationEntry::Channel(
-                ::lingxia::host::ChannelRegistration::new(
-                    #namespace_lit,
-                    #method_lit,
-                    #audience,
-                    std::sync::Arc::new(#handler_ident),
-                )
-            )
-        }
+        #checks
+        #helper
     }
 }
 
@@ -772,95 +631,68 @@ mod tests {
     }
 
     #[test]
-    fn native_defaults_audience_to_app_session_only() {
-        let (_, options) = parse_host_attr(
-            parse_args(quote!("demo.load")),
-            "native",
-            AudienceRequirement::Optional,
-        )
-        .expect("default audience");
-
-        assert_eq!(options.audience, RouteAudience::AppSessionOnly);
-        assert_eq!(
-            options.audience.tokens().to_string(),
-            ":: lingxia :: host :: RouteAudience :: AppSessionOnly"
-        );
-    }
-
-    #[test]
-    fn parses_all_supported_audiences_with_modes() {
+    fn the_attribute_sets_the_mode_and_leaves_the_name_to_the_registry() {
         let cases = [
+            (quote!(), HostMode::Unary, false),
+            (quote!("demo.load", sync), HostMode::Unary, true),
             (
-                quote!("demo.app", audience = "app-session-only"),
-                RouteAudience::AppSessionOnly,
-                HostMode::Unary,
-            ),
-            (
-                quote!("demo.host", audience = "control-app-only"),
-                RouteAudience::ControlAppOnly,
-                HostMode::Unary,
-            ),
-            (
-                quote!("demo.surface", stream, audience = "control-surface-only"),
-                RouteAudience::ControlSurfaceOnly,
+                quote!(stream, audience = "control-surface-only"),
                 HostMode::Stream,
+                false,
             ),
+            (quote!("watch", watch), HostMode::Watch, false),
             (
-                quote!("demo.any", audience = "control-app-or-surface", channel),
-                RouteAudience::ControlAppOrSurface,
+                quote!(audience = "control-app-or-surface", channel),
                 HostMode::Channel,
-            ),
-            (
-                quote!("demo.watch", watch, audience = "control-surface-only"),
-                RouteAudience::ControlSurfaceOnly,
-                HostMode::Watch,
+                false,
             ),
         ];
-
-        for (args, audience, mode) in cases {
-            let (_, options) =
-                parse_host_attr(parse_args(args), "native", AudienceRequirement::Optional)
-                    .expect("supported audience");
-            assert_eq!(options.audience, audience);
-            assert!(matches!(
-                (options.mode, mode),
-                (HostMode::Unary, HostMode::Unary)
-                    | (HostMode::Stream, HostMode::Stream)
-                    | (HostMode::Watch, HostMode::Watch)
-                    | (HostMode::Channel, HostMode::Channel)
-            ));
+        for (args, mode, sync) in cases {
+            let options = parse_host_attr(&parse_args(args), "native").expect("route attribute");
+            assert_eq!((options.mode, options.sync), (mode, sync));
         }
     }
 
     #[test]
-    fn rejects_invalid_or_duplicate_audience() {
-        for args in [
-            quote!("demo.invalid", audience = "guest"),
-            quote!("demo.nonliteral", audience = DEFAULT_AUDIENCE),
-            quote!(
-                "demo.duplicate",
-                audience = "app-session-only",
-                audience = "control-app-only"
-            ),
-        ] {
-            assert!(
-                parse_host_attr(parse_args(args), "native", AudienceRequirement::Optional).is_err()
-            );
-        }
-    }
-
-    #[test]
-    fn framework_native_requires_an_explicit_audience() {
-        let result = parse_host_attr(
-            parse_args(quote!("framework.route")),
-            "framework_native",
-            AudienceRequirement::Required,
-        );
-        let error = match result {
-            Ok(_) => panic!("framework routes require an audience"),
-            Err(error) => error,
+    fn the_helper_takes_the_name_and_audience_from_the_registry() {
+        let item: ItemFn = syn::parse_quote! {
+            fn load() -> lingxia::Result<()> { Ok(()) }
         };
-        assert!(error.to_string().contains("requires `audience = \"…\"`"));
+        let out = expand(quote!(), item);
+        assert!(
+            out.contains("pub(crate)fn__lingxia_route_load(namespace:&'staticstr,method:&'staticstr,audience:::lingxia::host::RouteAudience,)"),
+            "{out}"
+        );
+        assert!(
+            out.contains("HostRegistration::new(namespace,method,audience,"),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn app_and_host_state_bind_before_the_call() {
+        let item: ItemFn = syn::parse_quote! {
+            async fn list(notes: lingxia::LxAppState<Notes>, host: lingxia::Host<App>) -> lingxia::Result<()> {
+                Ok(())
+            }
+        };
+        let out = expand(quote!(), item);
+        assert!(
+            out.contains("<lingxia::LxAppState<Notes>>::__acquire(&__lingxia_invocation).await?"),
+            "{out}"
+        );
+        assert!(
+            out.contains("<::lingxia::Host<App>>::__acquire()?"),
+            "{out}"
+        );
+        assert!(
+            out.contains("const_:fn(&crate::__LingxiaHostAddon)->&App=|addon|addon;"),
+            "{out}"
+        );
+        assert!(
+            out.contains("list(__lingxia_lxapp_state_0,__lingxia_host_1).await"),
+            "{out}"
+        );
     }
 
     #[test]
@@ -917,34 +749,19 @@ mod tests {
         let options = HostOptions {
             mode: HostMode::Unary,
             sync: false,
-            audience: RouteAudience::AppSessionOnly,
         };
-        let out = expand_host(
-            LitStr::new("demo.two", proc_macro2::Span::call_site()),
-            "demo",
-            "two",
-            options,
-            item,
-        )
-        .to_string();
+        let out = expand_host(options, item).to_string();
         assert!(out.contains("compile_error"), "{out}");
         assert!(out.contains("one payload argument"), "{out}");
     }
 
     fn expand(args: proc_macro2::TokenStream, item: ItemFn) -> String {
-        let (route, options) =
-            parse_host_attr(parse_args(args), "native", AudienceRequirement::Optional)
-                .expect("route attribute");
-        let (namespace, method) = route
-            .value()
-            .rsplit_once('.')
-            .map(|(n, m)| (n.to_string(), m.to_string()))
-            .unwrap();
+        let options = parse_host_attr(&parse_args(args), "native").expect("route attribute");
         match options.mode {
-            HostMode::Stream => expand_stream(route, &namespace, &method, options, item),
-            HostMode::Watch => expand_watch(route, &namespace, &method, options, item),
-            HostMode::Channel => expand_channel(route, &namespace, &method, options, item),
-            HostMode::Unary => expand_host(route, &namespace, &method, options, item),
+            HostMode::Stream => expand_stream(item),
+            HostMode::Watch => expand_watch(item),
+            HostMode::Channel => expand_channel(item),
+            HostMode::Unary => expand_host(options, item),
         }
         .to_string()
         .replace(' ', "")
@@ -1035,11 +852,7 @@ mod tests {
 
     #[test]
     fn the_blocking_flag_is_rejected_with_the_fix() {
-        let error = match parse_host_attr(
-            parse_args(quote!("demo.load", blocking)),
-            "native",
-            AudienceRequirement::Optional,
-        ) {
+        let error = match parse_host_attr(&parse_args(quote!("demo.load", blocking)), "native") {
             Ok(_) => panic!("`blocking` is not a flag"),
             Err(error) => error,
         };
@@ -1064,16 +877,8 @@ mod tests {
         let options = HostOptions {
             mode: HostMode::Unary,
             sync: true,
-            audience: RouteAudience::AppSessionOnly,
         };
-        let out = expand_host(
-            LitStr::new("demo.bad", proc_macro2::Span::call_site()),
-            "demo",
-            "bad",
-            options,
-            async_fn,
-        )
-        .to_string();
+        let out = expand_host(options, async_fn).to_string();
         assert!(
             out.contains("only supported on non-async functions"),
             "{out}"
