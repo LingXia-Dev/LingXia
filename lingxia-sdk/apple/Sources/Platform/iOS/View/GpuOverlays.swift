@@ -57,9 +57,13 @@ public enum GpuOverlays {
         guard let scene = scenes.first(where: { $0.activationState == .foregroundActive }) ?? scenes.first else {
             return nil
         }
-        // Later windows of a level are above earlier ones; system windows (the keyboard's) are skipped.
+        // Later windows of a level are above earlier ones; system windows (the keyboard's) are
+        // skipped, and so are windows that take no touches, where a dialog could not be pressed.
         let windows = scene.windows.enumerated()
-            .filter { !$0.element.isHidden && $0.element.rootViewController != nil && isAppWindow($0.element) }
+            .filter {
+                !$0.element.isHidden && $0.element.isUserInteractionEnabled
+                    && $0.element.rootViewController != nil && isAppWindow($0.element)
+            }
             .sorted { ($0.element.windowLevel.rawValue, $0.offset) < ($1.element.windowLevel.rawValue, $1.offset) }
             .map(\.element)
         guard var top = windows.last?.rootViewController else { return nil }

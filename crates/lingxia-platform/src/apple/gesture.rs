@@ -1088,14 +1088,22 @@ mod ios {
 
     /// The front-most GPU page view on screen, searching windows back to front.
     fn front_gpu_page() -> Result<usize, String> {
-        unsafe fn walk(view: *mut AnyObject, found: &mut Option<usize>) {
+        gpu_pages()
+            .last()
+            .copied()
+            .ok_or_else(|| "no GPU page view on screen".to_string())
+    }
+
+    /// Every GPU page view on screen, back to front.
+    fn gpu_pages() -> Vec<usize> {
+        unsafe fn walk(view: *mut AnyObject, found: &mut Vec<usize>) {
             unsafe {
                 let hidden: bool = msg_send![view, isHidden];
                 if hidden {
                     return;
                 }
                 if is_gpu_page(view) {
-                    *found = Some(view as usize);
+                    found.push(view as usize);
                 }
                 let subviews: *mut AnyObject = msg_send![view, subviews];
                 let count: usize = msg_send![subviews, count];
@@ -1109,12 +1117,12 @@ mod ios {
             let app: *mut AnyObject = msg_send![objc2::class!(UIApplication), sharedApplication];
             let windows: *mut AnyObject = msg_send![app, windows];
             let count: usize = msg_send![windows, count];
-            let mut found = None;
+            let mut found = Vec::new();
             for index in 0..count {
                 let window: *mut AnyObject = msg_send![windows, objectAtIndex: index];
                 walk(window, &mut found);
             }
-            found.ok_or_else(|| "no GPU page view on screen".to_string())
+            found
         }
     }
 
@@ -1153,9 +1161,9 @@ mod ios {
 
     /// One touch phase at a view point; false when the page refused it.
     fn touch(view: usize, phase: isize, (x, y): (f64, f64)) -> Result<bool, String> {
-        // The page the gesture began on must still be the one on screen, which also keeps
-        // a page released since out of reach.
-        if front_gpu_page().ok() != Some(view) {
+        // The page the gesture began on must still be on screen, which also keeps a page
+        // released since out of reach.
+        if !gpu_pages().contains(&view) {
             return Err("the page left the screen during the gesture".into());
         }
         Ok(unsafe { msg_send![view as *mut AnyObject, automationTouch: phase, x: x, y: y] })
@@ -1302,11 +1310,10 @@ mod ios {
                     return Ok(None);
                 }
                 if is_gpu_page(view) {
-                    // GPU content, a page or the feedback layer over it, takes the tap as
-                    // a page touch on the front page, which routes it as a finger would.
-                    let page = front_gpu_page()?;
-                    let local: CGPoint = msg_send![page as *mut AnyObject, convertPoint: point, fromView: window];
-                    return Ok(Some((page, (local.x, local.y))));
+                    // The GPU page the window's hit-test found takes the tap as a finger's, so
+                    // a layer that cannot take touches fails here as it does for the user.
+                    let local: CGPoint = msg_send![view, convertPoint: point, fromView: window];
+                    return Ok(Some((view as usize, (local.x, local.y))));
                 }
                 view = msg_send![view, superview];
             }

@@ -62,6 +62,7 @@ enum DevServiceMarkWindow {
         let mark = PassThroughWindow(windowScene: scene)
         mark.windowLevel = .alert + 2
         mark.backgroundColor = .clear
+        mark.isUserInteractionEnabled = false
         mark.rootViewController = DevServiceMarkViewController()
         mark.isHidden = false
         windows[id] = mark
