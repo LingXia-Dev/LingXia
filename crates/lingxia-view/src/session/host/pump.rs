@@ -661,7 +661,8 @@ impl<A: PlatformAdapter> Inner<A> {
         let generation = CommitTicket::new(session.generation().get() + 1);
         let caret = request.caret;
         let surface = request.surface;
-        // A tab bar floating over the page takes the page theme's material, under the HUD.
+        // A tab bar floating over the page takes the page theme's material, under an open dialog
+        // and the HUD.
         let material = {
             let env = &session.environment;
             let logical = |px: u16| f32::from(px) / scale.max(f32::MIN_POSITIVE);
@@ -704,7 +705,7 @@ impl<A: PlatformAdapter> Inner<A> {
                 if !caret {
                     display.hide_caret();
                 }
-                display.push_overlay("lingxia:chrome-material", material);
+                display.push_under_top_layer("lingxia:chrome-material", material);
                 if let Some(problems) = problems {
                     display.push_overlay("lingxia:dev-problems", problems);
                 }

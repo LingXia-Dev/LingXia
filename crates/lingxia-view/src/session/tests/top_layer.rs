@@ -332,3 +332,60 @@ fn a_page_without_a_top_layer_has_no_bar_slots() {
     assert!(chrome.images.is_empty());
     assert_eq!(generation, 0);
 }
+
+/// Where `push_under_top_layer` puts a marker paint this frame, against the first page paint,
+/// the first chrome slot and the last command; with whether the animated spans stay ordered.
+fn under_top_layer(
+    page: &mut ViewSession,
+    at: Duration,
+) -> (usize, Option<usize>, Option<usize>, usize, bool) {
+    use crate::scene::paint::Paint;
+    let rect = |color| Paint::Rect {
+        color,
+        bounds: [0.0, 90.0, 200.0, 10.0],
+        radius: 0.0,
+        corners: None,
+    };
+    page.prepare_view_animated(W as u16 * 2, 100, 2.0, true, None, at, |mut display: DisplayList| {
+        display.push_under_top_layer("material", vec![rect([1, 2, 3, 255])]);
+        let marker = display
+            .commands
+            .iter()
+            .position(|p| matches!(p, Paint::Rect { color: [1, 2, 3, 255], .. }))
+            .unwrap();
+        let page = display
+            .commands
+            .iter()
+            .position(|p| matches!(p, Paint::Rect { color, .. } if color[..3] == [255, 0, 0]));
+        let slot = display.commands.iter().position(|p| {
+            matches!(p, Paint::Image { src, .. } if crate::scene::display::ChromeEdge::of_source(src).is_some())
+        });
+        let spans = display.animated_spans();
+        let ordered = spans.windows(2).all(|pair| pair[0].commands.end <= pair[1].commands.start)
+            && spans.iter().any(|span| span.identity == "material" && span.commands == (marker..marker + 1));
+        Ok((marker, page, slot, display.commands.len(), ordered))
+    })
+    .unwrap()
+}
+
+#[test]
+fn the_bar_material_sits_under_an_open_dialog() {
+    let (mut page, _) = opened("dialog");
+    let (marker, page_paint, slot, _, ordered) = under_top_layer(&mut page, frame_time(300));
+    assert!(page_paint.unwrap() < marker, "over the page");
+    assert_eq!(
+        slot,
+        Some(marker + 1),
+        "under the bar snapshots and the dialog"
+    );
+    assert!(ordered, "its own span, in order");
+}
+
+#[test]
+fn without_a_dialog_the_bar_material_is_drawn_last() {
+    let (mut page, _) = opened("popover");
+    let (marker, _, slot, len, ordered) = under_top_layer(&mut page, frame_time(300));
+    assert_eq!(marker, len - 1, "over the page and a popover");
+    assert!(slot.is_none() || slot < Some(marker));
+    assert!(ordered);
+}

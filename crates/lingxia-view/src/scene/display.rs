@@ -247,6 +247,49 @@ impl DisplayList {
         });
     }
 
+    /// Draw `paints` like [`Self::push_overlay`], but under a modal top layer the host lifts
+    /// over its bars: just before their snapshots, so the dialog and its scrim cover them too.
+    pub(crate) fn push_under_top_layer(
+        &mut self,
+        identity: &str,
+        paints: Vec<crate::scene::paint::Paint>,
+    ) {
+        let slot = self.commands.iter().position(|paint| {
+            matches!(paint, Paint::Image { src, .. } if ChromeEdge::of_source(src).is_some())
+        });
+        let Some(at) = slot.filter(|&at| {
+            self.top_layer_open()
+                && !self
+                    .animated
+                    .iter()
+                    .any(|span| span.commands.start < at && at < span.commands.end)
+        }) else {
+            return self.push_overlay(identity, paints);
+        };
+        if paints.is_empty() {
+            return;
+        }
+        let len = paints.len();
+        self.commands.splice(at..at, paints);
+        for span in &mut self.animated {
+            if span.commands.start >= at {
+                span.commands = span.commands.start + len..span.commands.end + len;
+            }
+        }
+        let index = self
+            .animated
+            .iter()
+            .position(|span| span.commands.start >= at + len)
+            .unwrap_or(self.animated.len());
+        self.animated.insert(
+            index,
+            AnimatedSpan {
+                identity: identity.to_owned(),
+                commands: at..at + len,
+            },
+        );
+    }
+
     /// Press (`ring` 0) or focus-ring feedback drawn into the frame, for a host that cannot
     /// layer it over the page: `shapes` as [`crate::interaction::chrome::feedback_shape`] gives
     /// them, `argb` its colour. A ring lies inside the node, as the native hosts stroke it.
