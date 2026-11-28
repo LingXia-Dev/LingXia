@@ -13,6 +13,8 @@ const DOC_ROOTS = ["docs/skill", "docs/view"];
 const MAX_PATHS = 25;
 // `page` means the Logic page only in the skill's authoring docs; tests and View docs use the name for other objects.
 const PAGE_DOCS = /^docs\/skill\/(?!.*testing\.md$)/;
+// Members the app fills in (its generated native client): any path below them is the app's own.
+const APP_DEFINED = ["page.native"];
 // Stand-ins a doc writes for "some member": `lx.X(...)`, `lx.foo()`.
 const PLACEHOLDERS = new Set(["X", "foo", "bar", "baz"]);
 const CODE_LANGUAGES = new Set(["", "ts", "tsx", "js", "jsx", "mjs", "javascript", "typescript"]);
@@ -69,6 +71,7 @@ export function nearest(path, count = 3) {
 // A path resolves when it is a member, or a member followed by fields of the types it reaches
 // (`lx.app.info.role`).
 export function resolves(path) {
+  if (APP_DEFINED.some(prefix => path.startsWith(`${prefix}.`) && members.has(prefix))) return true;
   const segments = path.split(".");
   for (let end = segments.length; end > 1; end--) {
     const member = members.get(segments.slice(0, end).join("."));

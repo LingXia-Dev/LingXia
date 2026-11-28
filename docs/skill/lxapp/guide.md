@@ -342,7 +342,7 @@ Items are keyed by tab page name; `icon: null` restores the declared icon, `badg
 
 ### Navigating
 
-`lx.nav` takes a target naming one destination: `{ page, params? }`,
+`lx.nav.go` takes a target naming one destination: `{ page, params? }`,
 `{ tab, params? }`, `{ app, page?, params? }` or `{ url }`. Names come from
 `lxapp.json`; `params` is checked against what the page declares.
 
@@ -377,8 +377,8 @@ A handle is not a promise: await `.opened`. Its methods can be called at once;
 `result` is `canceled`).
 
 A page with unsaved changes holds the user's Back and Home with `useLeaveGuard` (GPU) or
-[`useLxLeaveGuard`](./webview/guide.md#leaving-a-page-with-unsaved-changes) (WebView); `lx.nav`
-moves are not guarded.
+[`useLxLeaveGuard`](./webview/guide.md#leaving-a-page-with-unsaved-changes) (WebView); moves the
+page makes itself (`lx.nav.go`, `back`, `reset`) are not guarded.
 
 ### Navigation bar
 
@@ -423,7 +423,7 @@ translation, an argument a translation adds or drops, and a catalogue for an und
 - An argument is wrapped in bidi isolates (U+2066–2069) when the language is right to left or the
   argument holds right-to-left text, so it cannot reorder the sentence around it.
 - Logic: `lx.app.t('cart.items', { count })` for toasts, dialogs and action sheets.
-  Logic passes errors, not text: the View's `errorText` says a failure kept as data, or `lx.ui.toast(e)` / `lx.ui.alert({ error: e })`.
+  Logic passes errors, not text: the View's `errorText` says a failure kept as data, or `lx.ui.toast(e)` / an alert given `{ error: e }`.
 - WebView (React): `const t = useText()` from `@lingxia/react`; `t` from `@lingxia/bridge` elsewhere.
 - The View's own words (picker Cancel/Done, dialog OK) are `@view.*` keys; a catalogue that names
   one, e.g. `"@view.done"`, overrides it in that language only. The build checks an override against
