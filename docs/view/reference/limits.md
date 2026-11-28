@@ -15,7 +15,7 @@ Page-wide bounds the runtime and the native decoder both enforce. Exceeding one 
 | `sourceBytes` | 8192 (8 KiB) | Length of one image `src`. |
 | `visibleImageBytes` | 67108864 (64 MiB) | Decoded image bytes one page paints at once; past it an image gets `onError` and a placeholder. |
 | `transitionMs` | 10000 | Longest transition duration or delay, in milliseconds. |
-| `evalBudgetMs` | 100 | CPU-time budget for one View render or callback. A render past it is dropped: the page keeps its last frame, renders again, and fails with UI_TIMEOUT only after `evalOverrunFrames` such renders in a row. A callback past it keeps its effects. |
+| `evalBudgetMs` | 100 | CPU-time budget for one View render or callback. A render that finishes past it is kept and warned about (`UI_OVERRUN`); a callback past it keeps its effects. |
 | `editorTextBytes` | 65536 (64 KiB) | Text one editor holds, as UTF-8. |
 | `pasteHtmlBytes` | 2097152 (2 MiB) | The HTML flavour an `onPaste` event carries; a larger one is listed in `omitted`. |
 | `textBytes` | 65536 (64 KiB) | Text of one node, as UTF-8; a `<text>` with `<span>` and `<link>` runs counts all of them together. |

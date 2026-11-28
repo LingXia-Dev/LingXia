@@ -99,7 +99,7 @@ impl ViewSession {
         // Until the new module has run, it is taken to read everything.
         self.reads_host_context = true;
         self.reads_appearance = true;
-        self.overruns.swap(&other.overruns);
+        self.overrun.swap(&other.overrun);
         let poisoned = self.poisoned.get();
         self.poisoned.set(other.poisoned.get());
         other.poisoned.set(poisoned);

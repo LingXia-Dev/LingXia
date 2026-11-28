@@ -87,8 +87,8 @@ pub struct ViewSession {
     lowered_due: Cell<bool>,
     /// Lowered styles were offered once; later frames only add what the seed never serves.
     lowered_taken: Cell<bool>,
-    /// Frames in a row that finished past their budget; each was dropped.
-    overruns: Cell<u32>,
+    /// The warning for a render this frame that finished past its budget.
+    overrun: std::cell::RefCell<Option<String>>,
     environment: serde_json::Value,
     /// Connected to Logic: its page actions are configured.
     connected: bool,
@@ -207,7 +207,7 @@ pub struct ClickRecord {
     pub outcome: Result<bool, &'static str>,
 }
 
-/// Prefix of a frame dropped for finishing past its budget; the page keeps running.
+/// Prefix of the warning for a frame that finished past its budget; the frame is kept.
 pub const OVERRUN: &str = "UI_OVERRUN:";
 /// Prefix of a frame asked for before Logic sent the connection's first snapshot.
 pub(crate) const NOT_READY: &str = "UI_STATE: waiting for first snapshot";
@@ -231,6 +231,15 @@ pub(crate) fn eval_budget() -> Duration {
         1
     };
     Duration::from_millis((EVAL_BUDGET_MS * scale) as u64)
+}
+
+/// One frame's View render budget; `eval_budget` unless a test narrows it.
+fn frame_budget() -> Duration {
+    #[cfg(test)]
+    if let Some(budget) = tests::FRAME_BUDGET.get() {
+        return budget;
+    }
+    eval_budget()
 }
 
 /// The CPU time at which a render or callback is interrupted and the page discarded.
@@ -445,7 +454,7 @@ impl ViewSession {
             loaded_languages: std::collections::HashSet::new(),
             lowered_due: Cell::new(false),
             lowered_taken: Cell::new(false),
-            overruns: Cell::new(0),
+            overrun: Default::default(),
             connected: false,
             retained: None,
             layout_revision: 0,
@@ -619,13 +628,18 @@ impl ViewSession {
         self.evaluate(false, work)
     }
 
-    /// One frame's View render: past its budget the frame is dropped (`UI_OVERRUN`), and
-    /// the page is discarded after enough of those in a row.
+    /// One frame's View render: one that finishes past its budget is kept and warned about
+    /// (`UI_OVERRUN`); one that reaches the limit is interrupted and the page discarded.
     pub(super) fn execute_frame<T>(
         &self,
         work: impl FnOnce() -> Result<T, String>,
     ) -> Result<T, String> {
         self.evaluate(true, work)
+    }
+
+    /// The warning for this frame's render that finished past its budget, if one did.
+    pub(crate) fn take_overrun(&self) -> Option<String> {
+        self.overrun.take()
     }
 
     /// The error the frame's render threw itself, read under its own budget so a hung
@@ -647,14 +661,14 @@ impl ViewSession {
         frame: bool,
         work: impl FnOnce() -> Result<T, String>,
     ) -> Result<T, String> {
-        use crate::protocol::limits::{EVAL_OVERRUN_FRAMES, EVAL_WARMUP_MULTIPLIER};
+        use crate::protocol::limits::EVAL_WARMUP_MULTIPLIER;
         if self.poisoned.get() {
             return Err("UI_TIMEOUT: discard the interrupted page before reusing it".into());
         }
-        let budget = if frame && self.warm.get() {
-            eval_budget() * EVAL_WARMUP_MULTIPLIER as u32
-        } else {
-            eval_budget()
+        let budget = match (frame, self.warm.get()) {
+            (true, true) => frame_budget() * EVAL_WARMUP_MULTIPLIER as u32,
+            (true, false) => frame_budget(),
+            (false, _) => eval_budget(),
         };
         let limit = eval_limit();
         let (result, overrun) = self.budget.run(budget, limit, || {
@@ -663,25 +677,15 @@ impl ViewSession {
             Ok(value)
         });
         let result = match (frame, overrun, result) {
-            (true, Some(overrun), Ok(_)) => {
-                let run = self.overruns.get() + 1;
-                self.overruns.set(run);
-                if run as usize >= EVAL_OVERRUN_FRAMES {
-                    // Each run completed, so no element is mid-render to name.
-                    self.poisoned.set(true);
-                    return Err(format!(
-                        "UI_TIMEOUT: View JavaScript overran its budget on {run} frames in a row ({}); discard this page",
+            // A render that finishes is kept however slow: a page fast enough at rest still
+            // overruns on a slow machine or through a live resize. Only the limit stops a page.
+            (true, overrun, Ok(value)) => {
+                if let Some(overrun) = overrun {
+                    *self.overrun.borrow_mut() = Some(format!(
+                        "{OVERRUN} View JavaScript overran its budget ({})",
                         overrun.detail
                     ));
-                } else {
-                    Err(format!(
-                        "{OVERRUN} View JavaScript overran its budget ({}); the frame is dropped",
-                        overrun.detail
-                    ))
                 }
-            }
-            (true, None, Ok(value)) => {
-                self.overruns.set(0);
                 self.warm.set(false);
                 Ok(value)
             }

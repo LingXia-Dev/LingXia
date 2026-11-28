@@ -737,7 +737,6 @@ fn contract_drift(schema: &Value) -> Vec<String> {
             ),
             ("evalWarmupMultiplier", limits::EVAL_WARMUP_MULTIPLIER),
             ("evalLimitMs", limits::EVAL_LIMIT_MS),
-            ("evalOverrunFrames", limits::EVAL_OVERRUN_FRAMES),
             ("editorTextBytes", limits::EDITOR_TEXT_BYTES),
             ("inputRequestBytes", limits::INPUT_REQUEST_BYTES),
             ("inputBatchEdits", limits::INPUT_BATCH_EDITS),

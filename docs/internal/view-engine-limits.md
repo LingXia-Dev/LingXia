@@ -10,8 +10,7 @@ decodable and its GPU memory bounded, and page code cannot act on them.
 | `decodedImageBytes` | 100663296 (96 MiB) | Decoded-image cache shared by every page; it evicts, never fails. |
 | `evalBudgetDebugMultiplier` | 8 | Multiplier on that budget in unoptimized (debug) builds. |
 | `evalWarmupMultiplier` | 2 | Budget multiple for a module's first render after it loads, reloads or is hot-swapped (that render also warms the engine), and for the render an appearance, language, text-size or size-class change causes, which runs the whole page again. |
-| `evalLimitMs` | 3000 | CPU time at which any render or callback is interrupted (ten times that in wall time for a hang) and the page fails with UI_TIMEOUT; scaled like `evalBudgetMs` in debug builds. It only catches hangs, so a slow phone running a long render drops a frame and keeps the page. |
-| `evalOverrunFrames` | 3 | Renders in a row past the budget, each dropped, after which the page fails with UI_TIMEOUT. |
+| `evalLimitMs` | 3000 | CPU time at which any render or callback is interrupted (ten times that in wall time for a hang) and the page fails with UI_TIMEOUT; scaled like `evalBudgetMs` in debug builds. It only catches runaway scripts, so a slow device running a long render keeps the page. |
 | `inputRequestBytes` | 524288 (512 KiB) | One input-method request from the platform, as UTF-8 JSON. |
 | `pasteRequestBytes` | 6291456 (6 MiB) | One paste request from the platform, its text and HTML as UTF-8 JSON. |
 | `inputBatchEdits` | 64 | Edits in one input-method batch. |

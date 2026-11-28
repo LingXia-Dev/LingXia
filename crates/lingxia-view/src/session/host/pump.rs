@@ -451,6 +451,12 @@ impl<A: PlatformAdapter> Inner<A> {
                         if let Some((connection, update)) = update {
                             inner.publish(connection, update);
                         }
+                        if let Some(overrun) = &snapshot.overrun
+                            && current
+                        {
+                            inner.main().telemetry.budget_overrun();
+                            inner.adapter.warn(overrun);
+                        }
                         inner.main().retarget = false;
                         if !current || missed {
                             // Built on a frame that will not present, or both it and the frame
@@ -798,6 +804,7 @@ impl<A: PlatformAdapter> Inner<A> {
             image_buckets,
             feedback,
             reported: metrics,
+            overrun: session.take_overrun(),
             json: Default::default(),
         });
         Ok((Some((frame, snapshot)), update))
@@ -810,24 +817,6 @@ impl<A: PlatformAdapter> Inner<A> {
         surface: SurfaceTicket,
         page: PageTicket,
     ) {
-        // A dropped frame is not a failure: the page keeps its last frame and renders again.
-        if let Some(error) = error.as_deref()
-            && error.starts_with(crate::session::OVERRUN)
-        {
-            let current = self.lifecycle.is_current_page(page);
-            {
-                let mut main = self.main();
-                main.dirty = true;
-                if current {
-                    main.telemetry.budget_overrun();
-                }
-            }
-            if current {
-                self.adapter.warn(error);
-                self.schedule();
-            }
-            return;
-        }
         // A panic over one sample of an animation is a dropped frame too; in a row it is a failure.
         let panicked = error
             .as_deref()

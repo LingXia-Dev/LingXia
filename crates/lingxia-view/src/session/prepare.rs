@@ -1024,17 +1024,17 @@ impl ViewSession {
                 if prepared_js {
                     // A frame the target only declined keeps the user's pending state; any
                     // other failure reverts it, and its error tells the author why.
-                    // A dropped frame keeps it too: the next frame renders it again.
-                    let _ = self.eval(if error == FRAME_DECLINED || error.starts_with(OVERRUN) {
+                    let _ = self.eval(if error == FRAME_DECLINED {
                         "__lingxiaDiscard(true)"
                     } else {
                         "__lingxiaDiscard()"
                     });
                 }
-                // A frame the target declined or dropped is not the user's mistake: the focus
-                // and text they gave stay, and the next frame shows them (and reveals the field).
-                let kept = error == FRAME_DECLINED || error.starts_with(OVERRUN);
-                if kept {
+                // A slow render on a frame that failed is not this frame's news.
+                self.take_overrun();
+                // A frame the target declined is not the user's mistake: the focus and text
+                // they gave stay, and the next frame shows them (and reveals the field).
+                if error == FRAME_DECLINED {
                     self.input_dirty = true;
                 } else if let Some(mut previous) = self.pending_inputs.take() {
                     previous.invalidate_after(&self.inputs)?;

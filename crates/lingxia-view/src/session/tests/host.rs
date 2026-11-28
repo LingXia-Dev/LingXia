@@ -847,6 +847,111 @@ fn removed_images_cancel_their_transport_and_failures_stop_input() {
     assert_eq!(last(&host), ["spin"]);
 }
 
+/// A live resize renders each step anew: a page whose renders all run past their budget, as a
+/// heavy page's do on a slow machine, survives a storm of size changes, renders a few of them,
+/// and lands on the final size; slow renders at a steady size, or after a theme change, are kept.
+#[test]
+fn a_resize_storm_keeps_a_slow_page_and_lands_on_the_final_size() {
+    let worker = ViewWorker::spawn("test-resize-storm").unwrap();
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source(
+            "function render(){const n=useLocal('n',0);return h('button',{onClick:()=>n.set(n.value+1),style:{height:60}},`n ${n.value}`)}",
+        ),
+        false,
+    );
+    worker.run(|_| super::FRAME_BUDGET.set(Some(Duration::from_nanos(1))));
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    assert_eq!(last(&host), ["n 0"], "a slow first frame is kept");
+    let at_rest = *host.adapter().log.lock().unwrap().presented_sizes.last().unwrap();
+    let accepted = host.adapter().log.lock().unwrap().accepted.len();
+    for width in 201..=210 {
+        resize(&host, width);
+        host.surface_changed();
+    }
+    platform.settle(&[&host]);
+    assert!(host.failure().is_none(), "{:?}", host.failure());
+    {
+        let log = host.adapter().log.lock().unwrap();
+        // Only the frame already on the worker and the latest size render; none in between.
+        let storm: Vec<u16> = log.accepted[accepted..].iter().map(|size| size.0).collect();
+        assert!(
+            storm.iter().all(|width| [201, 210].contains(width)),
+            "ten size changes coalesce: {storm:?}"
+        );
+        let landed = *log.presented_sizes.last().unwrap();
+        assert_eq!(landed.1, at_rest.1);
+        assert_eq!(
+            u32::from(landed.0) * 200,
+            u32::from(at_rest.0) * 210,
+            "{landed:?}"
+        );
+        assert!(
+            log.warnings
+                .iter()
+                .any(|w| w.starts_with(crate::session::OVERRUN))
+        );
+    }
+    for _ in 0..3 {
+        tap(&host, 20.0, 20.0);
+        platform.settle(&[&host]);
+    }
+    assert!(host.failure().is_none(), "{:?}", host.failure());
+    assert_eq!(last(&host), ["n 3"]);
+    // A theme change re-renders the whole page, slowly too.
+    for appearance in [
+        crate::protocol::env::Appearance::Dark,
+        crate::protocol::env::Appearance::Light,
+        crate::protocol::env::Appearance::Dark,
+    ] {
+        host.adapter()
+            .environment
+            .lock()
+            .unwrap()
+            .as_mut()
+            .unwrap()
+            .value
+            .appearance = appearance;
+        host.environment_changed();
+        platform.settle(&[&host]);
+    }
+    assert!(host.failure().is_none(), "{:?}", host.failure());
+}
+
+/// A page discarded for a runaway script reloads when it is shown again.
+#[test]
+fn a_page_discarded_at_the_limit_reloads_when_shown_again() {
+    if !bounded_jobs() {
+        return;
+    }
+    let worker = ViewWorker::spawn("test-reload-on-show").unwrap();
+    worker.run(|_| super::short_limit());
+    let platform = Platform::new(&[&worker]);
+    let host = platform.host(
+        &worker,
+        &source(
+            "function render(){return h('button',{onClick:()=>{while(true){}},style:{height:60}},'spin')}",
+        ),
+        false,
+    );
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    tap(&host, 20.0, 20.0);
+    platform.settle(&[&host]);
+    assert_eq!(
+        host.failure().map(|failure| failure.recovery.retry),
+        Some(Retry::Reload)
+    );
+    host.set_visible(false);
+    platform.settle(&[&host]);
+    host.set_visible(true);
+    platform.settle(&[&host]);
+    assert!(host.failure().is_none(), "{:?}", host.failure());
+    assert_eq!(last(&host), ["spin"]);
+}
+
 /// A retry whose attempt fails the same way shows the panel again, its action live, never a
 /// stuck "Retrying…".
 #[test]
@@ -2717,7 +2822,7 @@ fn the_same_render_failure_three_times_stops_rendering_until_a_retry_or_a_new_si
 }
 
 #[test]
-fn a_frame_past_its_budget_is_dropped_without_recovery_and_counted() {
+fn a_frame_past_its_budget_is_kept_without_recovery_and_counted() {
     let worker = ViewWorker::spawn("test-budget-overrun").unwrap();
     let platform = Platform::new(&[&worker]);
     // The budget charges CPU time, so the page spins two budgets of CPU work, calibrated on this
@@ -2756,16 +2861,12 @@ fn a_frame_past_its_budget_is_dropped_without_recovery_and_counted() {
     resize(&host, 180);
     host.surface_changed();
     platform.settle(&[&host]);
-    assert_ne!(
-        last(&host),
-        ["frame 1"],
-        "the dropped frame is rendered again"
-    );
+    assert_eq!(last(&host), ["frame 2"], "the slow frame is kept");
     {
         let log = host.adapter().log.lock().unwrap();
         assert!(
             log.recovery.iter().all(Option::is_none),
-            "a dropped frame shows no recovery"
+            "a slow frame shows no recovery"
         );
         assert!(
             log.warnings

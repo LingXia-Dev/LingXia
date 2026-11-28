@@ -60,7 +60,7 @@ Every message starts with its code: `CODE: detail`. **build** codes stop `lingxi
 | `UI_LOCAL` | runtime | error | Two useLocal calls share a name in one component, a non-JSON value is stored, or set/focus is called after unmount. | Use distinct names per component, store only plain JSON values, and guard calls after unmount. |
 | `UI_LX` | build | error | lx or a value import from @lingxia/logic is used in View code. | Move lx.* calls into a Logic action and invoke that action from the View; use `import type` for types. |
 | `UI_MODULE` | build, native | error | A page module failed to load, imported a reserved path, missed a peer dependency, or mismatched its dev chunk interface. | Install missing peer dependencies, import only source/package modules, and rebuild stale pages. |
-| `UI_OVERRUN` | native | warning | A render exceeded its CPU time budget and was dropped to retry. | Reduce synchronous render work or move heavy computation to Logic. |
+| `UI_OVERRUN` | native | warning | A render finished past its CPU time budget; the frame is kept. | Reduce synchronous render work or move heavy computation to Logic. |
 | `UI_PAGE` | native | error | A call reached a page that was already discarded. | Stop driving the closed page handle after unmount or navigation. |
 | `UI_PARENT` | native | error | A node listed before its parent reached the native decoder. | Rebuild the page with a matching @lingxia/view runtime and host SDK. |
 | `UI_PATCH` | native | error | An invalid JSON state patch arrived from Logic. | Mutate page data only through page.update or page.set with plain JSON values. |
@@ -88,7 +88,7 @@ Every message starts with its code: `CODE: detail`. **build** codes stop `lingxi
 | `UI_TAG` | build, runtime, native | error | An element tag is not part of the View language. | Replace it with a supported View element from elements.md (e.g. <view>, <text>, <image>). |
 | `UI_TEST_ID` | native | error | An invalid data-testid reached the native decoder. | Use a non-empty string within identifierBytes for data-testid. |
 | `UI_TEXT` | build, runtime, native | error | A <span> sits outside <text>, a link label is invalid, the runs of a <text> hold more than `textBytes` of text, or a component inside <text> returns a non-run. | Keep <span> inside <text>, split long rich text across <text> elements, and return only runs, popovers or dialogs inside <text>. |
-| `UI_TIMEOUT` | native | recovery | View code repeatedly exceeded its CPU time budget or hung. | Optimize or move expensive work to Logic, then reload the page. |
+| `UI_TIMEOUT` | native | recovery | View code ran to the CPU time limit (a runaway script or hang) and was interrupted. | Optimize or move expensive work to Logic, then reload the page. |
 | `UI_TRANSFORM` | build, native | error | A scaled or rotated box holds an editor, scroll, slider or webview, or a native transform is singular. | Translate instead of scaling/rotating containers holding native controls, or transform a sibling. |
 | `UI_TRANSITION` | native | error | An invalid transition definition reached the renderer. | Use transition-* utilities with supported painted properties and durations <= 10 s. |
 | `UI_VECTOR` | build, runtime, native | error | A <vector> has invalid paths, viewBox, gradients, stroke or transform props. | Pass 1..32 valid path objects with SVG d strings, a 4-number viewBox, and <= 8 gradients. |

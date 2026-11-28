@@ -34,9 +34,9 @@ Both the View runtime and the host enforce fixed bounds on every frame; the curr
   once, past which images get `onError` instead of failing the frame.
 - **JavaScript time.** One render or callback may use a fixed amount of CPU time on the View's thread
   (twice that for a page's first render and for the one a theme, language, text-size or size-class
-  change causes); past it the render is dropped (`UI_OVERRUN`) and runs again, and only several
-  in a row, or one far past the budget, stop the page with `UI_TIMEOUT`. A busy machine does not
-  count against it, a render that computes too much does.
+  change causes); a render that finishes past it is kept and warned about (`UI_OVERRUN`). Only a
+  runaway script, interrupted at a much higher limit, stops the page with `UI_TIMEOUT`, and the
+  page reloads when shown again. A busy machine does not count against it.
 
 Exceeding a limit fails the frame with `UI_LIMIT`, `UI_LIST` or `UI_TEXT`, and the previous frame stays.
 Per-element bounds (options, plot values, vector paths, gradient stops, grid tracks, shadow layers) are

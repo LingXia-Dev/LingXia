@@ -107,6 +107,8 @@ pub struct FrameSnapshot {
     pub feedback: crate::interaction::chrome::FeedbackStyle,
     /// The metrics as reported, with the presenter's own counters.
     pub reported: serde_json::Value,
+    /// The warning for a render in this frame that finished past its budget.
+    overrun: Option<String>,
     json: std::sync::OnceLock<String>,
 }
 
@@ -2497,7 +2499,19 @@ impl<A: PlatformAdapter> Inner<A> {
         }
         self.lifecycle.set_visible(visible && !disposed);
         self.hide_videos(!visible || self.window_stopped());
-        if visible {
+        // A page discarded while away (a script interrupted at the limit) reloads on return
+        // rather than showing its failure until someone retries.
+        let reload = shown
+            && !disposed
+            && self
+                .main()
+                .failure
+                .as_ref()
+                .is_some_and(|failure| failure.recovery.retry == Retry::Reload);
+        if reload {
+            log::info!(target: "lingxia_view", "shown again after a discarded session: reloading");
+            self.retry();
+        } else if visible {
             self.pump_images();
             self.schedule();
         } else {

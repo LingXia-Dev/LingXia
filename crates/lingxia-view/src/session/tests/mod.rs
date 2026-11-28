@@ -2428,6 +2428,11 @@ thread_local! {
     pub(crate) static LIMIT: std::cell::Cell<Option<std::time::Duration>> = const { std::cell::Cell::new(None) };
 }
 
+thread_local! {
+    /// This thread's frame budget, so a spec can make every render overrun.
+    pub(crate) static FRAME_BUDGET: std::cell::Cell<Option<std::time::Duration>> = const { std::cell::Cell::new(None) };
+}
+
 /// Interrupts this thread's runs at four budgets, the scale the interrupt specs spin to.
 pub(crate) fn short_limit() {
     LIMIT.set(Some(super::eval_budget() * 4));
@@ -2461,74 +2466,38 @@ fn spin_for(
         .as_secs_f64()
         * 1000.0;
     // Only a run that finished measures the rate; an interrupted one stopped early.
-    if result
-        .as_ref()
-        .map_or_else(|e| e.starts_with(super::OVERRUN), |_| true)
-        && spent > 1.0
-    {
+    if result.is_ok() && spent > 1.0 {
         *per_ms = spin as f64 / spent;
     }
     result
 }
 
 #[test]
-fn a_frame_past_its_budget_is_dropped_and_the_page_renders_again() {
-    let Some((mut page, mut per_ms)) = spinning_page() else {
-        return;
-    };
-    let committed = page.generation();
-    let error = spin_for(&mut page, &mut per_ms, 2.0, 1, "slow").unwrap_err();
-    assert!(error.starts_with("UI_OVERRUN:"), "{error}");
-    assert_eq!(
-        page.generation(),
-        committed,
-        "the dropped frame commits nothing"
-    );
-    assert_eq!(
-        spin_for(&mut page, &mut per_ms, 0.2, 2, "quick").unwrap(),
-        "quick"
-    );
-}
-
-#[test]
-fn overrunning_frames_in_a_row_discard_the_page() {
-    use crate::protocol::limits::EVAL_OVERRUN_FRAMES;
-    let Some((mut page, mut per_ms)) = spinning_page() else {
-        return;
-    };
-    let mut rev = 1;
-    // A frame within budget resets the run.
-    for _ in 0..EVAL_OVERRUN_FRAMES - 1 {
-        assert!(
-            spin_for(&mut page, &mut per_ms, 2.0, rev, "slow")
-                .unwrap_err()
-                .starts_with(super::OVERRUN)
-        );
-        rev += 1;
+fn a_frame_past_its_budget_is_kept_and_warned_about_however_often() {
+    let mut page = ViewSession::new_with_logic(
+        &source("function render({data}){return h('text',{},String(data.label))}"),
+        true,
+    )
+    .unwrap();
+    page.write_state(state_write(&serde_json::json!({"v":2,"kind":"state.snapshot","rev":0,"state":{"label":"first"}})))
+        .unwrap();
+    page.render(300, 500, 1.0).unwrap();
+    assert_eq!(page.take_overrun(), None);
+    // Every render from here runs past its budget, as a heavy page does on a slow machine.
+    FRAME_BUDGET.set(Some(std::time::Duration::from_nanos(1)));
+    for rev in 1..=5u64 {
+        let label = format!("slow {rev}");
+        page.write_state(state_write(&serde_json::json!({"v":2,"kind":"state.patch","baseRev":rev-1,"rev":rev,"ops":[{"op":"replace","path":"/label","value":label}]})))
+            .unwrap();
+        let committed = page.generation();
+        assert_eq!(page.render(300, 500, 1.0).unwrap().nodes[0].text, label);
+        assert!(page.generation() != committed, "the slow frame commits");
+        let warning = page.take_overrun().expect("a slow frame is warned about");
+        assert!(warning.starts_with(super::OVERRUN), "{warning}");
     }
-    assert_eq!(
-        spin_for(&mut page, &mut per_ms, 0.2, rev, "quick").unwrap(),
-        "quick"
-    );
-    rev += 1;
-    for round in 0..EVAL_OVERRUN_FRAMES {
-        let error = spin_for(&mut page, &mut per_ms, 2.0, rev, "slow").unwrap_err();
-        rev += 1;
-        if round + 1 < EVAL_OVERRUN_FRAMES {
-            assert!(error.starts_with(super::OVERRUN), "{error}");
-        } else {
-            assert!(
-                error.starts_with("UI_TIMEOUT:") && error.contains("in a row"),
-                "{error}"
-            );
-        }
-    }
-    assert!(
-        page.render(300, 500, 1.0)
-            .err()
-            .unwrap()
-            .contains("discard the interrupted page")
-    );
+    FRAME_BUDGET.set(None);
+    page.render(300, 500, 1.0).unwrap();
+    assert_eq!(page.take_overrun(), None);
 }
 
 #[test]
@@ -2556,13 +2525,16 @@ fn a_run_past_the_limit_is_interrupted_at_once_and_a_first_render_gets_the_warm_
 }
 
 #[test]
-fn a_slow_render_far_past_its_budget_drops_its_frame_and_keeps_the_page() {
+fn a_slow_render_far_past_its_budget_keeps_its_frame_and_the_page() {
     let Some((mut page, mut per_ms)) = spinning_page() else {
         return;
     };
-    // Five budgets: what a slow phone takes for a long render. Only a hang reaches the limit.
-    let error = spin_for(&mut page, &mut per_ms, 5.0, 1, "slow").unwrap_err();
-    assert!(error.starts_with(super::OVERRUN), "{error}");
+    // Five budgets: what a slow phone takes for a long render. Only a runaway reaches the limit.
+    assert_eq!(
+        spin_for(&mut page, &mut per_ms, 5.0, 1, "slow").unwrap(),
+        "slow"
+    );
+    assert!(page.take_overrun().is_some());
     assert_eq!(
         spin_for(&mut page, &mut per_ms, 0.2, 2, "quick").unwrap(),
         "quick"
@@ -2575,7 +2547,11 @@ fn a_render_an_environment_change_caused_gets_the_warm_up_budget_once() {
         return;
     };
     let over = |page: &mut ViewSession, per_ms: &mut f64, rev: u64| {
-        spin_for(page, per_ms, 1.4, rev, "slow").map_err(|error| error.starts_with(super::OVERRUN))
+        let label = spin_for(page, per_ms, 1.4, rev, "slow").map_err(|_| false)?;
+        match page.take_overrun() {
+            Some(_) => Err(true),
+            None => Ok(label),
+        }
     };
     assert_eq!(over(&mut page, &mut per_ms, 1), Err(true), "steady state");
     // Appearance: the whole page renders again by design.
@@ -2597,7 +2573,6 @@ fn a_render_an_environment_change_caused_gets_the_warm_up_budget_once() {
         Err(true),
         "the keyboard rose"
     );
-    // A quick render ends the run of overruns before the next rows.
     assert_eq!(
         spin_for(&mut page, &mut per_ms, 0.2, 5, "quick").unwrap(),
         "quick"

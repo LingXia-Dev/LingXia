@@ -346,11 +346,10 @@ const limitNotes = {
   visibleImageBytes: 'Decoded image bytes one page paints at once; past it an image gets `onError` and a placeholder.',
   decodedImageBytes: 'Decoded-image cache shared by every page; it evicts, never fails.',
   transitionMs: 'Longest transition duration or delay, in milliseconds.',
-  evalBudgetMs: 'CPU-time budget for one View render or callback. A render past it is dropped: the page keeps its last frame, renders again, and fails with UI_TIMEOUT only after `evalOverrunFrames` such renders in a row. A callback past it keeps its effects.',
+  evalBudgetMs: 'CPU-time budget for one View render or callback. A render that finishes past it is kept and warned about (`UI_OVERRUN`); a callback past it keeps its effects.',
   evalBudgetDebugMultiplier: 'Multiplier on that budget in unoptimized (debug) builds.',
   evalWarmupMultiplier: 'Budget multiple for a module\'s first render after it loads, reloads or is hot-swapped (that render also warms the engine), and for the render an appearance, language, text-size or size-class change causes, which runs the whole page again.',
-  evalLimitMs: 'CPU time at which any render or callback is interrupted (ten times that in wall time for a hang) and the page fails with UI_TIMEOUT; scaled like `evalBudgetMs` in debug builds. It only catches hangs, so a slow phone running a long render drops a frame and keeps the page.',
-  evalOverrunFrames: 'Renders in a row past the budget, each dropped, after which the page fails with UI_TIMEOUT.',
+  evalLimitMs: 'CPU time at which any render or callback is interrupted (ten times that in wall time for a hang) and the page fails with UI_TIMEOUT; scaled like `evalBudgetMs` in debug builds. It only catches runaway scripts, so a slow device running a long render keeps the page.',
   editorTextBytes: 'Text one editor holds, as UTF-8.',
   inputRequestBytes: 'One input-method request from the platform, as UTF-8 JSON.',
   pasteHtmlBytes: 'The HTML flavour an `onPaste` event carries; a larger one is listed in `omitted`.',
@@ -390,7 +389,7 @@ const size = value => value >= 1 << 20 && value % (1 << 20) === 0 ? `${value / (
 
 // Engine and wire bounds an author cannot act on; they are documented for work on the renderer.
 const engineLimits = new Set(['decodedImageBytes', 'evalBudgetDebugMultiplier', 'evalWarmupMultiplier',
-  'evalLimitMs', 'evalOverrunFrames', 'inputRequestBytes', 'pasteRequestBytes', 'inputBatchEdits',
+  'evalLimitMs', 'inputRequestBytes', 'pasteRequestBytes', 'inputBatchEdits',
   'clipboardItems', 'wireValues', 'shadowMaskBytes', 'compositeFrames', 'leaseFrames', 'compositeBytes', 'outlineGlyphs',
   'ghosts', 'layoutMotions']);
 
