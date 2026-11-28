@@ -1184,7 +1184,11 @@ extension LxApp {
 
     public static func handleAppLink(url: URL) {
         guard url.scheme == "https" else { return }
+        #if os(iOS)
+        MainActor.assumeIsolated { LaunchLink.receive(url) }
+        #else
         let _ = onApplinkReceived(url.absoluteString)
+        #endif
     }
 
     nonisolated static func isPushEnabled() -> Bool {

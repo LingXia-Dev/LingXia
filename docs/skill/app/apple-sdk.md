@@ -100,7 +100,7 @@ The contract is these symbols plus their request/event/id types:
 
 | Symbol | Role |
 |---|---|
-| `Lingxia` | `runProductCommandIfInvoked()`, `quickStart()`, `handleAppActivation()`, `initializeRuntime()`, `activate(controller:)`, `enableWebViewDebugging()`, `handleAppLink(url:)`, `installNotificationDelegate()`, `displayLanguage` |
+| `Lingxia` | `runProductCommandIfInvoked()`, `quickStart()`, `handleAppActivation()`, `initializeRuntime()`, `activate(controller:)`, `enableWebViewDebugging()`, `handleAppLink(url:)`, `installNotificationDelegate()`, `displayLanguage`; `LingxiaAppDelegate` (iOS) |
 | `LxAppController` | Sessions for advanced embedding: `open` / `openHomeApp` / `navigate` / `close`, `events` stream, interceptors |
 | `LxAppHostView` | Embeddable view: `mount` / `unmount` / `dispatch`, `events` stream (`LxAppHostViewRepresentable` for SwiftUI) |
 | `L10n` | SDK strings for host-owned native chrome: `L10n.AppMenu.*`, `L10n.Browser.*` |

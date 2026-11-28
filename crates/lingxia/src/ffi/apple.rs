@@ -690,6 +690,9 @@ mod bridge {
         #[swift_bridge(swift_name = "onApplinkReceived")]
         fn on_applink_received(applink_path: &str) -> i32;
 
+        #[swift_bridge(swift_name = "appLinksConfigured")]
+        fn app_links_configured() -> bool;
+
         #[swift_bridge(swift_name = "onNotificationActivated")]
         fn on_notification_activated(activation_token: &str) -> i32;
 
@@ -2615,6 +2618,11 @@ pub fn get_tab_bar_item(appid: &str, slot: i32) -> Option<self::bridge::TabBarIt
 /// Handle AppLink URL by processing the path (Universal Link)
 pub fn on_applink_received(url: &str) -> i32 {
     lingxia_service::applink::deliver(url)
+}
+
+/// Whether the product accepts App Links at all.
+pub fn app_links_configured() -> bool {
+    lingxia_service::applink::configured()
 }
 
 /// A local notification was tapped. The token is opaque to the SDK; the host

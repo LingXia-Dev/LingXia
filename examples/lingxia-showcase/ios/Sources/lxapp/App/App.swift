@@ -21,6 +21,9 @@ public struct ContentView: View {
 
 @main
 public struct LxAppApp: App {
+    // Tells the runtime about a launch link before the first view, so the link is the cold open.
+    @UIApplicationDelegateAdaptor(LingxiaAppDelegate.self) private var appDelegate
+
     public init() {
         // Before the first view appears: iOS hands a cold-start notification
         // tap over right after launch and drops it if nothing is listening.

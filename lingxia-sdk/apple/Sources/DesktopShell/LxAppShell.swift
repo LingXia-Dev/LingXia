@@ -3347,10 +3347,12 @@ public final class LxAppShell {
 
     public func show() {
         iOSLxApp.initialize(autoOpenHome: false)
-        guard !didOpenHome else { return }
-        didOpenHome = true
-        Task { @MainActor [controller] in
-            _ = try? await controller.openHomeApp()
+        LaunchLink.shellReady { [weak self] in
+            guard let self, !self.didOpenHome else { return }
+            self.didOpenHome = true
+            Task { @MainActor [controller] in
+                _ = try? await controller.openHomeApp()
+            }
         }
     }
     public func hide() {}

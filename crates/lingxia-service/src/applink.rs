@@ -182,6 +182,11 @@ fn runner_process() -> bool {
         .is_some_and(|value| !value.trim().is_empty())
 }
 
+/// Whether the product declares any App Link host.
+pub fn configured() -> bool {
+    !lingxia_host_config::service_app_link_hosts().is_empty()
+}
+
 fn host_allowed(host: &str) -> bool {
     if lingxia_host_config::app_config().is_none() {
         return true;

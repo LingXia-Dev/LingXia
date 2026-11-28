@@ -131,6 +131,8 @@ https://app.example.com/.well-known/applinking.json
 - No `.json` suffix on the URL; `appID` is Team ID plus bundle id.
 - `paths` filters before the app starts: a path outside it never reaches the
   SDK. Cover every product path that should open the app.
+- An iOS host keeps `@UIApplicationDelegateAdaptor(LingxiaAppDelegate.self)` (the
+  template has it): without it a cold link opens over home instead of in its place.
 
 ### Android
 
