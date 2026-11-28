@@ -161,7 +161,8 @@ function desktopShowcaseHost(
       return window.visible
         && window.bounds.w >= 320
         && window.bounds.h >= 320
-        && (title.includes('lingxia') || process.includes('lingxiademo'));
+        // Without Screen Recording macOS redacts the title; the process still names the app.
+        && (title.includes('lingxia') || process.includes('lingxia'));
     })
     .sort((left, right) => (
       right.bounds.w * right.bounds.h - left.bounds.w * left.bounds.h
@@ -180,38 +181,46 @@ function nativeWindowExtent(
     : logicalPoints;
 }
 
-function isApiNavbarBlue(pixel: DesktopPixel): boolean {
-  return Math.abs(pixel.r - 59) <= 24
-    && Math.abs(pixel.g - 130) <= 24
-    && Math.abs(pixel.b - 246) <= 24;
+// The API page's first section, found by the label the page gives it. A theme sets the
+// chrome colours, so a landmark the page names holds in any palette, language and renderer;
+// its left edge sits a fixed padding inside the main content edge.
+async function apiLandmarkLabel(app: TestApp): Promise<string> {
+  const api = await app.page({ name: 'api' }, { timeout: 30_000 });
+  const label = await api.view.testId('api-bridge-section').getAttribute('aria-label');
+  if (!label) throw new Error('the API page bridge section has no accessible label');
+  return label;
 }
 
-async function apiNavbarProbePoints(
+async function visibleApiLandmark(
   desktop: DesktopDriver,
   host: DesktopWindowInfo,
-): Promise<[number, number][] | undefined> {
-  const centerX = host.bounds.x + Math.round(host.bounds.w * 0.5);
-  const top = host.bounds.y + 20;
-  const bottom = Math.min(host.bounds.y + 160, host.bounds.y + host.bounds.h - 1);
-  const centerPoints: [number, number][] = [];
-  for (let y = top; y <= bottom; y += 4) centerPoints.push([centerX, y]);
-  const centerPixels = await Promise.all(
-    centerPoints.map((at) => desktop.pixel({ at })),
-  );
-  for (let index = 0; index < centerPoints.length; index += 1) {
-    if (!isApiNavbarBlue(centerPixels[index])) continue;
-    const y = centerPoints[index][1];
-    // Keep the probes inside the main pane's center band. Once a right aside
-    // is docked, the 75% point belongs to that aside and cannot prove whether
-    // the main navbar was restored.
-    const row: [number, number][] = [0.35, 0.45, 0.55].map((fraction) => [
-      host.bounds.x + Math.round(host.bounds.w * fraction),
-      y,
-    ]);
-    const rowPixels = await Promise.all(row.map((at) => desktop.pixel({ at })));
-    if (rowPixels.every(isApiNavbarBlue)) return row;
-  }
-  return undefined;
+  label: string,
+): Promise<DesktopAxNode | undefined> {
+  const nodes = await desktop.ax.query({ window: host.id, match: label, all: true });
+  return nodes.find((node) => (
+    node.name === label
+    && node.enabled
+    && node.rect.w > 0
+    && node.rect.h > 0
+    && node.rect.x >= host.bounds.x
+    && node.rect.y >= host.bounds.y
+    && node.rect.x + node.rect.w <= host.bounds.x + host.bounds.w
+    && node.rect.y + node.rect.h <= host.bounds.y + host.bounds.h
+  ));
+}
+
+// On screen means on top: what the pointer would reach at its centre is the landmark itself.
+async function apiLandmarkOnTop(
+  desktop: DesktopDriver,
+  host: DesktopWindowInfo,
+  label: string,
+): Promise<DesktopAxNode | undefined> {
+  const node = await visibleApiLandmark(desktop, host, label);
+  if (!node) return undefined;
+  const hit = await desktop.ax.hitTest({
+    at: regionCenter([node.rect.x, node.rect.y, node.rect.w, node.rect.h]),
+  }).catch(() => undefined);
+  return hit?.name === label ? node : undefined;
 }
 
 // macOS AX reports the Chat placeholder a couple of pixels past the
@@ -291,29 +300,6 @@ async function visibleCompactApiTabAxNode(
   ));
 }
 
-async function visibleApiNavbarAxNode(
-  desktop: DesktopDriver,
-  host: DesktopWindowInfo,
-): Promise<DesktopAxNode | undefined> {
-  const nodes = await desktop.ax.query({
-    window: host.id,
-    match: 'API',
-    all: true,
-  });
-  const topBand = host.bounds.y + Math.min(120, Math.round(host.bounds.h * 0.2));
-  return nodes.find((node) => (
-    node.role === 'statictext'
-    && (node.value === 'API' || node.name === 'API')
-    && node.enabled
-    && node.rect.w > 0
-    && node.rect.h > 0
-    && node.rect.y >= host.bounds.y
-    && node.rect.y + node.rect.h <= topBand
-    && node.rect.x >= host.bounds.x
-    && node.rect.x + node.rect.w <= host.bounds.x + host.bounds.w
-  ));
-}
-
 async function visibleBrowserViewportWidth(
   browser: BrowserDriver,
 ): Promise<number | undefined> {
@@ -327,32 +313,6 @@ async function visibleBrowserViewportWidth(
     if (String(error).includes('browser tab is not ready')) return undefined;
     throw error;
   }
-}
-
-async function apiNavbarLeftEdge(
-  desktop: DesktopDriver,
-  platform: string,
-  host: DesktopWindowInfo,
-  y: number,
-): Promise<number | undefined> {
-  const step = Math.max(2, nativeWindowExtent(platform, host, 4));
-  const scanWidth = Math.min(
-    Math.round(host.bounds.w * 0.45),
-    nativeWindowExtent(platform, host, 320),
-  );
-  const points: [number, number][] = [];
-  for (let x = host.bounds.x + 2; x <= host.bounds.x + scanWidth; x += step) {
-    points.push([x, y]);
-  }
-  const pixels = await Promise.all(points.map((at) => desktop.pixel({ at })));
-  let run = 0;
-  for (let index = 0; index < pixels.length; index += 1) {
-    run = isApiNavbarBlue(pixels[index]) ? run + 1 : 0;
-    // A contiguous run distinguishes the navbar fill from a blue sidebar
-    // glyph that happens to intersect the sampled row.
-    if (run >= 5) return points[index - run + 1][0];
-  }
-  return undefined;
 }
 
 // A pointer resting on the rail or header opens the sidebar peek or a control
@@ -1313,6 +1273,7 @@ test('gates rail sidebar reveal and compact aside chrome on every desktop', {
     await app.nav.go({ tab: 'api' });
     const api = await app.page({ name: 'api' }, { timeout: 30_000 });
     await api.view.testId('api-page').waitFor({ state: 'visible', timeout: 30_000 });
+    const landmark = await apiLandmarkLabel(app);
 
     // Cross below the sidebar budget so the adaptive rail is freshly
     // projected. Then use the real native expand control and prove the
@@ -1325,27 +1286,21 @@ test('gates rail sidebar reveal and compact aside chrome on every desktop', {
         : undefined;
     }, `${platform} narrow regular layout`);
     host = await ensureHostForeground(desktop, host);
-    const railNavbar = await waitForValue(
-      () => apiNavbarProbePoints(desktop, host!),
-      `${platform} API navbar before sidebar reveal`,
-    );
-    const navbarY = railNavbar[0][1];
     // One main reports no switcher form, so the rail is read from the content edge it leaves.
     const railNavbarLeft = await waitForValue(async () => {
-      const edge = await apiNavbarLeftEdge(desktop, platform, host!, navbarY);
-      return edge !== undefined && edge - host!.bounds.x <= nativeWindowExtent(platform, host!, 96)
-        ? edge
+      const node = await apiLandmarkOnTop(desktop, host!, landmark);
+      return node && node.rect.x - host!.bounds.x <= nativeWindowExtent(platform, host!, 140)
+        ? node.rect.x
         : undefined;
-    }, `${platform} API navbar edge beside the rail`);
+    }, `${platform} API page beside the rail`);
     const expandedSidebarNavbarLeft = await revealRailSidebar(
       desktop,
       platform,
       host,
       async () => {
-        const edge = await apiNavbarLeftEdge(desktop, platform, host!, navbarY);
-        return edge !== undefined
-          && edge - railNavbarLeft >= nativeWindowExtent(platform, host!, 80)
-          ? edge
+        const node = await apiLandmarkOnTop(desktop, host!, landmark);
+        return node && node.rect.x - railNavbarLeft >= nativeWindowExtent(platform, host!, 80)
+          ? node.rect.x
           : undefined;
       });
     expect(expandedSidebarNavbarLeft).toBeGreaterThan(railNavbarLeft);
@@ -1363,14 +1318,11 @@ test('gates rail sidebar reveal and compact aside chrome on every desktop', {
     expect(compactRoot.activeMainId).toBe(compactRoot.mainSwitcher.rootSurfaceId);
     host = await ensureHostForeground(desktop, host);
     const compactNavbar = await waitForValue(
-      () => apiNavbarProbePoints(desktop, host!),
-      `${platform} compact API navbar baseline`,
+      () => apiLandmarkOnTop(desktop, host!, landmark),
+      `${platform} compact API page baseline`,
     );
     if (platform === 'windows') {
-      const compactNavbarLeft = await waitForValue(
-        () => apiNavbarLeftEdge(desktop, platform, host!, compactNavbar[0][1]),
-        'Windows compact API navbar remains beside the icon rail',
-      );
+      const compactNavbarLeft = compactNavbar.rect.x;
       expect(
         Math.abs(compactNavbarLeft - railNavbarLeft)
           <= nativeWindowExtent(platform, host, 20),
@@ -1425,14 +1377,14 @@ test('gates rail sidebar reveal and compact aside chrome on every desktop', {
       expect(visibleWorkspaces.map((window) => window.id)).toEqual([host.id]);
     }
 
-    // This is the exact visual regression gate: every pixel sampled from the
-    // Home/API navbar must be covered once Chat owns the compact workspace.
+    // The visual regression gate: where the API page was, the pointer now reaches Chat.
+    const covered = regionCenter([
+      compactNavbar.rect.x, compactNavbar.rect.y, compactNavbar.rect.w, compactNavbar.rect.h,
+    ]);
     await waitForValue(async () => {
-      const pixels = await Promise.all(
-        compactNavbar.map((at) => desktop.pixel({ at })),
-      );
-      return pixels.every((pixel) => !isApiNavbarBlue(pixel)) ? true : undefined;
-    }, `${platform} compact Chat covers the Home API navbar`);
+      const hit = await desktop.ax.hitTest({ at: covered }).catch(() => undefined);
+      return hit && hit.name !== landmark ? true : undefined;
+    }, `${platform} compact Chat covers the API page`);
     await typeIntoChatThroughDesktop(`compact-overlay-${platform}`);
 
     host = await resizeHostOnScreen(desktop, host, sidebarWindowWidth, testHeight);
@@ -1448,10 +1400,8 @@ test('gates rail sidebar reveal and compact aside chrome on every desktop', {
     expect(docked.activeMainId).toBe(SHOWCASE_APP_ID);
     host = await ensureHostForeground(desktop, host);
     await waitForValue(
-      async () => platform === 'macos'
-        ? await visibleApiNavbarAxNode(desktop, host!)
-        : await apiNavbarProbePoints(desktop, host!),
-      `${platform} Home API navbar restored beside Chat`,
+      () => apiLandmarkOnTop(desktop, host!, landmark),
+      `${platform} API page restored beside Chat`,
     );
     await typeIntoChatThroughDesktop(`docked-aside-${platform}`);
 
@@ -1479,10 +1429,11 @@ test('gates rail sidebar reveal and compact aside chrome on every desktop', {
     }, `${platform} wide browser keeps the full sidebar`);
 
     host = await resizeHostOnScreen(desktop, host, railWindowWidth, testHeight);
-    // Several mains, so the core reports the budget's rail itself.
+    // Browser tabs are the shell's own provider group, not graph mains, so the rail is
+    // read from the viewport below rather than from the core's switcher form.
     await waitForValue(async () => {
       const layout = await app.surfaceLayout();
-      return layout.sizeClass === 'regular' && layout.switcherForm === 'rail' ? true : undefined;
+      return layout.sizeClass === 'regular' ? true : undefined;
     }, `${platform} narrow browser shell`);
     let railBrowserSample: Record<string, number | undefined> = {};
     let railBrowserInset: number;
@@ -1577,9 +1528,7 @@ test('gates rail sidebar reveal and compact aside chrome on every desktop', {
         : undefined;
     }, `${platform} root graph after closing browser main`);
     await waitForValue(
-      async () => platform === 'macos'
-        ? await visibleApiNavbarAxNode(desktop, host!)
-        : await apiNavbarProbePoints(desktop, host!),
+      () => apiLandmarkOnTop(desktop, host!, landmark),
       `${platform} lxapp physically restored after closing browser main`,
     );
   } catch (error) {
@@ -3026,9 +2975,9 @@ test('keeps an aside lxapp page stack and its floats inside the aside', {
     };
 
     // An aside page gets the same navigation bar a main page has, sized to
-    // the aside — but only while Back or Home has somewhere to go. At the
-    // root of the aside's own stack the slot tab already names the app, so
-    // the bar takes no height and the page starts right under the tab strip.
+    // the aside, while Back or Home has somewhere to go. Chat is not the app's
+    // initial page, so its root already offers Home and has the bar: a push
+    // keeps the page where it is and adds Back.
     const navbarHeight = nativeWindowExtent(platform, host, 38);
     const slop = nativeWindowExtent(platform, host, 4);
     const rootTop = await waitForValue(
@@ -3044,9 +2993,8 @@ test('keeps an aside lxapp page stack and its floats inside the aside', {
     // One page deeper the bar appears: the page moves down by its height.
     const pushedTop = await waitForValue(async () => {
       const top = await asidePageTop(t, platform, desktop, host!, 'feedback', 'Help us improve');
-      return top && top.top - rootTop.top >= navbarHeight - slop ? top : undefined;
-    }, 'aside navigation bar under the tab strip after navigateTo');
-    expect(Math.abs(pushedTop.top - rootTop.top - navbarHeight) <= slop).toBeTruthy();
+      return top && Math.abs(top.top - rootTop.top) <= slop ? top : undefined;
+    }, 'aside page under the same navigation bar after navigateTo');
     if (platform === 'macos') {
       const title = await waitForValue(async () => {
         const node = await exactHostAxNode(desktop, host!, 'statictext', 'Feedback');
@@ -3071,11 +3019,11 @@ test('keeps an aside lxapp page stack and its floats inside the aside', {
       ] });
     }
     await expectChatBackInAside('navbar Back');
-    // Back at the root the bar collapses again.
+    // Back at the root the page is where it started.
     await waitForValue(async () => {
       const top = await asidePageTop(t, platform, desktop, host!, 'chat', 'AI Chat');
       return top && Math.abs(top.top - rootTop.top) <= slop ? top : undefined;
-    }, 'aside navigation bar collapsed again at the stack root');
+    }, 'Chat page back at the stack root');
 
     // navigateBack pops inside the aside and reveals the chat page there again.
     await pushFeedback('navigateBack');
@@ -3220,14 +3168,29 @@ function chatAsideSlot(layout: SurfaceLayoutSnapshot): SurfaceLayoutAsideSlot | 
 }
 
 /** The showcase main page's web area: the left-most one that is not Chat's. */
+// The main page's frame: a WebView page's web area, or a GPU page's scrolling root. A web
+// view's own scroll area shares its web area's frame; the sidebar's are narrower.
 async function mainWebArea(
   desktop: DesktopDriver,
   host: DesktopWindowInfo,
 ): Promise<DesktopAxNode | undefined> {
-  const areas = await desktop.ax.query({ window: host.id, match: 'role:webarea', all: true })
+  const nodes = await desktop.ax.query({ window: host.id, match: '', all: true })
     .catch(() => [] as DesktopAxNode[]);
-  return areas
-    .filter((node) => node.rect.w > 0 && node.rect.h > 0 && !/chat/i.test(node.name ?? ''))
+  const webAreas = nodes.filter((node) => node.role === 'webarea');
+  const sameFrame = (a: DesktopAxNode, b: DesktopAxNode) => (
+    a.rect.x === b.rect.x && a.rect.y === b.rect.y && a.rect.w === b.rect.w && a.rect.h === b.rect.h
+  );
+  return nodes
+    .filter((node) => (
+      (node.role === 'webarea' || (
+        node.role === 'scrollarea'
+        && node.rect.w > nativeWindowExtent('macos', host, 300)
+        && !webAreas.some((area) => sameFrame(area, node))
+      ))
+      && node.rect.w > 0
+      && node.rect.h > 0
+      && !/chat/i.test(node.name ?? '')
+    ))
     .sort((a, b) => a.rect.x - b.rect.x)[0];
 }
 
@@ -3263,10 +3226,12 @@ test('maximizes an aside over a main that keeps its frame and restores it on eve
   const originalBounds = { ...host.bounds };
   try {
     await closeChatSurface(t, app);
+    // Wide enough that the sidebar stays expanded beside the docked aside: it folds to
+    // the rail below 820 pt of free width, and the sidebar tabs are what this drives.
     host = await resizeHostOnScreen(
       desktop,
       host,
-      nativeWindowExtent('macos', host, 1_000),
+      nativeWindowExtent('macos', host, 1_280),
       nativeWindowExtent('macos', host, 640),
     );
     await app.nav.go({ tab: 'home' });
@@ -3405,7 +3370,14 @@ test('maximizes an aside over a main that keeps its frame and restores it on eve
       await visibleChatInputAxNode(desktop, host!) ? undefined : true
     ), 'Chat page put away with its aside');
     const handle = await waitForValue(
-      () => visibleHostAxNode(desktop, host!, 'name:Show LingXia Showcase (WebView)'),
+      // Its label is localized ("Show …"); the slot's title and its place at the edge are not.
+      async () => (await desktop.ax.query({
+        window: host!.id, match: 'name:LingXia Showcase (WebView)', all: true,
+      }).catch(() => [] as DesktopAxNode[])).find((node) => (
+        node.role === 'button'
+        && node.rect.w > 0
+        && node.rect.x >= host!.bounds.x + host!.bounds.w - nativeWindowExtent('macos', host!, 40)
+      )),
       'restore handle of the collapsed aside',
     );
     await desktop.ax.invoke({ window: host.id, match: `id:${handle.id}` });
@@ -4027,10 +3999,12 @@ test('opens a browser aside beside a docked, maximized and collapsed Chat aside 
   const tabsBefore = new Set((await browser.tabs().catch(() => [])).map((tab) => tab.tab_id));
   try {
     await closeChatSurface(t, app);
+    // Wide enough to dock Chat beside an expanded sidebar too: which one the window
+    // starts with is the person's choice, and an aside that does not fit opens over the main.
     host = await resizeHostOnScreen(
       desktop,
       host,
-      nativeWindowExtent(platform, host, 1_000),
+      nativeWindowExtent(platform, host, 1_280),
       nativeWindowExtent(platform, host, 640),
     );
     await app.nav.go({ tab: 'home' });
@@ -4051,15 +4025,33 @@ test('opens a browser aside beside a docked, maximized and collapsed Chat aside 
     const chatPageHasFocus = async () => (await chat.page({ name: 'chat' }, { timeout: 30_000 }))
       .view.eval(({ document }) => (document as unknown as { hasFocus(): boolean }).hasFocus())
       .catch(() => false);
-    const mainPageHasFocus = async () => (await app.page({ name: 'home' }, { timeout: 30_000 }))
-      .view.eval(({ document }) => (document as unknown as { hasFocus(): boolean }).hasFocus())
-      .catch(() => false);
+    // Home is a GPU page with no DOM focus to read: focus is back in the main once the
+    // Chat page has let it go, the window's first responder having moved on.
+    const mainPageHasFocus = async () => !(await chatPageHasFocus());
 
     // The slot controls are accessibility nodes of the host window on macOS.
     // The Windows shell draws its chrome itself and exposes no node for them,
     // so there the maximized and collapsed variants are not driven; the
     // docked variant still runs.
-    const control = (name: string) => visibleHostAxNode(desktop, host!, `name:${name}`);
+    // The slot controls by exact name. AX ids are child positions, and the panel strip
+    // gains a tab as the browser aside joins, so an id read a moment earlier can name
+    // another button: press by name, again until the layout shows it took.
+    const control = async (name: string) => {
+      const nodes = await desktop.ax.query({ window: host!.id, match: `name:${name}`, all: true })
+        .catch(() => [] as DesktopAxNode[]);
+      return nodes.find((node) => node.name === name && node.rect.w > 0);
+    };
+    const press = async (name: string, took: () => Promise<true | undefined>, label: string) => {
+      await waitForValue(async () => {
+        if (await took()) return true;
+        const node = await control(name);
+        if (node) {
+          await desktop.ax.invoke({ window: host!.id, match: `id:${node.id}` }).catch(() => undefined);
+        }
+        await new Promise<void>((resolve) => setTimeout(resolve, 500));
+        return took();
+      }, label);
+    };
     const canDriveSlot = (await control('Maximize panel')) != null;
 
     const openBeside = async (phase: string, edge: BrowserAsideEdge) => {
@@ -4098,9 +4090,14 @@ test('opens a browser aside beside a docked, maximized and collapsed Chat aside 
 
     if (canDriveSlot) {
       // Maximize Chat; focus moves into its page.
-      const maximize = await waitForValue(() => control('Maximize panel'), 'Maximize control');
-      await desktop.ax.invoke({ window: host.id, match: `id:${maximize.id}` });
-      await waitForValue(async () => {
+      // Page focus needs the host to be the key window.
+      host = await ensureHostForeground(desktop, host);
+      // The browser tab joined Chat's panel and is its active tab: bring Chat to the front.
+      await press('LingXia Showcase (WebView)', async () => {
+        const slot = chatAsideSlot(await app.surfaceLayout());
+        return slot?.activeChild === 'lingxia-showcase-web' ? true : undefined;
+      }, 'Chat the active tab of the panel');
+      await press('Maximize panel', async () => {
         const slot = chatAsideSlot(await app.surfaceLayout());
         return slot?.maximized && slot.overlay ? true : undefined;
       }, 'Chat aside maximized');
@@ -4110,9 +4107,7 @@ test('opens a browser aside beside a docked, maximized and collapsed Chat aside 
         const slot = chatAsideSlot(await app.surfaceLayout());
         return slot?.maximized ? true : undefined;
       }, 'Chat still maximized after the browser aside');
-      const restore = await waitForValue(() => control('Restore panel'), 'Restore control');
-      await desktop.ax.invoke({ window: host.id, match: `id:${restore.id}` });
-      await waitForValue(async () => {
+      await press('Restore panel', async () => {
         const slot = chatAsideSlot(await app.surfaceLayout());
         return slot?.visible && !slot.maximized && !slot.overlay ? true : undefined;
       }, 'Chat aside restored');
@@ -4121,9 +4116,7 @@ test('opens a browser aside beside a docked, maximized and collapsed Chat aside 
       // Collapse the side panel. A browser tab opened now joins the same
       // panel, and content arriving in a collapsed slot brings it back
       // rather than landing out of sight; Chat stays alive as its other tab.
-      const collapse = await waitForValue(() => control('Collapse panel'), 'Collapse control');
-      await desktop.ax.invoke({ window: host.id, match: `id:${collapse.id}` });
-      await waitForValue(async () => {
+      await press('Collapse panel', async () => {
         const slot = chatAsideSlot(await app.surfaceLayout());
         return slot?.collapsed ? true : undefined;
       }, 'Chat aside collapsed');
