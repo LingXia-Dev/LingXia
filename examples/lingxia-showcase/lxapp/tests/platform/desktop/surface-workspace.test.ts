@@ -4414,7 +4414,11 @@ test('moves a live lxapp between aside and main through lx.surface.open({ app })
     async ({ lx }, options): Promise<MovedHandleState> => {
       const probe = (globalThis as unknown as OpenAppMoveGlobals).__openAppMoveProbe;
       if (!probe) throw new Error('openApp move probe is not installed');
-      const handle = await lx.surface.open({ app: 'lingxia-showcase-web' }, options);
+      const { page, query, ...surface } = options;
+      const handle = await lx.surface.open(
+        { app: 'lingxia-showcase-web', ...(page ? { page } : {}), ...(query ? { params: query } : {}) },
+        surface,
+      );
       return {
         same: handle === probe.handle,
         lookedUp: lx.surface.get({ app: 'lingxia-showcase-web' }) === handle
