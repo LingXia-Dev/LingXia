@@ -37,7 +37,13 @@ pub(super) fn execute_ios(ctx: DevContext) -> Result<()> {
         .as_ref()
         .map(|app| app.product_name.clone())
         .unwrap_or_else(|| "this app".to_string());
-    let unconnected_hint = ios_unconnected_hint(&app_name);
+    let device = ctx.device.clone();
+    let unconnected_hint = move || {
+        ios_unconnected_hint(
+            &app_name,
+            platform::apple::devicectl::cable_only(device.as_deref()),
+        )
+    };
 
     let run_result = (|| -> Result<()> {
         let platforms_to_build = vec![PlatformType::Ios];
@@ -74,7 +80,7 @@ pub(super) fn execute_ios(ctx: DevContext) -> Result<()> {
             }
             print_mobile_dev_started("iOS", &[("Bundle ID", bundle_id.as_str())]);
             ctx.watch_embedded_lxapps(&mut server);
-            wait_for_interrupt_hinting(stop_requested, &server, &unconnected_hint)?;
+            wait_for_interrupt_hinting(stop_requested, &server, unconnected_hint)?;
             return finish_installed(&server);
         }
 
@@ -131,7 +137,7 @@ pub(super) fn execute_ios(ctx: DevContext) -> Result<()> {
 
         print_mobile_dev_started("iOS", &[("Bundle ID", bundle_id.as_str())]);
         ctx.watch_embedded_lxapps(&mut server);
-        wait_for_interrupt_hinting(stop_requested, &server, &unconnected_hint)?;
+        wait_for_interrupt_hinting(stop_requested, &server, unconnected_hint)?;
         Ok(())
     })();
 

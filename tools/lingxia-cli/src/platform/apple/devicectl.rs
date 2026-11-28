@@ -462,3 +462,121 @@ pub fn list_devices() -> Result<Vec<crate::platform::Device>> {
         })
         .collect())
 }
+
+/// Whether the device reaches this Mac by cable only: devicectl says wired and
+/// its pairing service shows up on no interface of the Mac's own networks.
+pub fn cable_only(device_id: Option<&str>) -> bool {
+    if !cfg!(target_os = "macos") {
+        return false;
+    }
+    let device = match device_id {
+        Some(id) => DeviceCtl::get_device(id).ok(),
+        None => DeviceCtl::list_devices()
+            .ok()
+            .and_then(|devices| devices.into_iter().find(|d| d.is_available())),
+    };
+    if !device.is_some_and(|d| d.is_usb()) {
+        return false;
+    }
+    seen_only_over_cable(
+        &pairing_sightings(std::time::Duration::from_secs(2)),
+        &lan_interfaces(),
+    )
+}
+
+/// `(interface index, instance)` sightings: a pairing instance that appears
+/// off every LAN interface is a cabled phone; one also on a LAN interface is on Wi-Fi.
+pub(crate) fn seen_only_over_cable(
+    sightings: &[(u32, String)],
+    lan: &std::collections::HashSet<u32>,
+) -> bool {
+    let on_lan = |name: &str| {
+        sightings
+            .iter()
+            .any(|(index, other)| other == name && lan.contains(index))
+    };
+    let mut cabled = sightings
+        .iter()
+        .filter(|(index, _)| !lan.contains(index))
+        .peekable();
+    cabled.peek().is_some() && cabled.all(|(_, name)| !on_lan(name))
+}
+
+/// One `dns-sd -B` result line as `(interface index, instance)`.
+pub(crate) fn parse_browse_line(line: &str) -> Option<(u32, String)> {
+    let mut fields = line.split_whitespace();
+    let _time = fields.next()?;
+    if fields.next()? != "Add" {
+        return None;
+    }
+    let _flags = fields.next()?;
+    let index = fields.next()?.parse().ok()?;
+    let _domain = fields.next()?;
+    let _service = fields.next()?;
+    let instance = fields.collect::<Vec<_>>().join(" ");
+    (!instance.is_empty()).then_some((index, instance))
+}
+
+/// Browses `_remotepairing._tcp`, which a paired iPhone advertises on every link it shares with this Mac.
+fn pairing_sightings(window: std::time::Duration) -> Vec<(u32, String)> {
+    use std::io::BufRead;
+    let Ok(mut child) = Command::new("dns-sd")
+        .args(["-B", "_remotepairing._tcp", "local."])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+    else {
+        return Vec::new();
+    };
+    let stdout = child.stdout.take();
+    let reader = std::thread::spawn(move || {
+        stdout
+            .map(|out| {
+                std::io::BufReader::new(out)
+                    .lines()
+                    .map_while(Result::ok)
+                    .filter_map(|line| parse_browse_line(&line))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default()
+    });
+    std::thread::sleep(window);
+    let _ = child.kill();
+    let _ = child.wait();
+    reader.join().unwrap_or_default()
+}
+
+/// Indices of interfaces holding a routable IPv4 address: the Mac's own networks,
+/// not the link-local USB link to a phone.
+#[cfg(target_os = "macos")]
+fn lan_interfaces() -> std::collections::HashSet<u32> {
+    let mut indices = std::collections::HashSet::new();
+    let mut head: *mut libc::ifaddrs = std::ptr::null_mut();
+    // SAFETY: getifaddrs fills a list we only read and then free.
+    unsafe {
+        if libc::getifaddrs(&mut head) != 0 {
+            return indices;
+        }
+        let mut cursor = head;
+        while let Some(entry) = cursor.as_ref() {
+            if let Some(addr) = entry.ifa_addr.as_ref()
+                && i32::from(addr.sa_family) == libc::AF_INET
+            {
+                let sin = &*(entry.ifa_addr as *const libc::sockaddr_in);
+                let ip = std::net::Ipv4Addr::from(u32::from_be(sin.sin_addr.s_addr));
+                let index = libc::if_nametoindex(entry.ifa_name);
+                if !ip.is_loopback() && !ip.is_link_local() && index != 0 {
+                    indices.insert(index);
+                }
+            }
+            cursor = entry.ifa_next;
+        }
+        libc::freeifaddrs(head);
+    }
+    indices
+}
+
+#[cfg(not(target_os = "macos"))]
+fn lan_interfaces() -> std::collections::HashSet<u32> {
+    std::collections::HashSet::new()
+}

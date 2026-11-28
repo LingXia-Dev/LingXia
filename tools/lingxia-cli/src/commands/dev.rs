@@ -1339,8 +1339,9 @@ const UNCONNECTED_HINT_AFTER: Duration = Duration::from_secs(30);
 fn wait_for_interrupt_hinting(
     stop_requested: Arc<AtomicBool>,
     server: &server::DevServerHandle,
-    hint: &str,
+    hint: impl FnOnce() -> String,
 ) -> Result<()> {
+    let mut hint = Some(hint);
     let hint_at = std::time::Instant::now() + UNCONNECTED_HINT_AFTER;
     let mut settled = false;
     while !stop_requested.load(Ordering::Acquire) {
@@ -1349,7 +1350,9 @@ fn wait_for_interrupt_hinting(
                 settled = true;
             } else if std::time::Instant::now() >= hint_at {
                 settled = true;
-                println!("  {} {hint}", "•".yellow());
+                if let Some(hint) = hint.take() {
+                    println!("  {} {}", "•".yellow(), hint());
+                }
             }
         }
         thread::sleep(Duration::from_millis(150));
@@ -1360,7 +1363,13 @@ fn wait_for_interrupt_hinting(
 }
 
 /// What to check when an iOS dev build runs but never reaches the dev server.
-fn ios_unconnected_hint(app_name: &str) -> String {
+/// A cable carries the install but not the app's socket, which needs this Mac's network.
+fn ios_unconnected_hint(app_name: &str, cable_only: bool) -> String {
+    if cable_only {
+        return "The app is running but has not connected: the iPhone is connected by cable \
+                only; join this Mac's Wi-Fi network."
+            .to_string();
+    }
     format!(
         "The app is running but has not connected. On the iPhone, check Settings → Privacy & \
          Security → Local Network for {app_name}, and that the phone is on the same network as \
@@ -1549,10 +1558,50 @@ mod tests {
 
     #[test]
     fn an_unconnected_ios_app_is_pointed_at_local_network_and_the_same_network() {
-        let hint = ios_unconnected_hint("LingXia");
+        let hint = ios_unconnected_hint("LingXia", false);
         assert!(hint.contains("has not connected"));
         assert!(hint.contains("Privacy & Security → Local Network for LingXia"));
         assert!(hint.contains("same network"));
+    }
+
+    #[test]
+    fn a_cable_only_iphone_is_told_to_join_this_macs_wifi() {
+        let hint = ios_unconnected_hint("LingXia", true);
+        assert!(hint.contains("connected by cable only; join this Mac's Wi-Fi network"));
+        assert!(!hint.contains("Local Network"));
+    }
+
+    #[test]
+    fn a_pairing_instance_seen_only_off_the_lan_is_cable_only() {
+        use crate::platform::apple::devicectl::{parse_browse_line, seen_only_over_cable};
+        let line = |index: u32, name: &str| {
+            parse_browse_line(&format!(
+                " 2:37:14.998  Add        3   {index} local.               _remotepairing._tcp. {name}"
+            ))
+            .unwrap()
+        };
+        let lan = std::collections::HashSet::from([8]);
+        // The cabled phone on its two USB links only.
+        assert!(seen_only_over_cable(
+            &[line(5, "PHONE"), line(6, "PHONE")],
+            &lan
+        ));
+        // Also seen on Wi-Fi: on this Mac's network.
+        assert!(!seen_only_over_cable(
+            &[line(5, "PHONE"), line(8, "PHONE")],
+            &lan
+        ));
+        // Another phone on Wi-Fi does not put the cabled one on the network.
+        assert!(seen_only_over_cable(
+            &[line(6, "PHONE"), line(8, "OTHER")],
+            &lan
+        ));
+        // Nothing cabled: no claim.
+        assert!(!seen_only_over_cable(&[line(8, "OTHER")], &lan));
+        assert_eq!(
+            parse_browse_line("Timestamp     A/R    Flags  if Domain"),
+            None
+        );
     }
 
     #[test]
