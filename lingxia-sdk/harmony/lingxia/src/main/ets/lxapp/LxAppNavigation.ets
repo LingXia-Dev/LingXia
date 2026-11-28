@@ -424,7 +424,10 @@ export struct LxAppNavigation {
         this.isReady = true;
         hilog.info(DOMAIN, TAG, `LxApp Navigation ready: ${this.homeAppId}`);
 
-        // Auto-open home app now that navigation instance is ready.
+        // A launch link opens in place of home, so home is not stacked under it.
+        if (Lingxia.openLaunchLink()) {
+          return;
+        }
         hilog.info(DOMAIN, TAG, 'Auto-opening home app');
         const sessionId: number = LxApp.getRuntimeSessionId(homeAppId);
         if (!Number.isFinite(sessionId) || sessionId <= 0) {

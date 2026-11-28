@@ -90,6 +90,8 @@ export class Lingxia {
   private static backgroundGrace: Map<number, number> = new Map<number, number>();
   private static lastGraceToken: number = 0;
   private static pendingNotificationWant: Want | null = null;
+  /** A link the launch carried before the runtime could take it; it opens in place of home. */
+  private static pendingLaunchLink: string | null = null;
   // Last orientation asked of the window, and the shape it had when a force replaced the free one.
   private static appliedOrientation: window.Orientation | null = null;
   private static declaredOrientation: window.Orientation | null = null;
@@ -581,6 +583,26 @@ export class Lingxia {
   }
 
   /**
+   * Delivers the link the launch carried, as the cold open; false when there was none or it
+   * did not open, and home opens instead.
+   */
+  public static openLaunchLink(): boolean {
+    const url: string | null = Lingxia.pendingLaunchLink;
+    Lingxia.pendingLaunchLink = null;
+    if (!url) {
+      return false;
+    }
+    try {
+      const result: number = onApplinkReceived(url);
+      hilog.info(DOMAIN, TAG, `Launch AppLink processed with result: ${result}`);
+      return result > 0;
+    } catch (error) {
+      LxLog.e(TAG, `Error processing launch AppLink: ${url}, error: ${JSON.stringify(error)}`);
+      return false;
+    }
+  }
+
+  /**
    * Handle Want from UIAbility - call this in your UIAbility onCreate/onNewWant methods.
    * This provides a simple one-line integration for applink handling.
    * @param want The Want object containing the applink URI
@@ -589,6 +611,10 @@ export class Lingxia {
     try {
       if (!want) { return; }
       if (want.uri && typeof want.uri === 'string' && want.uri.startsWith('https://')) {
+        if (LxApp.getInstance().getHomeAppId() === null) {
+          Lingxia.pendingLaunchLink = want.uri;
+          return;
+        }
         Lingxia.handleAppLink(want.uri);
         return;
       }
