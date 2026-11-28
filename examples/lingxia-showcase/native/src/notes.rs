@@ -1,8 +1,11 @@
-//! The native-route demo behind the `native` page: a call, a stream, and an app error.
+//! The native-route demo behind the `native` page: a call, a stream, and an app error,
+//! over notes each lxapp keeps in its own `LxAppState`.
 
 use std::fmt;
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard};
 use std::time::Duration;
+
+lingxia::route_defaults!(prefix = "notes");
 
 #[derive(Clone, serde::Serialize)]
 pub struct Note {
@@ -37,21 +40,24 @@ pub struct ExportStep {
     total: u32,
 }
 
-static NOTES: Mutex<Vec<Note>> = Mutex::new(Vec::new());
+#[derive(Default, lingxia::FromLxApp)]
+pub struct Notes(Mutex<Vec<Note>>);
 
-fn notes() -> std::sync::MutexGuard<'static, Vec<Note>> {
-    NOTES
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
+impl Notes {
+    fn list(&self) -> MutexGuard<'_, Vec<Note>> {
+        self.0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
 }
 
-#[lingxia::native("notes.add")]
-fn add(input: NewNote) -> Result<Note, NotesError> {
+#[lingxia::native]
+fn add(notes: lingxia::LxAppState<Notes>, input: NewNote) -> Result<Note, NotesError> {
     let title = input.title.trim();
     if title.is_empty() {
         return Err(NotesError::EmptyTitle);
     }
-    let mut notes = notes();
+    let mut notes = notes.list();
     let note = Note {
         id: notes.len() as u32 + 1,
         title: title.to_string(),
@@ -60,9 +66,10 @@ fn add(input: NewNote) -> Result<Note, NotesError> {
     Ok(note)
 }
 
-#[lingxia::native("notes.get")]
-fn get(id: u32) -> Result<Note, NotesError> {
-    notes()
+#[lingxia::native]
+fn get(notes: lingxia::LxAppState<Notes>, id: u32) -> Result<Note, NotesError> {
+    notes
+        .list()
         .iter()
         .find(|note| note.id == id)
         .cloned()
@@ -70,9 +77,12 @@ fn get(id: u32) -> Result<Note, NotesError> {
 }
 
 /// Reports each note as it is written; the result is the exported text.
-#[lingxia::native("notes.export", stream)]
-fn export(progress: lingxia::Progress<ExportStep>) -> lingxia::Result<String> {
-    let notes = notes().clone();
+#[lingxia::native(stream)]
+fn export(
+    notes: lingxia::LxAppState<Notes>,
+    progress: lingxia::Progress<ExportStep>,
+) -> lingxia::Result<String> {
+    let notes = notes.list().clone();
     let total = notes.len() as u32;
     let mut text = String::new();
     for (done, note) in (1..).zip(&notes) {

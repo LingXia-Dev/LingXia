@@ -6,9 +6,13 @@ mod extension;
 mod notes;
 mod routes;
 
-lingxia::host!(ExampleHostAddon);
+lingxia::host!(ExampleHostAddon {
+    started: std::time::Instant::now(),
+});
 
-struct ExampleHostAddon;
+struct ExampleHostAddon {
+    started: std::time::Instant,
+}
 
 /// Stands in for the server: constrains network for the showcase's bundled
 /// guest lxapps. Privileges stay unconstrained, and so does any app this
