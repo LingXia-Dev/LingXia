@@ -17,6 +17,7 @@ import { resolveChunkPolicy, discoverSharedPackages, buildSharedChunk, packagePr
 import { compileUtilities, tailwindWarm, appColorTheme, appColorClashes } from './tailwind.mjs';
 import { gradientTextProblems } from './gradient-text.mjs';
 import { nearestSupported } from './suggest.mjs';
+import postcss from 'postcss';
 import { loadStylesheet, validateTokens, fontFaces } from './stylesheets.mjs';
 import { checkerOptions, viewTsconfig } from './tsconfig.mjs';
 import { appSettings, authored, packageOf, sourceLabel, peerTokenPackages } from './packages.mjs';
@@ -552,6 +553,23 @@ async function packageTokens(root, packages, problems) {
 }
 
 /**
+ * An app stylesheet that sets a package's step alias (`--radius-control: var(--radius-lg)`) to a literal:
+ * the literal does not follow the theme. One hint per declaration, as `label:line: UI_SCALE: …`.
+ */
+export function literalAliasHints(packageSheets, appSheets, labelOf = path => path) {
+  const aliases = new Map();
+  for (const text of packageSheets) postcss.parse(text).walkAtRules('theme', rule => rule.each(decl => {
+    if (decl.type === 'decl' && /var\(--[a-z0-9-]+\)/.test(decl.value)) aliases.set(decl.prop, decl.value.trim());
+  }));
+  const hints = [];
+  for (const [path, text] of appSheets) postcss.parse(text).walkAtRules('theme', rule => rule.each(decl => {
+    if (decl.type !== 'decl' || !aliases.has(decl.prop) || decl.value.trim().startsWith('var(')) return;
+    hints.push(`${labelOf(path)}:${decl.source?.start?.line ?? 1}: UI_SCALE: ${decl.prop} is ${decl.value.trim()}, which does not follow the theme; point it at a step, as the package does: ${aliases.get(decl.prop)}`);
+  }));
+  return hints;
+}
+
+/**
  * Compiles GPU pages. `pages` are page source paths relative to `root`, the pages of an lxapp whose
  * Views export `render`. Output is `<base>.js` beside a copy of the page config,
  * when the page has one; a page config naming a renderer is refused.
@@ -578,6 +596,7 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
   if (appColors.problems.length) failures.push(appColors.problems.join('\n'));
   // Each place a className cannot be followed to literals, once per build.
   const untracedClasses = new Map();
+  const aliasHints = new Set();
   const tsconfig = viewTsconfig(root);
   // Whether the theme's Tailwind compile was warm, and how many files needed fresh analysis.
   let warm = true;
@@ -735,7 +754,9 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
     if (themes.size > 1) problems.push(`${page}: UI_CSS: import one shared @theme stylesheet per page`);
     const tokenPackages = peerTokenPackages(root, bundledPackages, problems);
     // Packages' tokens sit below the app's own, so the app's stylesheet overrides any of them.
-    const theme = [...await packageTokens(root, tokenPackages, problems), ...themes.values(), appColors.theme].join('\n');
+    const packageSheets = await packageTokens(root, tokenPackages, problems);
+    for (const hint of literalAliasHints(packageSheets, themes, path => sourceLabel(root, path))) aliasHints.add(hint);
+    const theme = [...packageSheets, ...themes.values(), appColors.theme].join('\n');
     warm &&= tailwindWarm(theme);
     const checker = moduleChecker(sourceFiles, checkerOptions(root));
     const { usages, untraced } = collectClassAnalysis(sourceFiles, checker);
@@ -845,6 +866,11 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
     const lines = report(classWarnings, '');
     warnings.push(...lines.text.split('\n'));
     console.warn(`${lines.count} class warning${lines.count === 1 ? '' : 's'}\n${lines.text}`);
+  }
+  if (aliasHints.size) {
+    const lines = report([...aliasHints], '');
+    warnings.push(...lines.text.split('\n'));
+    console.warn(`${lines.count} theme warning${lines.count === 1 ? '' : 's'}\n${lines.text}`);
   }
   if (failures.length) throw Error(failures.join('\n'));
   if (Object.keys(inputs).length) {

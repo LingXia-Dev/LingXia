@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, writeFile, readFile, readdir, rm } from 'node:fs/promis
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { audit, buildPages, identify } from '../compiler/index.mjs';
+import { audit, buildPages, identify, literalAliasHints } from '../compiler/index.mjs';
 import { build } from './support/build.mjs';
 import { moduleBanner } from '../compiler/compatibility.mjs';
 import { stabilizeClosures } from '../compiler/stable-closures.mjs';
@@ -1185,4 +1185,13 @@ test('GPU View rejects importing @lingxia/native directly', async () => {
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test('an app stylesheet that sets a package alias to a literal gets a hint; a step does not', () => {
+  const pkg = ['@theme {\n  --radius-control: var(--radius-lg);\n  --text-footnote: var(--text-sm);\n  --spacing-control-md: calc(var(--spacing) * 10);\n}'];
+  const app = new Map([['theme/index.css', '@theme {\n  --radius-control: 12px;\n  --text-footnote: var(--text-xs);\n  --radius-brand: 3px;\n  --spacing-control-md: 44px;\n}']]);
+  assert.deepEqual(literalAliasHints(pkg, app), [
+    'theme/index.css:2: UI_SCALE: --radius-control is 12px, which does not follow the theme; point it at a step, as the package does: var(--radius-lg)',
+    'theme/index.css:5: UI_SCALE: --spacing-control-md is 44px, which does not follow the theme; point it at a step, as the package does: calc(var(--spacing) * 10)',
+  ]);
 });

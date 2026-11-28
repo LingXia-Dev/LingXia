@@ -178,7 +178,8 @@ there is no switch at run time.
 - The theme's `type`, `shape.radius` and `space.unit` reach Liuli too: its type sizes and corner radii
   are names for steps of those ramps, and control heights are multiples of the spacing step
   (`tokens.css`). An app points a name at another step in its own stylesheet
-  (`--radius-control: var(--radius-xl)`).
+  (`--radius-control: var(--radius-xl)`); a literal (`44px`) does not follow the theme and gets a
+  `UI_SCALE` build warning.
 - To see the gallery under a theme, as its own lxapp beside the default one:
   `node ../scripts/gallery-with-theme.mjs warm` prints the directory it wrote.
 
