@@ -6,9 +6,9 @@ package com.lingxia.lxapp
  *
  * `startActivity` returns before the activity exists, so every open in that
  * window also finds no current activity. A cold start through an App Link is
- * the common case: the bootstrap opens home and the runtime opens the link's
- * target a few milliseconds later, and each started its own LxAppActivity —
- * two stacked in the task, the lower one a stale copy Back would reveal.
+ * the common case: the runtime opens the first page, then the link's target a
+ * few milliseconds later, and each started its own LxAppActivity — two stacked
+ * in the task, the lower one a stale copy Back would reveal.
  *
  * Main thread only, like the opens it gates.
  */
@@ -61,7 +61,10 @@ internal class LxAppActivityStartGate(
         return Decision.QUEUED
     }
 
-    /** The started activity exists. Returns the opens it still has to perform, in order. */
+    /**
+     * The started activity exists. Returns the opens it still has to present, in order; the
+     * runtime already took each, so presenting must not report it again.
+     */
     fun activityReady(): List<Open> {
         starting = null
         val waiting = queued.toList()

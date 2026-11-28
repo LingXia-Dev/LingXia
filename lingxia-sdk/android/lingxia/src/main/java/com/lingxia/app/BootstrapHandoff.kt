@@ -41,6 +41,8 @@ internal fun bootstrapHandoff(isTaskRoot: Boolean, taskId: Int, liveAppTaskId: I
 /**
  * Whether a bootstrap asks the runtime to open home. Only a cold start does: over a
  * live app it would reset the activity to home's first page while the runtime's tab
- * state stays where the user was.
+ * state stays where the user was. A delivered App Link's open is the cold open, so its
+ * launch decision picks the first page.
  */
-internal fun bootstrapOpensHome(liveAppTaskId: Int?): Boolean = liveAppTaskId == null
+internal fun bootstrapOpensHome(liveAppTaskId: Int?, appLinkDelivered: Boolean): Boolean =
+    liveAppTaskId == null && !appLinkDelivered

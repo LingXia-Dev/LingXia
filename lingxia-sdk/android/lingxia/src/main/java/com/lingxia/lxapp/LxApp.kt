@@ -62,8 +62,9 @@ object LxApp {
         val waiting = activityStart.activityReady()
         if (waiting.isEmpty()) return
         // Finish the initial page attachment before replaying queued navigation.
+        // The runtime already took each held open; the activity only presents it.
         Handler(Looper.getMainLooper()).post {
-            for (open in waiting) openInCurrentActivity(open)
+            for (open in waiting) present(open)
         }
     }
 
@@ -142,7 +143,6 @@ object LxApp {
         } else {
             AppCompatDelegate.MODE_NIGHT_NO
         }
-    }
         // uiMode is a declared configChange, so nothing re-dispatches the
         // updated configuration to attached views; WebViews re-evaluate
         // prefers-color-scheme only when it reaches them.
@@ -152,6 +152,7 @@ object LxApp {
         activity.applyCanvasBackground()
         LxAppActivity.updateNavBarUI(appId)
         LxAppActivity.updateTabBarUI(appId)
+    }
 
     /** Open [appId] at a route; blank means its initial route. */
     @JvmStatic
@@ -397,32 +398,7 @@ object LxApp {
                     Log.w(TAG, "onLxAppOpened rejected open request (stale session?) appId=$appId sessionId=$sessionId")
                     return@Runnable
                 }
-                val activity = getCurrentActivity()
-                if (activity != null) {
-                    activity.openLxApp(appId, sessionId)
-                } else {
-                    val ctx = Lingxia.applicationContext()
-                    if (ctx == null) {
-                        LxLog.e(TAG, "Lingxia not initialized; cannot start LxAppActivity")
-                        return@Runnable
-                    }
-                    val open = LxAppActivityStartGate.Open(appId, resolvedPath, sessionId, webtag)
-                    when (activityStart.request(open)) {
-                        LxAppActivityStartGate.Decision.START -> Unit
-                        LxAppActivityStartGate.Decision.COVERED -> return@Runnable
-                        LxAppActivityStartGate.Decision.QUEUED -> {
-                            Log.d(TAG, "LxAppActivity is starting; holding open of appId=$appId")
-                            return@Runnable
-                        }
-                    }
-                    val intent = Intent(ctx, LxAppActivity::class.java).apply {
-                        putExtra(LxAppActivity.EXTRA_APP_ID, appId)
-                        putExtra(LxAppActivity.EXTRA_PATH, resolvedPath)
-                        putExtra(LxAppActivity.EXTRA_SESSION_ID, sessionId)
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    }
-                    ctx.startActivity(intent)
-                }
+                present(LxAppActivityStartGate.Open(appId, resolvedPath, sessionId, webtag))
             } catch (e: Exception) {
                 LxLog.e(TAG, "Failed to open LxApp: ${e.message}")
             }
@@ -433,6 +409,35 @@ object LxApp {
             getCurrentActivity()?.runOnUiThread(openTask)
                 ?: Handler(Looper.getMainLooper()).post(openTask)
         }
+    }
+
+    /** Shows an open the runtime has taken: in the current activity, else in one started for it. */
+    private fun present(open: LxAppActivityStartGate.Open) {
+        val activity = getCurrentActivity()
+        if (activity != null) {
+            activity.openLxApp(open.appId, open.sessionId)
+            return
+        }
+        val ctx = Lingxia.applicationContext()
+        if (ctx == null) {
+            LxLog.e(TAG, "Lingxia not initialized; cannot start LxAppActivity")
+            return
+        }
+        when (activityStart.request(open)) {
+            LxAppActivityStartGate.Decision.START -> Unit
+            LxAppActivityStartGate.Decision.COVERED -> return
+            LxAppActivityStartGate.Decision.QUEUED -> {
+                Log.d(TAG, "LxAppActivity is starting; holding open of appId=${open.appId}")
+                return
+            }
+        }
+        val intent = Intent(ctx, LxAppActivity::class.java).apply {
+            putExtra(LxAppActivity.EXTRA_APP_ID, open.appId)
+            putExtra(LxAppActivity.EXTRA_PATH, open.path)
+            putExtra(LxAppActivity.EXTRA_SESSION_ID, open.sessionId)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        ctx.startActivity(intent)
     }
 }
 

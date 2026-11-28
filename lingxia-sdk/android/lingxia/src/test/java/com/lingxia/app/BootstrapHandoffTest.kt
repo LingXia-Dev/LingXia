@@ -39,7 +39,12 @@ class BootstrapHandoffTest {
 
     @Test
     fun onlyAColdStartOpensHome() {
-        assertEquals(true, bootstrapOpensHome(liveAppTaskId = null))
-        assertEquals(false, bootstrapOpensHome(liveAppTaskId = 7))
+        assertEquals(true, bootstrapOpensHome(liveAppTaskId = null, appLinkDelivered = false))
+        assertEquals(false, bootstrapOpensHome(liveAppTaskId = 7, appLinkDelivered = false))
+    }
+
+    @Test
+    fun aDeliveredAppLinkIsTheColdOpen() {
+        assertEquals(false, bootstrapOpensHome(liveAppTaskId = null, appLinkDelivered = true))
     }
 }
