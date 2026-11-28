@@ -87,12 +87,24 @@ start, so a running one keeps its timing.
 The environment carries two internal keys, taken out before the View sees the snapshot:
 
 - `palette`: one resolved palette for the current look. The host keeps four (light, dark and their
-  high-contrast forms) and pushes the one matching `theme` and `highContrast`.
+  high-contrast forms) and pushes the one matching `appearance` and `highContrast`.
 - `scales`: `{ revision, values }`, one value per slot. Without a push, the built-in scale values.
 
 Precedence: a value the platform's measured environment carries wins;
 else the host theme update (a revision and a pack, checked, then resolved); else the lxapp's
 pack seeded at session start. Older revisions are ignored.
+
+An appearance or contrast change reaches the View through `ViewHost::environment_changed()` on
+every platform; it repaints, never rebuilds the View.
+
+## Preferences
+
+The host owns appearance (`auto | light | dark`) and contrast (`auto | more`) as product
+preferences, set only through `lx.host.appearancePreference` / `lx.host.contrastPreference` on the
+Control app. Pages read only the effective values in `env` (`appearance`, `highContrast`, text
+scale), never which theme is active. The environment is a struct generated from `schema.json`.
+Runner: `lxdev runner set --appearance`; tests: `view.environment({ appearance })`, which refuses
+`theme`.
 
 ## Ownership
 
