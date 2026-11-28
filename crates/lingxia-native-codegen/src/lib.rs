@@ -2009,7 +2009,7 @@ const SHARED_TS_TYPES: &str = r#"export type NativeVoid = void;
 /** What a call reads of an `AbortSignal`, so a program without DOM types still checks. */
 export interface NativeAbortSignal {
   readonly aborted: boolean;
-  addEventListener(type: "abort", listener: () => void): void;
+  addEventListener(type: "abort", listener: () => void, options?: { once?: boolean }): void;
 }
 
 export interface NativeCallOptions {
