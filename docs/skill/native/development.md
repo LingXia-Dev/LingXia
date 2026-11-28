@@ -434,8 +434,11 @@ async fn adds_a_note() {
 
 Each `test_host!()` is a fresh session: new `LxAppState<T>` values. `.with_addon(a)`
 supplies `Host<A>`; `.as_class(AppSessionClass::ControlApp)` applies that class's
-audiences. Dropping a stream cancels it. `lingxia build` fails if `testing` reaches
-the app's own dependency graph.
+audiences. Dropping a stream cancels it. `host.channel::<Send, Recv>(route, input)?`
+opens a channel (`send`, `recv`; dropping closes it). `call_as::<T, MyError>` returns
+`RouteError::Route(MyError)` for the route's error enum (add `Deserialize`) and
+`RouteError::Framework` otherwise. `lingxia build` fails if `testing` reaches the app's
+own dependency graph.
 
 ## Facades
 

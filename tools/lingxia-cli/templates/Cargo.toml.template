@@ -12,10 +12,11 @@ lingxia-native-codegen = { version = "{{LINGXIA_VERSION}}" }
 # Put local dependency overrides here; every platform shares this workspace.
 [patch.crates-io]
 
-# Strip debug information to reduce build artifact size on every platform.
-# Keep symbols so Rust backtraces still name functions.
+# Full debug info makes every crate variant several times larger; line tables keep backtraces.
 [profile.dev]
-strip = "debuginfo"
+debug = "line-tables-only"
+[profile.dev.package."*"]
+debug = false
 
 # Release profile: optimize for size
 [profile.release]

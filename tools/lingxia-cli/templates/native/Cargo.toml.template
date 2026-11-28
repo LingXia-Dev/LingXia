@@ -12,7 +12,7 @@ name = "lingxia"
 # the type the current platform links; `cargo build` of this crate as root
 # would rustc it once per crate-type.
 crate-type = ["cdylib", "staticlib", "rlib"]
-# Doctests would see two `lingxia` crates: this lib and the SDK it depends on.
+# The SDKs load `liblingxia`, so doctests would see two `lingxia` crates: this lib and the SDK.
 doctest = false
 
 [features]

@@ -276,8 +276,8 @@ cloud = []
                 toml::from_str(&fs::read_to_string(root.join("Cargo.toml")).unwrap()).unwrap();
             assert_eq!(manifest["profile"]["release"]["lto"].as_bool(), Some(true));
             assert_eq!(
-                manifest["profile"]["dev"]["strip"].as_str(),
-                Some("debuginfo")
+                manifest["profile"]["dev"]["debug"].as_str(),
+                Some("line-tables-only")
             );
             if windows {
                 fs::create_dir_all(root.join("windows/src")).unwrap();
