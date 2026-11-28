@@ -106,6 +106,9 @@ scale), never which theme is active. The environment is a struct generated from 
 Runner: `lxdev runner set --appearance`; tests: `view.environment({ appearance })`, which refuses
 `theme`.
 
+A pinned appearance reaches the host's own dialogs and pickers, but not the Android keyboard: the
+IME follows its own theme and an app cannot set it.
+
 ## Ownership
 
 The pack belongs to the lxapp. Its root `theme.json` is completed and checked by `lingxia build`;
