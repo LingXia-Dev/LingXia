@@ -4398,7 +4398,7 @@ async function chatLastShow(
   });
 }
 
-test('moves a live lxapp between aside and main through lx.surface.openApp', {
+test('moves a live lxapp between aside and main through lx.surface.open({ app })', {
   skip: desktopSkip,
   id: 'DESKTOP-OPENAPP-MOVE-001',
   timeout: DESKTOP_CASE_MS,

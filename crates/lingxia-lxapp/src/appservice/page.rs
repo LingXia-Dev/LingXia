@@ -2166,7 +2166,7 @@ impl LxApp {
     /// Create the isolated page's Logic service on the current JS worker
     /// *before* awaiting WebView setup. Setup itself waits for this so it
     /// never posts CreatePage onto the same worker (that wait deadlocks
-    /// `lx.surface.openPage` on Windows).
+    /// `lx.surface.open({ page })` on Windows).
     pub async fn prepare_isolated_page_svc(
         &self,
         ctx: &JSContext,
