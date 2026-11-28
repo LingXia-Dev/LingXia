@@ -31,6 +31,7 @@ pub use lingxia_native_macros::NativeError;
 pub use lingxia_native_macros::framework_native;
 pub use lingxia_native_macros::native;
 pub use lingxia_native_macros::route_defaults;
+pub use lingxia_native_macros::routes;
 #[cfg(feature = "devtool")]
 pub use lxapp::host::NativeDevtoolsAuthority;
 pub use lxapp::host::NativeHostRuntimeAuthority;

@@ -110,12 +110,11 @@ pub(crate) fn bundled_webui_version() -> Option<String> {
     parse_browser_webui_manifest(&manifest).ok()?.version
 }
 
-include!(concat!(env!("OUT_DIR"), "/lingxia_native_handlers.rs"));
+lingxia_native_macros::routes!();
 
 #[doc(hidden)]
 pub fn register_route_inventory() {
-    static REGISTERED: std::sync::OnceLock<()> = std::sync::OnceLock::new();
-    REGISTERED.get_or_init(__lingxia_native::install);
+    __lingxia_install();
 }
 
 #[doc(hidden)]

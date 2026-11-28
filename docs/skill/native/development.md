@@ -151,6 +151,17 @@ installed before `install_host_apis`. A route in a module the crate root cannot
 reach (nested inside a private module) fails the build with the fix, as do a
 duplicate route name, a route with no namespace, and a second `route_defaults!`.
 
+### Routes in a library crate
+
+A library crate with routes adds `lingxia::routes!()` at its root (and the same
+`build.rs`); the host installs it by listing it:
+
+```rust
+lingxia::host!(AppHostAddon, routes = [notes_core]);
+```
+
+An unlisted route crate is neither installed nor in the client; `lingxia` warns.
+
 ### Route names and defaults
 
 `lingxia::route_defaults!` at the top of a file sets the namespace and audience
@@ -303,7 +314,12 @@ and write the lxapp's clients, imported as `@lingxia/native`:
 `.lingxia/native.logic.ts` for Logic, and `.lingxia/native.view.ts` (React) or
 `.lingxia/native.js` (HTML, copied into `dist/.lingxia/`) for a WebView View.
 An lxapp listed in `lingxia.yaml` calls the `rustLibDir` crate; an lxapp inside
-a Cargo package calls that package. Lxapps configure no Rust paths.
+a Cargo package calls that package. The client also carries every `routes!()`
+crate in that crate's dependency graph on any platform `lingxia.yaml` enables,
+read offline from its `Cargo.lock` (a platform that cannot resolve is warned);
+a route name or DTO name two crates both define fails with both places. Routes
+whose audience excludes the lxapp's class are left out of its client.
+Lxapps configure no Rust paths.
 A GPU View (`.tsx`) cannot import `@lingxia/native`; call routes from a Logic
 action or `setup(page)`.
 

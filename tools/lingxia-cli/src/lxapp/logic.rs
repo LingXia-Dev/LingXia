@@ -1719,8 +1719,13 @@ mod tests {
             "rust/lib.rs",
             "#[lingxia::native(\"greet.hello\")]\npub async fn hello() -> lingxia::Result<()> { todo!() }\n",
         );
-        lingxia_native_codegen::generate_clients(&root.join("rust"), &root.join(".lingxia"), None)
-            .unwrap();
+        lingxia_native_codegen::generate_clients(
+            &[root.join("rust")],
+            &root.join(".lingxia"),
+            None,
+            lingxia_native_codegen::CallerClass::StandardApp,
+        )
+        .unwrap();
         let client = fs::read_to_string(
             root.join(".lingxia")
                 .join(lingxia_native_codegen::LOGIC_CLIENT),
@@ -2412,8 +2417,13 @@ mod tests {
             pub async fn hello(input: HelloInput) -> lingxia::Result<String> { todo!() }
             "#,
         );
-        lingxia_native_codegen::generate_clients(&root.join("rust"), &root.join(".lingxia"), None)
-            .unwrap();
+        lingxia_native_codegen::generate_clients(
+            &[root.join("rust")],
+            &root.join(".lingxia"),
+            None,
+            lingxia_native_codegen::CallerClass::StandardApp,
+        )
+        .unwrap();
         write(root, "lxapp.ts", app_logic);
         let options = BuildOptions {
             dev_session: false,

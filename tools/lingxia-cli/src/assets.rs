@@ -48,7 +48,7 @@ mod lxapp_package;
 mod runtime_asset;
 #[path = "assets/system_lxapps.rs"]
 mod system_lxapps;
-pub(crate) use system_lxapps::{BROWSER_WEBUI, TERMINAL_SETTINGS, system_lxapp};
+pub(crate) use system_lxapps::{BROWSER_WEBUI, SYSTEM_LXAPPS, TERMINAL_SETTINGS, system_lxapp};
 #[path = "assets/sync.rs"]
 mod sync;
 #[cfg(test)]

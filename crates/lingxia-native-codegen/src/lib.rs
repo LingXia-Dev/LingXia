@@ -59,16 +59,56 @@ impl ViewClient {
     }
 }
 
-/// Writes the clients for every route under `rust_dir` into `dir`: the Logic client, and
-/// `view` if given. Stale clients, or all of them when there are no routes, are removed.
-/// Returns warnings for the caller to print.
+/// The session class the host opens an lxapp as, which decides the routes it may call.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CallerClass {
+    /// The host's home lxapp.
+    ControlApp,
+    /// A host-bundled system lxapp the native host opens as a surface.
+    ControlSurface,
+    /// Any other lxapp.
+    StandardApp,
+}
+
+impl CallerClass {
+    fn admits(self, audience: RouteAudience) -> bool {
+        match audience {
+            RouteAudience::AppSessionOnly => true,
+            RouteAudience::ControlAppOnly => self == Self::ControlApp,
+            RouteAudience::ControlSurfaceOnly => self == Self::ControlSurface,
+            RouteAudience::ControlAppOrSurface => self != Self::StandardApp,
+        }
+    }
+}
+
+/// Writes one set of clients for every route under `sources` (each a crate's `src/`; the
+/// first is the lxapp's own crate) that `caller` may call into `dir`: the Logic client, and
+/// `view` if given. Stale clients, or all of them when there are no routes, are removed. A
+/// route name or DTO name two crates both define fails with both places. Returns warnings
+/// for the caller to print.
 pub fn generate_clients(
-    rust_dir: &Path,
+    sources: &[PathBuf],
     dir: &Path,
     view: Option<ViewClient>,
+    caller: CallerClass,
 ) -> Result<Vec<String>> {
-    let mut manifest = scan_dir(rust_dir)?;
-    external::resolve(&mut manifest, rust_dir)?;
+    let mut manifest = NativeManifest::default();
+    for (index, src) in sources.iter().enumerate() {
+        let mut crate_manifest = scan_dir(src)?;
+        // The lxapp's own crate keeps bare file names; another crate's are prefixed by its directory.
+        if let Some(name) = src.parent().and_then(Path::file_name).filter(|_| index > 0) {
+            relabel(
+                &mut crate_manifest,
+                &format!("{}/src/", name.to_string_lossy()),
+            );
+        }
+        external::resolve(&mut crate_manifest, src)?;
+        merge_crate(&mut manifest, crate_manifest)?;
+    }
+    manifest
+        .routes
+        .retain(|route| caller.admits(route.audience));
+    manifest.routes.sort_by(|a, b| a.route.cmp(&b.route));
     let mut wanted = vec![(OutputKind::LogicTypeScript, LOGIC_CLIENT)];
     for client in ViewClient::ALL {
         if view == Some(client) {
@@ -86,6 +126,119 @@ pub fn generate_clients(
         }
     }
     wire_warnings(&manifest)
+}
+
+/// Adds one crate's scan to the clients' manifest. Its routes carry their modules' `#[cfg]`s,
+/// since module paths of different crates are not comparable.
+fn merge_crate(into: &mut NativeManifest, from: NativeManifest) -> Result<()> {
+    for mut route in gated_routes(&from)? {
+        route.module.clear();
+        if let Some(first) = into.routes.iter().find(|r| r.route == route.route) {
+            bail!(
+                "native route `{}` is declared twice, at {} and {}",
+                route.route,
+                first.loc.display(),
+                route.loc.display()
+            );
+        }
+        into.routes.push(route);
+    }
+    for (name, def) in from.structs {
+        insert_def(into, &name, Def::Struct(def))?;
+    }
+    for (name, def) in from.enums {
+        insert_def(into, &name, Def::Enum(def))?;
+    }
+    for (name, def) in from.aliases {
+        insert_def(into, &name, Def::Alias(def))?;
+    }
+    for (name, locs) in from.conflicts {
+        into.conflicts.entry(name).or_default().extend(locs);
+    }
+    into.native_errors.extend(from.native_errors);
+    for (name, path) in from.uses {
+        into.uses.entry(name).or_insert(path);
+    }
+    Ok(())
+}
+
+/// Prefixes the file of every place a crate's own scan names.
+fn relabel(manifest: &mut NativeManifest, label: &str) {
+    let relabel = |loc: &mut SourceLoc| loc.file = format!("{label}{}", loc.file);
+    manifest
+        .routes
+        .iter_mut()
+        .for_each(|route| relabel(&mut route.loc));
+    manifest
+        .structs
+        .values_mut()
+        .for_each(|def| relabel(&mut def.loc));
+    manifest
+        .enums
+        .values_mut()
+        .for_each(|def| relabel(&mut def.loc));
+    manifest
+        .aliases
+        .values_mut()
+        .for_each(|def| relabel(&mut def.loc));
+    manifest.conflicts.values_mut().flatten().for_each(relabel);
+}
+
+/// Whether the crate whose root is `lib_rs` declares `lingxia::routes!()`, so a host can
+/// list it in `host!(…, routes = [..])`.
+pub fn declares_routes(lib_rs: &Path) -> Result<bool> {
+    let source =
+        fs::read_to_string(lib_rs).with_context(|| format!("read {}", lib_rs.display()))?;
+    let ast = syn::parse_file(&source).with_context(|| format!("parse {}", lib_rs.display()))?;
+    Ok(ast.items.iter().any(|item| {
+        matches!(item, syn::Item::Macro(item) if macro_named(&item.mac.path, "routes", &["lingxia", "lingxia_native_macros"]))
+    }))
+}
+
+/// The crates a host's `lingxia::host!(…, routes = [..])` lists, by lib name; `None` when
+/// `lib_rs` has no `host!`.
+pub fn host_route_crates(lib_rs: &Path) -> Result<Option<Vec<String>>> {
+    let source =
+        fs::read_to_string(lib_rs).with_context(|| format!("read {}", lib_rs.display()))?;
+    let ast = syn::parse_file(&source).with_context(|| format!("parse {}", lib_rs.display()))?;
+    let Some(host) = ast.items.iter().find_map(|item| match item {
+        syn::Item::Macro(item) if macro_named(&item.mac.path, "host", &["lingxia"]) => {
+            Some(&item.mac)
+        }
+        _ => None,
+    }) else {
+        return Ok(None);
+    };
+    let parser = Punctuated::<Expr, Token![,]>::parse_terminated;
+    let args = host
+        .parse_body_with(parser)
+        .with_context(|| format!("parse the host! in {}", lib_rs.display()))?;
+    let mut crates = Vec::new();
+    for arg in &args {
+        let Expr::Assign(assign) = arg else { continue };
+        let (Expr::Path(key), Expr::Array(list)) = (assign.left.as_ref(), assign.right.as_ref())
+        else {
+            continue;
+        };
+        if key.path.is_ident("routes") {
+            crates.extend(list.elems.iter().filter_map(|elem| match elem {
+                Expr::Path(path) => path.path.get_ident().map(ToString::to_string),
+                _ => None,
+            }));
+        }
+    }
+    Ok(Some(crates))
+}
+
+/// `name!`, bare or under one of `prefixes`.
+fn macro_named(path: &syn::Path, name: &str, prefixes: &[&str]) -> bool {
+    let mut segments = path.segments.iter().rev();
+    segments.next().is_some_and(|last| last.ident == name)
+        && match (segments.next(), segments.next()) {
+            (None, _) => true,
+            (Some(prefix), None) => prefixes.iter().any(|p| prefix.ident == p),
+            _ => false,
+        }
 }
 
 /// A route crate's whole build script: writes the registry its crate root `include!`s
@@ -740,15 +893,7 @@ fn parse_attr(attrs: &[Attribute]) -> Option<(RouteAttr, bool)> {
 
 /// `route_defaults!`, bare or as `lingxia::route_defaults!`.
 fn is_route_defaults(path: &syn::Path) -> bool {
-    let mut segments = path.segments.iter().rev();
-    segments
-        .next()
-        .is_some_and(|last| last.ident == "route_defaults")
-        && match (segments.next(), segments.next()) {
-            (None, _) => true,
-            (Some(prefix), None) => prefix.ident == "lingxia",
-            _ => false,
-        }
+    macro_named(path, "route_defaults", &["lingxia"])
 }
 
 /// `native` / `framework_native`, bare or as `lingxia::…`.
@@ -2872,16 +3017,34 @@ mod tests {
         .unwrap();
         let exists = |name: &str| out.join(name).exists();
 
-        generate_clients(&src, &out, Some(ViewClient::TypeScript)).unwrap();
+        generate_clients(
+            std::slice::from_ref(&src),
+            &out,
+            Some(ViewClient::TypeScript),
+            CallerClass::ControlSurface,
+        )
+        .unwrap();
         assert!(exists(LOGIC_CLIENT) && exists("native.view.ts"));
         let logic = fs::read_to_string(out.join(LOGIC_CLIENT)).unwrap();
         assert!(logic.contains("\"shell.ping\""), "{logic}");
 
-        generate_clients(&src, &out, None).unwrap();
+        let surface = CallerClass::ControlSurface;
+        generate_clients(std::slice::from_ref(&src), &out, None, surface).unwrap();
         assert!(exists(LOGIC_CLIENT) && !exists("native.view.ts"));
 
+        // A guest may not call a control-surface route, so it gets no client at all.
+        let guest = CallerClass::StandardApp;
+        generate_clients(std::slice::from_ref(&src), &out, None, guest).unwrap();
+        assert!(!exists(LOGIC_CLIENT));
+
         fs::write(src.join("lib.rs"), "pub fn plain() {}").unwrap();
-        generate_clients(&src, &out, Some(ViewClient::BrowserGlobal)).unwrap();
+        generate_clients(
+            std::slice::from_ref(&src),
+            &out,
+            Some(ViewClient::BrowserGlobal),
+            CallerClass::ControlSurface,
+        )
+        .unwrap();
         assert!(!exists(LOGIC_CLIENT) && !exists("native.js"));
         let _ = fs::remove_dir_all(&root);
     }
@@ -2941,7 +3104,13 @@ mod tests {
         );
         let (src, out) = (root.join("shell/src"), root.join("shell/.lingxia"));
 
-        let err = generate_clients(&src, &out, None).unwrap_err();
+        let err = generate_clients(
+            std::slice::from_ref(&src),
+            &out,
+            None,
+            CallerClass::StandardApp,
+        )
+        .unwrap_err();
         assert!(
             format!("{err:#}").contains("`serde::Opaque`, a registry crate"),
             "{err:#}"
@@ -2959,7 +3128,13 @@ mod tests {
             "#,
         );
         // `Server` holds a registry type, but no route reaches it.
-        generate_clients(&src, &out, None).unwrap();
+        generate_clients(
+            std::slice::from_ref(&src),
+            &out,
+            None,
+            CallerClass::StandardApp,
+        )
+        .unwrap();
         let logic = fs::read_to_string(out.join(LOGIC_CLIENT)).unwrap();
         assert!(logic.contains("hasActive: boolean"), "{logic}");
         assert!(logic.contains("export interface Record"), "{logic}");
@@ -2973,7 +3148,13 @@ mod tests {
             #[derive(Serialize)] pub struct IdInput { pub key: u32 }
             "#,
         );
-        let err = generate_clients(&src, &out, None).unwrap_err();
+        let err = generate_clients(
+            std::slice::from_ref(&src),
+            &out,
+            None,
+            CallerClass::StandardApp,
+        )
+        .unwrap_err();
         let err = format!("{err:#}");
         assert!(
             err.contains("`IdInput`")
@@ -3455,6 +3636,119 @@ mod tests {
         );
         assert!(logic.contains("name: (): Promise<string>"), "{logic}");
         assert!(!logic.contains("Only where `cfg(target_os = \"android\")`; elsewhere the call fails with `E_NOT_FOUND`. */\n      name"), "{logic}");
+    }
+
+    #[test]
+    fn a_client_carries_only_the_routes_its_caller_class_may_call() {
+        let root =
+            std::env::temp_dir().join(format!("lingxia-native-class-{}", std::process::id()));
+        let src = root.join("src");
+        fs::create_dir_all(&src).unwrap();
+        let route = |name: &str, audience: &str| {
+            format!(
+                "#[lingxia::native(\"{name}\", audience = \"{audience}\")]\npub fn {}() -> u32 {{ 0 }}\n",
+                name.replace('.', "_")
+            )
+        };
+        let lib = [
+            route("all.any", "app-session-only"),
+            route("home.only", "control-app-only"),
+            route("surface.only", "control-surface-only"),
+            route("control.both", "control-app-or-surface"),
+        ]
+        .concat();
+        fs::write(src.join("lib.rs"), lib).unwrap();
+        let out = root.join("out");
+        let routes = |caller| {
+            generate_clients(std::slice::from_ref(&src), &out, None, caller).unwrap();
+            let logic = fs::read_to_string(out.join(LOGIC_CLIENT)).unwrap();
+            ["all.any", "home.only", "surface.only", "control.both"]
+                .into_iter()
+                .filter(|name| logic.contains(&format!("\"{name}\"")))
+                .collect::<Vec<_>>()
+        };
+        let home = routes(CallerClass::ControlApp);
+        let surface = routes(CallerClass::ControlSurface);
+        let guest = routes(CallerClass::StandardApp);
+        let _ = fs::remove_dir_all(&root);
+        assert_eq!(home, ["all.any", "home.only", "control.both"]);
+        assert_eq!(surface, ["all.any", "surface.only", "control.both"]);
+        assert_eq!(guest, ["all.any"]);
+    }
+
+    #[test]
+    fn library_crates_join_one_client_and_collisions_name_both_crates() {
+        let root = std::env::temp_dir().join(format!("lingxia-native-libs-{}", std::process::id()));
+        let write = |path: &str, text: &str| {
+            let path = root.join(path);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, text).unwrap();
+        };
+        write("host/Cargo.toml", "[package]\nname = \"host\"\n");
+        write(
+            "host/src/lib.rs",
+            "lingxia::host!(App, routes = [notes_core]);\n#[lingxia::native(\"app.ping\")]\npub fn ping() -> String { todo!() }\n",
+        );
+        write(
+            "notes-core/Cargo.toml",
+            "[package]\nname = \"notes-core\"\n",
+        );
+        write(
+            "notes-core/src/lib.rs",
+            "lingxia::routes!();\n#[derive(serde::Serialize)] pub struct Note { pub id: u32 }\n#[lingxia::native(\"notes.get\")]\npub fn get() -> Note { todo!() }\n",
+        );
+        let (host, notes) = (root.join("host/src"), root.join("notes-core/src"));
+        let out = root.join("out");
+        generate_clients(
+            &[host.clone(), notes.clone()],
+            &out,
+            None,
+            CallerClass::StandardApp,
+        )
+        .unwrap();
+        let logic = fs::read_to_string(out.join(LOGIC_CLIENT)).unwrap();
+        assert!(
+            logic.contains("\"app.ping\"") && logic.contains("\"notes.get\""),
+            "{logic}"
+        );
+        assert!(declares_routes(&notes.join("lib.rs")).unwrap());
+        assert!(!declares_routes(&host.join("lib.rs")).unwrap());
+        assert_eq!(
+            host_route_crates(&host.join("lib.rs")).unwrap(),
+            Some(vec!["notes_core".to_string()])
+        );
+        assert_eq!(host_route_crates(&notes.join("lib.rs")).unwrap(), None);
+
+        write(
+            "host/src/lib.rs",
+            "#[lingxia::native(\"notes.get\")]\npub fn get() -> String { todo!() }\n",
+        );
+        let err = generate_clients(
+            &[host.clone(), notes.clone()],
+            &out,
+            None,
+            CallerClass::StandardApp,
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(
+            err.contains("`notes.get` is declared twice, at lib.rs:2 and notes-core/src/lib.rs:4"),
+            "{err}"
+        );
+
+        write(
+            "host/src/lib.rs",
+            "#[derive(serde::Serialize)] pub struct Note { pub title: String }\n#[lingxia::native(\"app.note\")]\npub fn note() -> Note { todo!() }\n",
+        );
+        let err = format!(
+            "{:#}",
+            generate_clients(&[host, notes], &out, None, CallerClass::StandardApp).unwrap_err()
+        );
+        let _ = fs::remove_dir_all(&root);
+        assert!(
+            err.contains("`Note`") && err.contains("notes-core/src/lib.rs"),
+            "{err}"
+        );
     }
 
     #[test]

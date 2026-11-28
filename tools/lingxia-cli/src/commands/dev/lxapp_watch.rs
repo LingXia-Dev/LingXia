@@ -964,7 +964,7 @@ impl NativeSources {
 fn native_sources(roots: &[WatchRoot]) -> NativeSources {
     let mut sources = NativeSources::default();
     for root in roots {
-        if let Some(src) = crate::lxapp::native_route_source(&root.path) {
+        for src in crate::lxapp::native_route_sources(&root.path) {
             let apps = sources
                 .0
                 .entry(super::gpu_swap::canonical(&src))

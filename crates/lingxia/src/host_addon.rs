@@ -147,16 +147,27 @@ impl<A: HostAddon + 'static> std::ops::Deref for Host<A> {
 }
 
 /// A host crate's whole registration, written once in its `lib.rs`:
-/// `lingxia::host!(AppHostAddon);`, or with its value, `lingxia::host!(AppHostAddon::new())`.
+/// `lingxia::host!(AppHostAddon);`, or with its value, `lingxia::host!(AppHostAddon::new())`
+/// or `lingxia::host!(AppHostAddon { .. })`.
 ///
 /// Installs every `#[lingxia::native]` route in the crate (the registry its `build.rs`
-/// writes with `lingxia_native_codegen::build()`), registers the addon, and exports the
-/// entrypoint each platform SDK calls. Harmony's needs `napi-derive-ohos` in the crate.
-/// With the crate's `devtools` feature it also starts the `lingxia dev` session bridge.
+/// writes with `lingxia_native_codegen::build()`), then those of each library crate in
+/// `routes = [notes_core, ..]` (each declares `lingxia::routes!()`), registers the addon, and
+/// exports the entrypoint each platform SDK calls. Harmony's needs `napi-derive-ohos` in the
+/// crate. With the crate's `devtools` feature it also starts the `lingxia dev` session bridge.
 /// The leading name is the addon's type: a route's `Host<A>` must name it.
 #[macro_export]
 macro_rules! host {
-    ($addon:ident $($value:tt)*) => {
+    ($addon:ident $(, routes = [$($krate:ident),* $(,)?])? $(,)?) => {
+        $crate::host!(@host $addon, ($addon), [$($($krate),*)?]);
+    };
+    ($addon:ident :: $ctor:ident ($($args:tt)*) $(, routes = [$($krate:ident),* $(,)?])? $(,)?) => {
+        $crate::host!(@host $addon, ($addon::$ctor($($args)*)), [$($($krate),*)?]);
+    };
+    ($addon:ident { $($fields:tt)* } $(, routes = [$($krate:ident),* $(,)?])? $(,)?) => {
+        $crate::host!(@host $addon, ($addon { $($fields)* }), [$($($krate),*)?]);
+    };
+    (@host $addon:ident, ($value:expr), [$($krate:ident),*]) => {
         include!(concat!(env!("OUT_DIR"), "/lingxia_native_handlers.rs"));
 
         #[doc(hidden)]
@@ -190,8 +201,12 @@ macro_rules! host {
                 #[allow(unexpected_cfgs)]
                 #[cfg(feature = "devtools")]
                 $crate::register_host_addon(::std::boxed::Box::new(__LingxiaDevSession));
-                let addon: $addon = $addon $($value)*;
-                $crate::__register_host(addon, __lingxia_native::install)
+                fn install_routes() {
+                    __lingxia_native::install();
+                    $(::$krate::__lingxia_install();)*
+                }
+                let addon: $addon = $value;
+                $crate::__register_host(addon, install_routes)
             });
         }
 

@@ -81,9 +81,16 @@ pub(crate) fn dev_typecheck(dir: &Path) -> Option<Result<String>> {
     })
 }
 
-/// The `src/` of the crate whose routes the lxapp at `dir` calls.
-pub(crate) fn native_route_source(dir: &Path) -> Option<std::path::PathBuf> {
-    native_client::route_source(dir).ok().flatten()
+/// The editable `src/` of every crate whose routes the lxapp at `dir` calls: its own crate and
+/// its path-dependency route crates.
+pub(crate) fn native_route_sources(dir: &Path) -> Vec<std::path::PathBuf> {
+    let sources = native_client::route_sources(dir).ok().flatten();
+    sources
+        .into_iter()
+        .flat_map(|sources| sources.crates)
+        .filter(|route_crate| route_crate.local)
+        .map(|route_crate| route_crate.src)
+        .collect()
 }
 
 /// Rewrites the lxapp's native clients from its crate's routes; true when they changed.

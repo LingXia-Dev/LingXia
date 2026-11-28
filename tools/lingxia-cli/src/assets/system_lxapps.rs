@@ -12,6 +12,8 @@ pub(crate) struct SystemLxapp {
     /// Names its build cache and npm staging.
     pub(super) kind: &'static str,
     source: fn(&LingXiaConfig) -> Option<&LxappSourceConfig>,
+    /// The framework crate whose routes it calls, if any.
+    pub(crate) route_crate: Option<&'static str>,
 }
 
 pub(crate) const BROWSER_WEBUI: SystemLxapp = SystemLxapp {
@@ -19,6 +21,7 @@ pub(crate) const BROWSER_WEBUI: SystemLxapp = SystemLxapp {
     key: "browser.webui",
     kind: "browser-shell-webui",
     source: |config| config.browser.as_ref()?.webui.as_ref(),
+    route_crate: Some("lingxia-browser-shell"),
 };
 
 pub(crate) const TERMINAL_SETTINGS: SystemLxapp = SystemLxapp {
@@ -26,12 +29,22 @@ pub(crate) const TERMINAL_SETTINGS: SystemLxapp = SystemLxapp {
     key: "terminal.settings",
     kind: "terminal-settings",
     source: |config| config.terminal.as_ref()?.settings.as_ref(),
+    route_crate: None,
 };
 
+pub(crate) const SYSTEM_LXAPPS: [&SystemLxapp; 2] = [&BROWSER_WEBUI, &TERMINAL_SETTINGS];
+
 pub(crate) fn system_lxapp(app_id: &str) -> Option<&'static SystemLxapp> {
-    [&BROWSER_WEBUI, &TERMINAL_SETTINGS]
+    SYSTEM_LXAPPS
         .into_iter()
         .find(|system| system.app_id == app_id)
+}
+
+impl SystemLxapp {
+    /// The project-relative directory `lingxia.yaml` builds it from, if any.
+    pub(crate) fn configured_path<'a>(&self, config: &'a LingXiaConfig) -> Option<&'a str> {
+        non_empty((self.source)(config)?.path.as_ref())
+    }
 }
 
 pub(super) struct SystemLxappSource {

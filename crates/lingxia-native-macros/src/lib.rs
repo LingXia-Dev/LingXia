@@ -38,6 +38,30 @@ pub fn route_defaults(input: TokenStream) -> TokenStream {
     }
 }
 
+/// `lingxia::routes!()` at a library crate's root: includes the registry its `build.rs`
+/// writes and exports the `__lingxia_install` a host's `host!(…, routes = [..])` calls.
+#[proc_macro]
+pub fn routes(input: TokenStream) -> TokenStream {
+    if !input.is_empty() {
+        return syn::Error::new(
+            proc_macro2::TokenStream::from(input).span(),
+            "routes!() takes no arguments",
+        )
+        .to_compile_error()
+        .into();
+    }
+    quote! {
+        include!(concat!(env!("OUT_DIR"), "/lingxia_native_handlers.rs"));
+
+        #[doc(hidden)]
+        pub fn __lingxia_install() {
+            static INSTALLED: ::std::sync::Once = ::std::sync::Once::new();
+            INSTALLED.call_once(__lingxia_native::install);
+        }
+    }
+    .into()
+}
+
 /// `#[derive(Default, lingxia::FromLxApp)]`: the lxapp's state opens as `Self::default()`.
 #[proc_macro_derive(FromLxApp)]
 pub fn derive_from_lxapp(item: TokenStream) -> TokenStream {
