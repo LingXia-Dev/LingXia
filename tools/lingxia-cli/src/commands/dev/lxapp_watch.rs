@@ -678,8 +678,9 @@ struct Outcome {
     pages: Option<Option<String>>,
 }
 
-/// A type-check's result as the session reports it. Errors never stop the session: the last
-/// good build keeps running, and the next clean check clears what was shown.
+/// A type-check's result as the session reports it. Only type errors reach the app; a check
+/// that could not run is a terminal line. Neither stops the session, and the next clean check
+/// clears what was shown.
 fn outcome(last: &mut Option<String>, result: Result<String, String>) -> Outcome {
     match result {
         Ok(report) if report.is_empty() => {
@@ -704,13 +705,12 @@ fn outcome(last: &mut Option<String>, result: Result<String, String>) -> Outcome
                 pages: Some(Some(report)),
             }
         }
-        Err(error) => {
-            *last = None;
-            Outcome {
-                line: Some(error.clone()),
-                pages: Some(Some(format!("type check failed\n{error}"))),
-            }
-        }
+        // The check did not run (no Node, a worker crash): the terminal says
+        // so, and the app keeps what the last real check showed, so the next clean one clears it.
+        Err(error) => Outcome {
+            line: Some(format!("type check skipped: {error}")),
+            pages: None,
+        },
     }
 }
 
@@ -1190,6 +1190,18 @@ mod tests {
     }
 
     #[test]
+    fn a_check_that_cannot_run_never_paints_the_app() {
+        let mut last = None;
+        for _ in 0..2 {
+            let failed = outcome(&mut last, Err("Type check failed:\nworker exited".into()));
+            assert_eq!(failed.pages, None);
+            assert!(failed.line.unwrap().starts_with("type check skipped: "));
+        }
+        // Nothing was shown, but the first real result still reaches the app.
+        assert_eq!(outcome(&mut last, Ok(String::new())).pages, Some(None));
+    }
+
+    #[test]
     fn a_failing_type_check_is_shown_in_the_terminal_and_the_app_and_a_clean_one_clears_it() {
         let mut last = None;
         // The first check is clean: nothing to say, nothing shown.
@@ -1216,15 +1228,20 @@ mod tests {
                 pages: None
             }
         );
-        // A check that cannot run is a problem too; the session keeps going either way.
-        let failed = outcome(&mut last, Err("i18n/en-US.json is not JSON".into()));
-        assert_eq!(failed.line.as_deref(), Some("i18n/en-US.json is not JSON"));
-        assert!(failed.pages.unwrap().unwrap().contains("not JSON"));
+        // A check that cannot run is the terminal's alone: the app keeps the real errors it shows.
+        let node = "Failed to start Node.js TypeScript worker; is Node.js installed?";
+        assert_eq!(
+            outcome(&mut last, Err(node.into())),
+            Outcome {
+                line: Some(format!("type check skipped: {node}")),
+                pages: None
+            }
+        );
         // The next good save clears the app's banner.
         assert_eq!(
             outcome(&mut last, Ok(String::new())),
             Outcome {
-                line: None,
+                line: Some("types clean".into()),
                 pages: Some(None)
             }
         );

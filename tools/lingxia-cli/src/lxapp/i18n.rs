@@ -694,11 +694,28 @@ fn note(reason: impl Into<String>) -> Problem {
     }
 }
 
-fn report<T>(problems: Vec<(String, Problem)>) -> Result<T> {
-    for (file, problem) in &problems {
-        eprintln!("{file}: {problem}");
+/// Authoring errors in the catalogues, one line each: the developer's to fix, unlike a check
+/// that could not run.
+#[derive(Debug)]
+pub(crate) struct CatalogueProblems(pub(crate) Vec<String>);
+
+impl std::fmt::Display for CatalogueProblems {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} catalogue problem(s)", self.0.len())
     }
-    Err(anyhow!("{} catalogue problem(s)", problems.len()))
+}
+
+impl std::error::Error for CatalogueProblems {}
+
+fn report<T>(problems: Vec<(String, Problem)>) -> Result<T> {
+    let lines: Vec<String> = problems
+        .iter()
+        .map(|(file, problem)| format!("{file}: {problem}"))
+        .collect();
+    for line in &lines {
+        eprintln!("{line}");
+    }
+    Err(CatalogueProblems(lines).into())
 }
 
 #[cfg(test)]

@@ -68,11 +68,17 @@ pub fn add_language(dir: &Path, tag: &str) -> Result<()> {
 }
 
 /// Dev sessions: the project type-check of the lxapp at `dir`, when it has one; `None` when
-/// it does not, else its problems as one report (empty when clean).
+/// it does not, else its problems as one report (empty when clean). Catalogue problems are the
+/// report, under their own heading; an `Err` is a check that could not run.
 pub(crate) fn dev_typecheck(dir: &Path) -> Option<Result<String>> {
     typecheck::applies(dir).then(|| {
         // A saved catalogue changes the message keys pages may name, even before a build lands.
-        i18n::refresh_types(dir)?;
+        if let Err(error) = i18n::refresh_types(dir) {
+            return match error.downcast::<i18n::CatalogueProblems>() {
+                Ok(problems) => Ok(catalogue_report(&problems.0)),
+                Err(error) => Err(error),
+            };
+        }
         typecheck::run(dir).map(|problems| {
             if problems.is_empty() {
                 String::new()
@@ -81,6 +87,16 @@ pub(crate) fn dev_typecheck(dir: &Path) -> Option<Result<String>> {
             }
         })
     })
+}
+
+/// Catalogue problems under their own heading, in the shape of the type errors' report.
+fn catalogue_report(lines: &[String]) -> String {
+    let count = lines.len();
+    format!(
+        "i18n: {count} catalogue problem{}\n{}",
+        if count == 1 { "" } else { "s" },
+        lines.join("\n")
+    )
 }
 
 /// The editable `src/` of every crate whose routes the lxapp at `dir` calls: its own crate and
@@ -133,4 +149,33 @@ pub fn run_in_dir_for_dev(args: &[String], cwd: &Path, output: Option<&Path>) ->
 pub(crate) fn package_in_dir(cwd: &Path) -> Result<std::path::PathBuf> {
     let project = project::Project::discover(cwd)?;
     package::package_dist(&project)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_catalogue_problem_is_the_dev_report_under_its_own_heading() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        std::fs::create_dir_all(root.join("i18n")).unwrap();
+        std::fs::create_dir_all(root.join("pages/cart")).unwrap();
+        std::fs::write(root.join("tsconfig.json"), "{}").unwrap();
+        std::fs::write(root.join("lxapp.json"), r#"{ "languages": ["en-US"] }"#).unwrap();
+        std::fs::write(
+            root.join("i18n/en-US.json"),
+            r#"{ "cart.title": { "defaultMessage": "Cart", "description": "d" } }"#,
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("pages/cart/index.tsx"),
+            "import { t } from '@lingxia/view';\nt('cart.title'); t('cart.total');",
+        )
+        .unwrap();
+        let report = dev_typecheck(root).unwrap().unwrap();
+        let mut lines = report.lines();
+        assert_eq!(lines.next(), Some("i18n: 1 catalogue problem"));
+        assert!(lines.next().unwrap().contains("cart.total"), "{report}");
+    }
 }
