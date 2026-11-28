@@ -316,7 +316,7 @@ and write the lxapp's clients, imported as `@lingxia/native`:
 An lxapp listed in `lingxia.yaml` calls the `rustLibDir` crate; an lxapp inside
 a Cargo package calls that package. The client also carries every `routes!()`
 crate in that crate's dependency graph on any platform `lingxia.yaml` enables,
-read offline from its `Cargo.lock` (a platform that cannot resolve is warned);
+read from its `Cargo.lock` (a platform's missing crates are fetched once);
 a route name or DTO name two crates both define fails with both places. Routes
 whose audience excludes the lxapp's class are left out of its client.
 Lxapps configure no Rust paths.

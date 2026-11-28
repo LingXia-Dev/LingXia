@@ -2,7 +2,7 @@
 //!
 //! A host project's lxapp calls the crate `lingxia.yaml` names; an lxapp inside a Cargo package
 //! calls that package's routes. Either way the client also carries every library crate in that
-//! crate's dependency graph that declares `lingxia::routes!()`, found offline from its lock file
+//! crate's dependency graph that declares `lingxia::routes!()`, found from its lock file
 //! for every platform `lingxia.yaml` enables. A route crate `lingxia` itself installs serves only
 //! the system lxapp that names it, and a client leaves out routes the lxapp's class may not call.
 
@@ -51,11 +51,16 @@ pub fn generate(project: &Project) -> Result<()> {
         }
         return clear(&out);
     };
+    // A dev session regenerates often; a platform that stays unresolvable is reported once.
+    static REPORTED: std::sync::Mutex<BTreeSet<String>> = std::sync::Mutex::new(BTreeSet::new());
     for reason in &sources.skipped {
-        eprintln!(
-            "{} the native client may miss route crates: {reason}",
-            "warning:".yellow()
-        );
+        let mut reported = REPORTED.lock().unwrap_or_else(|poison| poison.into_inner());
+        if reported.insert(reason.clone()) {
+            eprintln!(
+                "{} the native client may miss route crates: {reason}",
+                "warning:".yellow()
+            );
+        }
     }
     for name in &sources.unlisted {
         eprintln!(
@@ -252,8 +257,8 @@ struct LibraryRoutes {
 }
 
 /// Every crate in `crate_dir`'s normal dependency graph for `target` whose root declares
-/// `lingxia::routes!()`. `cargo metadata --offline` reads the lock file; no build runs, and a
-/// target whose crates were never fetched fails rather than resolving short.
+/// `lingxia::routes!()`. `cargo metadata` reads the lock file offline; no build runs, and a
+/// target whose crates were never fetched is fetched once rather than resolving short.
 fn library_route_crates(
     crate_dir: &Path,
     target: &str,
@@ -266,32 +271,34 @@ fn library_route_crates(
         .map(String::as_str)
         .filter(|feature| declared.contains(*feature))
         .collect();
-    let mut command = Command::new("cargo");
-    command
-        .args([
-            "metadata",
-            "--format-version",
-            "1",
-            "--offline",
-            "--filter-platform",
-            target,
-            "--manifest-path",
-        ])
-        .arg(&manifest);
-    if !features.is_empty() {
-        command.arg("--features").arg(features.join(","));
+    let metadata = |offline: bool| {
+        let mut command = Command::new("cargo");
+        command.args(["metadata", "--format-version", "1"]);
+        if offline {
+            command.arg("--offline");
+        }
+        command
+            .args(["--filter-platform", target, "--manifest-path"])
+            .arg(&manifest);
+        if !features.is_empty() {
+            command.arg("--features").arg(features.join(","));
+        }
+        command.output().context("run cargo metadata")
+    };
+    let mut output = metadata(true)?;
+    // Crates another platform needs may never have been fetched here. One online run fetches
+    // them into cargo's registry, so later offline runs resolve until `Cargo.lock` changes.
+    if !output.status.success() && missing_download(&String::from_utf8_lossy(&output.stderr)) {
+        output = metadata(false)?;
+        if !output.status.success() {
+            bail!(
+                "its crates are not downloaded and fetching them failed: {}",
+                first_error(&output.stderr)
+            );
+        }
     }
-    let output = command.output().context("run cargo metadata")?;
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        bail!(
-            "cargo metadata --offline failed: {}",
-            stderr
-                .lines()
-                .find(|line| line.starts_with("error"))
-                .unwrap_or("")
-                .trim_start_matches("error: ")
-        );
+        bail!("cargo metadata failed: {}", first_error(&output.stderr));
     }
     let metadata: serde_json::Value =
         serde_json::from_slice(&output.stdout).context("parse cargo metadata")?;
@@ -382,6 +389,22 @@ fn library_route_crates(
         });
     }
     Ok(found)
+}
+
+/// Whether an offline `cargo metadata` failed only for want of crates not yet downloaded.
+fn missing_download(stderr: &str) -> bool {
+    stderr.lines().any(|line| {
+        line.starts_with("error: failed to download") || line.contains("--offline was specified")
+    })
+}
+
+fn first_error(stderr: &[u8]) -> String {
+    let stderr = String::from_utf8_lossy(stderr);
+    let line = stderr
+        .lines()
+        .find(|line| line.starts_with("error"))
+        .unwrap_or("");
+    line.trim_start_matches("error: ").to_string()
 }
 
 /// The `[features]` a manifest declares; `--features` naming another fails the whole call.
@@ -655,6 +678,19 @@ mod tests {
                 vec!["ios-notes".into(), "notes-core".into()]
             )
         );
+    }
+
+    #[test]
+    fn only_undownloaded_crates_send_metadata_online() {
+        assert!(missing_download(
+            "warning: patch unused\nerror: failed to download `schannel v0.1.30`\n\nCaused by:\n"
+        ));
+        assert!(missing_download(
+            "error: failed to get `x` as a dependency\n  attempting to make an HTTP request, but --offline was specified\n"
+        ));
+        assert!(!missing_download(
+            "error: the package 'native' does not contain this feature: windows\n"
+        ));
     }
 
     #[test]
