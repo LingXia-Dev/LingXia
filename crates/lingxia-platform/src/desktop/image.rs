@@ -14,8 +14,13 @@ pub fn get_image_info_desktop(uri: &str) -> Result<ImageInfo, Error> {
 
     let reader = BufReader::new(file);
 
-    let size = imagesize::reader_size(reader)
-        .map_err(|e| Error::internal(format!("Failed to read image dimensions: {}", e)))?;
+    let size = imagesize::reader_size(reader).map_err(|e| match e {
+        // Too short to hold an image header is content, not I/O.
+        imagesize::ImageError::IoError(e) if e.kind() != std::io::ErrorKind::UnexpectedEof => {
+            Error::io(format!("Failed to read image dimensions: {e}"))
+        }
+        e => Error::invalid_data(format!("Not an image this device can decode: {e}")),
+    })?;
 
     let mime_type = infer_mime_type(&path);
 
@@ -183,6 +188,30 @@ fn calculate_resize_dimensions(
         (None, None) => {
             // No resize
             (orig_width, orig_height)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::get_image_info_desktop;
+
+    fn write(name: &str, bytes: &[u8]) -> String {
+        let dir = std::env::temp_dir().join(format!("lx-image-info-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(name);
+        std::fs::write(&path, bytes).unwrap();
+        path.to_string_lossy().into_owned()
+    }
+
+    #[test]
+    fn a_file_that_is_not_an_image_is_invalid_data() {
+        for (name, bytes) in [
+            ("text.png", &b"this is not an image, only text"[..]),
+            ("short.png", &b"ab"[..]),
+        ] {
+            let error = get_image_info_desktop(&write(name, bytes)).unwrap_err();
+            assert_eq!(error.code(), "E_INVALID_DATA", "{name}: {error}");
         }
     }
 }

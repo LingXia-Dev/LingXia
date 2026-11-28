@@ -332,14 +332,22 @@ mod image_native {
         // Harmony image native APIs are not guaranteed to be thread-safe.
         let _guard = image_lock().lock().unwrap_or_else(|e| e.into_inner());
 
+        // The file exists, so a source the decoder cannot open or read is not an image.
+        let not_image = |error: Error| {
+            Error::invalid_data(format!(
+                "Not an image this device can decode: {}",
+                error.message()
+            ))
+        };
         let normalized_uri = normalize_uri(uri);
-        let source = NativeImageSource::from_uri(&normalized_uri)?;
+        let source = NativeImageSource::from_uri(&normalized_uri).map_err(not_image)?;
         let info = NativeImageInfo::new()?;
 
         check(
             unsafe { OH_ImageSourceNative_GetImageInfo(source.as_ptr(), 0, info.as_ptr()) },
             "OH_ImageSourceNative_GetImageInfo",
-        )?;
+        )
+        .map_err(not_image)?;
 
         let width = info.width()?;
         let height = info.height()?;
@@ -1900,11 +1908,16 @@ mod video_native {
             }
         };
 
-        if info.width == 0 && info.height == 0 && info.duration_ms == 0 {
-            return Err(player_error
+        // No frame size from any probe: there is no video track to read.
+        if info.width == 0 && info.height == 0 {
+            let cause = player_error
                 .or(generator_error)
                 .or(metadata_error)
-                .unwrap_or_else(|| Error::internal("Failed to read video metadata".to_string())));
+                .map(|error| format!(" ({})", error.message()))
+                .unwrap_or_default();
+            return Err(Error::invalid_data(format!(
+                "Not a video: no video track{cause}"
+            )));
         }
 
         Ok(info)

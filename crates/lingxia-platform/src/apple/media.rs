@@ -194,11 +194,11 @@ impl MediaRuntime for Platform {
         {
             let info = super::ffi::get_image_info(uri);
             if !info.success {
-                return Err(Error::internal(if info.error.is_empty() {
-                    "get_image_info failed".to_string()
-                } else {
-                    info.error
-                }));
+                return Err(info_failure(
+                    info.invalid_data,
+                    info.error,
+                    "get_image_info",
+                ));
             }
             Ok(ImageInfo {
                 width: info.width,
@@ -249,11 +249,11 @@ impl MediaRuntime for Platform {
         {
             let info = super::ffi::get_video_info(uri);
             if !info.success {
-                return Err(Error::internal(if info.error.is_empty() {
-                    "get_video_info failed".to_string()
-                } else {
-                    info.error
-                }));
+                return Err(info_failure(
+                    info.invalid_data,
+                    info.error,
+                    "get_video_info",
+                ));
             }
             Ok(VideoInfo {
                 width: info.width,
@@ -568,5 +568,19 @@ mod ios {
                 "Failed to initiate scanCode on Apple platform".to_string(),
             ))
         }
+    }
+}
+
+/// `invalid_data` marks a file that is not that kind of media.
+fn info_failure(invalid_data: bool, error: String, op: &str) -> Error {
+    let message = if error.is_empty() {
+        format!("{op} failed")
+    } else {
+        error
+    };
+    if invalid_data {
+        Error::invalid_data(message)
+    } else {
+        Error::internal(message)
     }
 }

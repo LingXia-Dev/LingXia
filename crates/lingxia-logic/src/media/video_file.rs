@@ -188,7 +188,7 @@ rong::js_api! {
 ///
 /// @throws {E_NOT_FOUND} No file at the path.
 /// @throws {E_INVALID_ARG} A path the lxapp may not read.
-/// @throws {E_INTERNAL} The file is not a video the platform can read.
+/// @throws {E_INVALID_DATA} The file is not a video: no readable video track.
 async fn get_video_info_api(ctx: JSContext, path: String) -> JSResult<JSVideoInfoResult> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let runtime = &lxapp.runtime;
@@ -224,6 +224,7 @@ async fn get_video_info_api(ctx: JSContext, path: String) -> JSResult<JSVideoInf
 ///
 /// @throws {E_NOT_FOUND} No file at the path.
 /// @throws {E_INVALID_ARG} A path the lxapp may not read, or output over the temporary storage quota.
+/// @throws {E_INVALID_DATA} The file is not a video: no readable video track.
 /// @throws {E_INTERNAL} No frame could be extracted.
 async fn extract_video_thumbnail_api(
     ctx: JSContext,
@@ -249,9 +250,11 @@ async fn extract_video_thumbnail_api(
         quality: clamp_quality(options.quality),
     };
 
-    let thumbnail = runtime
-        .extract_video_thumbnail(&request)
-        .map_err(js_error)?;
+    let thumbnail = runtime.extract_video_thumbnail(&request).map_err(|error| {
+        js_error(super::input_failure(error, || {
+            runtime.get_video_info(&request.source_uri)
+        }))
+    })?;
     ensure_output_quota(&lxapp, &output_path, &thumbnail.path)?;
 
     let path = match explicit_output_uri {
@@ -290,6 +293,7 @@ async fn extract_video_thumbnail_api(
 /// @throws {E_NOT_FOUND} No file at the path.
 /// @throws {E_INVALID_ARG} A path the lxapp may not read, `to` equal to the source, or `quality` mixed with `bitrate`, `fps` or `resolution`.
 /// @throws {E_ABORT} `cancel()` was called or `signal` was aborted (on `result`).
+/// @throws {E_INVALID_DATA} The file is not a video: no readable video track (on `result`).
 /// @throws {E_INTERNAL} The transcode failed (on `result`).
 fn compress_video_api(
     ctx: JSContext,
@@ -341,7 +345,9 @@ fn compress_video_api(
     if let Err(err) = runtime.compress_video(&request) {
         remove_callback(progress_callback_id);
         remove_callback(callback_id);
-        return Err(js_error(err));
+        return Err(js_error(super::input_failure(err, || {
+            runtime.get_video_info(&request.source_uri)
+        })));
     }
 
     let cancelled = Arc::new(AtomicBool::new(false));
@@ -349,6 +355,17 @@ fn compress_video_api(
     let settled = cancelled.clone();
     let final_lxapp = lxapp.clone();
     let final_output_path = output_path.clone();
+    let final_source = request.source_uri.clone();
+    // A failed transcode of something that is not a video is the input's fault.
+    let failed = {
+        let runtime = runtime.clone();
+        move |message: String| {
+            js_error(super::input_failure(
+                lingxia_error::Error::internal(message),
+                || runtime.get_video_info(&final_source),
+            ))
+        }
+    };
     let final_promise = Promise::from_future(&ctx, None, async move {
         let result = completion_rx.await;
         if settled.swap(true, Ordering::SeqCst) {
@@ -369,7 +386,7 @@ fn compress_video_api(
                         js_internal_error(format!("compressVideo returned invalid payload: {err}"))
                     })?;
                 if !parsed.success {
-                    return Err(js_internal_error(
+                    return Err(failed(
                         parsed
                             .error
                             .unwrap_or_else(|| "compressVideo failed".to_string()),
@@ -402,9 +419,9 @@ fn compress_video_api(
                         .unwrap_or_else(|| "video/mp4".to_string()),
                 })
             }
-            Ok(CallbackResult::Error(code)) => Err(js_internal_error(format!(
-                "compressVideo failed with code {code}"
-            ))),
+            Ok(CallbackResult::Error(code)) => {
+                Err(failed(format!("compressVideo failed with code {code}")))
+            }
             // The oneshot sender is dropped when cancel() removes the callback.
             Err(_) => Err(
                 HostError::new(rong::error::E_ABORT, "compressVideo canceled")

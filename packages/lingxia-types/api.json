@@ -1639,7 +1639,7 @@
       "examples": [
         "lx.app.moreActions.replace([\n{ icon: 'public/feedback.svg', label: 'Feedback', onSelect: () => openFeedback() },\n]);"
       ],
-      "source": "src/generated/logic.ts:4310"
+      "source": "src/generated/logic.ts:4314"
     },
     {
       "path": "lx.app.t",
@@ -1717,7 +1717,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4501"
+      "source": "src/generated/logic.ts:4505"
     },
     {
       "path": "lx.app.update",
@@ -2320,7 +2320,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:4340"
+      "source": "src/generated/logic.ts:4344"
     },
     {
       "path": "lx.device.orientation.watch",
@@ -2352,7 +2352,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:4345"
+      "source": "src/generated/logic.ts:4349"
     },
     {
       "path": "lx.device.permission",
@@ -2407,7 +2407,7 @@
       "examples": [
         "if (await lx.device.permission.get('notifications') === 'prompt') showEnableButton();"
       ],
-      "source": "src/generated/logic.ts:4362"
+      "source": "src/generated/logic.ts:4366"
     },
     {
       "path": "lx.device.permission.request",
@@ -2454,7 +2454,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4373"
+      "source": "src/generated/logic.ts:4377"
     },
     {
       "path": "lx.device.screen",
@@ -4578,7 +4578,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4533"
+      "source": "src/generated/logic.ts:4537"
     },
     {
       "path": "lx.host.tray.onClick",
@@ -4619,7 +4619,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4521"
+      "source": "src/generated/logic.ts:4525"
     },
     {
       "path": "lx.host.tray.update",
@@ -4655,7 +4655,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4514"
+      "source": "src/generated/logic.ts:4518"
     },
     {
       "path": "lx.host.update",
@@ -4783,6 +4783,10 @@
             "when": "A path the lxapp may not read, or output over the temporary storage quota."
           },
           {
+            "code": "E_INVALID_DATA",
+            "when": "The file is not an image the platform can decode."
+          },
+          {
             "code": "E_INTERNAL",
             "when": "The image could not be re-encoded."
           }
@@ -4791,7 +4795,7 @@
       "examples": [
         "const { path } = await lx.media.compressImage(photo, { quality: 60, maxWidth: 1280 });"
       ],
-      "source": "src/generated/logic.ts:4237"
+      "source": "src/generated/logic.ts:4238"
     },
     {
       "path": "lx.media.compressVideo",
@@ -4841,6 +4845,10 @@
             "when": "`cancel()` was called or `signal` was aborted (on `result`)."
           },
           {
+            "code": "E_INVALID_DATA",
+            "when": "The file is not a video: no readable video track (on `result`)."
+          },
+          {
             "code": "E_INTERNAL",
             "when": "The transcode failed (on `result`)."
           }
@@ -4849,7 +4857,7 @@
       "examples": [
         "const task = lx.media.compressVideo(clip, { quality: 'medium' });\nfor await (const { fraction } of task) render(fraction);\nconst { path, size } = await task.result;"
       ],
-      "source": "src/generated/logic.ts:4293"
+      "source": "src/generated/logic.ts:4297"
     },
     {
       "path": "lx.media.imageInfo",
@@ -4886,8 +4894,8 @@
             "when": "A path the lxapp may not read."
           },
           {
-            "code": "E_INTERNAL",
-            "when": "The file is not an image the platform can read."
+            "code": "E_INVALID_DATA",
+            "when": "The file is not an image the platform can decode."
           }
         ]
       },
@@ -4928,7 +4936,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:4242"
+      "source": "src/generated/logic.ts:4243"
     },
     {
       "path": "lx.media.saveToLibrary",
@@ -4964,7 +4972,11 @@
           },
           {
             "code": "E_INVALID_ARG",
-            "when": "The file is neither, or a path the lxapp may not read."
+            "when": "A path the lxapp may not read."
+          },
+          {
+            "code": "E_INVALID_DATA",
+            "when": "The file is neither a picture nor a video the platform can read."
           },
           {
             "code": "E_NOT_SUPPORTED",
@@ -4973,7 +4985,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4251"
+      "source": "src/generated/logic.ts:4253"
     },
     {
       "path": "lx.media.videoInfo",
@@ -5010,15 +5022,15 @@
             "when": "A path the lxapp may not read."
           },
           {
-            "code": "E_INTERNAL",
-            "when": "The file is not a video the platform can read."
+            "code": "E_INVALID_DATA",
+            "when": "The file is not a video: no readable video track."
           }
         ]
       },
       "examples": [
         "const { durationMs, size } = await lx.media.videoInfo(clip);"
       ],
-      "source": "src/generated/logic.ts:4266"
+      "source": "src/generated/logic.ts:4268"
     },
     {
       "path": "lx.media.videoThumbnail",
@@ -5061,6 +5073,10 @@
             "when": "A path the lxapp may not read, or output over the temporary storage quota."
           },
           {
+            "code": "E_INVALID_DATA",
+            "when": "The file is not a video: no readable video track."
+          },
+          {
             "code": "E_INTERNAL",
             "when": "No frame could be extracted."
           }
@@ -5069,7 +5085,7 @@
       "examples": [
         "const poster = await lx.media.videoThumbnail(clip, { positionMs: 1000, maxWidth: 480 });"
       ],
-      "source": "src/generated/logic.ts:4277"
+      "source": "src/generated/logic.ts:4280"
     },
     {
       "path": "lx.nav",
@@ -5634,7 +5650,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4330"
+      "source": "src/generated/logic.ts:4334"
     },
     {
       "path": "lx.network.wifi",
@@ -5695,7 +5711,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4603"
+      "source": "src/generated/logic.ts:4607"
     },
     {
       "path": "lx.network.wifi.current",
@@ -5726,7 +5742,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4616"
+      "source": "src/generated/logic.ts:4620"
     },
     {
       "path": "lx.network.wifi.list",
@@ -5768,7 +5784,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4610"
+      "source": "src/generated/logic.ts:4614"
     },
     {
       "path": "lx.network.wifi.onConnected",
@@ -5801,7 +5817,7 @@
       ],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:4618"
+      "source": "src/generated/logic.ts:4622"
     },
     {
       "path": "lx.openExternal",
@@ -5949,7 +5965,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4437"
+      "source": "src/generated/logic.ts:4441"
     },
     {
       "path": "lx.pick.code",
@@ -5993,7 +6009,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4447"
+      "source": "src/generated/logic.ts:4451"
     },
     {
       "path": "lx.pick.directory",
@@ -6040,7 +6056,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4410"
+      "source": "src/generated/logic.ts:4414"
     },
     {
       "path": "lx.pick.file",
@@ -6088,7 +6104,7 @@
       "examples": [
         "const picked = await lx.pick.file({ filters: [{ extensions: ['pdf'] }] });\nif (picked.status === 'ok') await attach(picked.file.path);"
       ],
-      "source": "src/generated/logic.ts:4391"
+      "source": "src/generated/logic.ts:4395"
     },
     {
       "path": "lx.pick.files",
@@ -6134,7 +6150,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4399"
+      "source": "src/generated/logic.ts:4403"
     },
     {
       "path": "lx.pick.media",
@@ -6188,7 +6204,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4425"
+      "source": "src/generated/logic.ts:4429"
     },
     {
       "path": "lx.share",
@@ -6262,7 +6278,7 @@
       "types": [],
       "tags": {},
       "examples": [],
-      "source": "src/generated/logic.ts:4454"
+      "source": "src/generated/logic.ts:4458"
     },
     {
       "path": "lx.shell.appDisplay",
@@ -6381,7 +6397,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4488"
+      "source": "src/generated/logic.ts:4492"
     },
     {
       "path": "lx.shell.sidebarActions.replace",
@@ -6418,7 +6434,7 @@
       "examples": [
         "await lx.shell.sidebarActions.replace([\n{ id: 'new', placement: 'header', icon: 'public/plus.svg', label: 'New', onSelect: () => createDraft() },\n]);"
       ],
-      "source": "src/generated/logic.ts:4475"
+      "source": "src/generated/logic.ts:4479"
     },
     {
       "path": "lx.shell.sidebarActions.update",
@@ -6460,7 +6476,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4483"
+      "source": "src/generated/logic.ts:4487"
     },
     {
       "path": "lx.storage",
@@ -6973,7 +6989,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4548"
+      "source": "src/generated/logic.ts:4552"
     },
     {
       "path": "lx.ui.alert",
@@ -7021,7 +7037,7 @@
       "examples": [
         "try {\nawait lx.clipboard.writeText('https://example.com');\n} catch (e) {\nawait lx.ui.alert({ error: e, fallback: \"Couldn't copy the link\" });\n}"
       ],
-      "source": "src/generated/logic.ts:4567"
+      "source": "src/generated/logic.ts:4571"
     },
     {
       "path": "lx.ui.confirm",
@@ -7066,7 +7082,7 @@
         ]
       },
       "examples": [],
-      "source": "src/generated/logic.ts:4577"
+      "source": "src/generated/logic.ts:4581"
     },
     {
       "path": "lx.ui.toast",
@@ -11954,7 +11970,7 @@
       "description": "Feature contracts generated from the runtime registry.",
       "text": "\"app.appUse\" | \"app.browser\" | \"app.browserUse\" | \"app.computerUse\" | \"app.mediaCapture\" | \"app.proxy\" | \"automation\" | \"device.haptics\" | \"host.autostart\" | \"host.badge\" | \"host.banner\" | \"host.notification\" | \"host.selfUpdate\" | \"host.terminal\" | \"host.terminal.conpty\" | \"host.tray\" | \"media.saveToLibrary\" | \"pick.camera\" | \"pick.directory\" | \"surface.tab\" | \"surface.window\" | \"surface.window.fullChrome\"",
       "fields": [],
-      "source": "src/generated/logic.ts:4625"
+      "source": "src/generated/logic.ts:4629"
     },
     {
       "name": "LxFile",
@@ -12065,8 +12081,8 @@
                 "when": "A path the lxapp may not read."
               },
               {
-                "code": "E_INTERNAL",
-                "when": "The file is not an image the platform can read."
+                "code": "E_INVALID_DATA",
+                "when": "The file is not an image the platform can decode."
               }
             ]
           }
@@ -12086,6 +12102,10 @@
               {
                 "code": "E_INVALID_ARG",
                 "when": "A path the lxapp may not read, or output over the temporary storage quota."
+              },
+              {
+                "code": "E_INVALID_DATA",
+                "when": "The file is not an image the platform can decode."
               },
               {
                 "code": "E_INTERNAL",
@@ -12118,7 +12138,11 @@
               },
               {
                 "code": "E_INVALID_ARG",
-                "when": "The file is neither, or a path the lxapp may not read."
+                "when": "A path the lxapp may not read."
+              },
+              {
+                "code": "E_INVALID_DATA",
+                "when": "The file is neither a picture nor a video the platform can read."
               },
               {
                 "code": "E_NOT_SUPPORTED",
@@ -12144,8 +12168,8 @@
                 "when": "A path the lxapp may not read."
               },
               {
-                "code": "E_INTERNAL",
-                "when": "The file is not a video the platform can read."
+                "code": "E_INVALID_DATA",
+                "when": "The file is not a video: no readable video track."
               }
             ]
           }
@@ -12165,6 +12189,10 @@
               {
                 "code": "E_INVALID_ARG",
                 "when": "A path the lxapp may not read, or output over the temporary storage quota."
+              },
+              {
+                "code": "E_INVALID_DATA",
+                "when": "The file is not a video: no readable video track."
               },
               {
                 "code": "E_INTERNAL",
@@ -12192,6 +12220,10 @@
               {
                 "code": "E_ABORT",
                 "when": "`cancel()` was called or `signal` was aborted (on `result`)."
+              },
+              {
+                "code": "E_INVALID_DATA",
+                "when": "The file is not a video: no readable video track (on `result`)."
               },
               {
                 "code": "E_INTERNAL",

@@ -152,10 +152,7 @@ internal object LxAppMedia {
         val result = try {
             val info = ImageOps.readInfo(ctx, Uri.fromFile(sourceFile))
             if (info == null) {
-                JSONObject().apply {
-                    put("success", false)
-                    put("error", "Failed to read image info")
-                }
+                invalidData("Not an image this device can decode")
             } else {
                 JSONObject().apply {
                     put("success", true)
@@ -295,7 +292,11 @@ internal object LxAppMedia {
 
         val retriever = MediaMetadataRetriever()
         return try {
-            retriever.setDataSource(sourceFile.absolutePath)
+            try {
+                retriever.setDataSource(sourceFile.absolutePath)
+            } catch (e: RuntimeException) {
+                return invalidData("Not a video: ${e.message ?: "unreadable"}").toString()
+            }
 
             val width = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)
                 ?.toIntOrNull() ?: 0
@@ -319,6 +320,9 @@ internal object LxAppMedia {
             val mimeType = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_MIMETYPE)
                 ?: inferVideoMimeType(sourceFile)
             val tracks = readVideoTrackMetadata(sourceFile)
+            if (width == 0 && height == 0) {
+                return invalidData("Not a video: no video track").toString()
+            }
             val retrieverHasAudio = retriever
                 .extractMetadata(MediaMetadataRetriever.METADATA_KEY_HAS_AUDIO)
                 .equals("yes", ignoreCase = true)
@@ -348,6 +352,13 @@ internal object LxAppMedia {
             } catch (_: Exception) {
             }
         }
+    }
+
+    /** A file that is not the expected kind of media; Rust maps the code to E_INVALID_DATA. */
+    private fun invalidData(message: String): JSONObject = JSONObject().apply {
+        put("success", false)
+        put("code", "E_INVALID_DATA")
+        put("error", message)
     }
 
     private fun readVideoTrackMetadata(sourceFile: File): VideoTrackMetadata {

@@ -143,7 +143,7 @@ extension LxAppMedia {
 
         let asset = AVURLAsset(url: sourceURL)
         guard let videoTrack = asset.tracks(withMediaType: .video).first else {
-            return videoInfoFailure("No video track found")
+            return videoInfoFailure("Not a video: no video track", invalidData: true)
         }
 
         let transformedSize = videoTrack.naturalSize.applying(videoTrack.preferredTransform)
@@ -174,6 +174,7 @@ extension LxAppMedia {
         return SwiftVideoInfoResult(
             success: true,
             error: RustString(""),
+            invalid_data: false,
             width: UInt32(clamping: width),
             height: UInt32(clamping: height),
             duration_ms: durationMs,
@@ -619,7 +620,7 @@ extension LxAppMedia {
 
     nonisolated private static func imageInfoFromFile(url: URL) -> SwiftImageInfoResult {
         guard let info = readImageProperties(url: url) else {
-            return imageInfoFailure("Failed to inspect image at \(url.path)")
+            return imageInfoFailure("Not an image this device can decode: \(url.path)", invalidData: true)
         }
         return imageInfoSuccess(info)
     }
@@ -756,10 +757,11 @@ extension LxAppMedia {
         return URL(fileURLWithPath: path)
     }
 
-    nonisolated private static func imageInfoFailure(_ message: String) -> SwiftImageInfoResult {
+    nonisolated private static func imageInfoFailure(_ message: String, invalidData: Bool = false) -> SwiftImageInfoResult {
         return SwiftImageInfoResult(
             success: false,
             error: RustString(message),
+            invalid_data: invalidData,
             width: 0,
             height: 0,
             mime_type: RustString("")
@@ -770,6 +772,7 @@ extension LxAppMedia {
         return SwiftImageInfoResult(
             success: true,
             error: RustString(""),
+            invalid_data: false,
             width: UInt32(clamping: info.width),
             height: UInt32(clamping: info.height),
             mime_type: RustString(info.mimeType)
@@ -784,10 +787,11 @@ extension LxAppMedia {
         )
     }
 
-    nonisolated private static func videoInfoFailure(_ message: String) -> SwiftVideoInfoResult {
+    nonisolated private static func videoInfoFailure(_ message: String, invalidData: Bool = false) -> SwiftVideoInfoResult {
         return SwiftVideoInfoResult(
             success: false,
             error: RustString(message),
+            invalid_data: invalidData,
             width: 0,
             height: 0,
             duration_ms: 0,
@@ -869,6 +873,7 @@ extension LxAppMedia {
         return SwiftImageInfoResult(
             success: false,
             error: RustString("Not implemented on macOS - use Rust implementation"),
+            invalid_data: false,
             width: 0,
             height: 0,
             mime_type: RustString("")
@@ -903,7 +908,7 @@ extension LxAppMedia {
 
         let asset = AVURLAsset(url: sourceURL)
         guard let videoTrack = asset.tracks(withMediaType: .video).first else {
-            return videoInfoFailureMac("No video track found")
+            return videoInfoFailureMac("Not a video: no video track", invalidData: true)
         }
 
         let transformedSize = videoTrack.naturalSize.applying(videoTrack.preferredTransform)
@@ -934,6 +939,7 @@ extension LxAppMedia {
         return SwiftVideoInfoResult(
             success: true,
             error: RustString(""),
+            invalid_data: false,
             width: UInt32(clamping: width),
             height: UInt32(clamping: height),
             duration_ms: durationMs,
@@ -1391,10 +1397,11 @@ extension LxAppMedia {
         return context.makeImage()
     }
 
-    nonisolated private static func videoInfoFailureMac(_ message: String) -> SwiftVideoInfoResult {
+    nonisolated private static func videoInfoFailureMac(_ message: String, invalidData: Bool = false) -> SwiftVideoInfoResult {
         return SwiftVideoInfoResult(
             success: false,
             error: RustString(message),
+            invalid_data: invalidData,
             width: 0,
             height: 0,
             duration_ms: 0,

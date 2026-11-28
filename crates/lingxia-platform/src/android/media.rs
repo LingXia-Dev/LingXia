@@ -331,8 +331,7 @@ impl MediaRuntime for Platform {
     }
 
     fn get_image_info(&self, uri: &str) -> Result<ImageInfo, Error> {
-        get_image_info_impl(uri)
-            .map_err(|e| Error::internal(format!("get_image_info failed: {}", e)))
+        get_image_info_impl(uri).map_err(|e| info_error("get_image_info", e))
     }
 
     fn compress_image(&self, request: &CompressImageRequest) -> Result<PathBuf, Error> {
@@ -341,8 +340,7 @@ impl MediaRuntime for Platform {
     }
 
     fn get_video_info(&self, uri: &str) -> Result<VideoInfo, Error> {
-        get_video_info_impl(uri)
-            .map_err(|e| Error::internal(format!("get_video_info failed: {}", e)))
+        get_video_info_impl(uri).map_err(|e| info_error("get_video_info", e))
     }
 
     fn extract_video_thumbnail(
@@ -390,6 +388,28 @@ fn copy_album_media_to_file_impl(
     })
 }
 
+/// Keeps a content error the Kotlin side reported; anything else is internal.
+fn info_error(op: &str, error: Box<dyn std::error::Error>) -> Error {
+    match error.downcast::<Error>() {
+        Ok(error) => *error,
+        Err(error) => Error::internal(format!("{op} failed: {error}")),
+    }
+}
+
+/// A failed info response: `E_INVALID_DATA` when the file is not that kind of media.
+fn info_failure(
+    code: Option<String>,
+    error: Option<String>,
+    op: &str,
+) -> Box<dyn std::error::Error> {
+    let message = error.unwrap_or_else(|| format!("{op} failed"));
+    if code.as_deref() == Some(lingxia_error::code::INVALID_DATA) {
+        Box::new(Error::invalid_data(message))
+    } else {
+        message.into()
+    }
+}
+
 fn get_image_info_impl(uri: &str) -> Result<ImageInfo, Box<dyn std::error::Error>> {
     let media_class_ref = super::get_cached_class(super::CachedClass::LxAppMedia)?;
     let uri = uri.to_string();
@@ -411,10 +431,7 @@ fn get_image_info_impl(uri: &str) -> Result<ImageInfo, Box<dyn std::error::Error
         let json_str: String = java_str.try_to_string(env)?;
         let parsed: AndroidImageInfoResponse = serde_json::from_str(&json_str)?;
         if !parsed.success {
-            return Err(parsed
-                .error
-                .unwrap_or_else(|| "getImageInfo failed".to_string())
-                .into());
+            return Err(info_failure(parsed.code, parsed.error, "getImageInfo"));
         }
         Ok(ImageInfo {
             width: parsed.width.unwrap_or(0),
@@ -487,10 +504,7 @@ fn get_video_info_impl(uri: &str) -> Result<VideoInfo, Box<dyn std::error::Error
         let json_str: String = java_str.try_to_string(env)?;
         let parsed: AndroidVideoInfoResponse = serde_json::from_str(&json_str)?;
         if !parsed.success {
-            return Err(parsed
-                .error
-                .unwrap_or_else(|| "getVideoInfo failed".to_string())
-                .into());
+            return Err(info_failure(parsed.code, parsed.error, "getVideoInfo"));
         }
         Ok(VideoInfo {
             width: parsed.width.unwrap_or(0),
@@ -630,6 +644,7 @@ fn cancel_compress_video_impl(callback_id: u64) -> Result<(), Box<dyn std::error
 struct AndroidImageInfoResponse {
     success: bool,
     error: Option<String>,
+    code: Option<String>,
     #[serde(rename = "width")]
     width: Option<u32>,
     #[serde(rename = "height")]
@@ -642,10 +657,12 @@ struct AndroidImageInfoResponse {
 struct AndroidVideoInfoResponse {
     success: bool,
     error: Option<String>,
+    code: Option<String>,
     width: Option<u32>,
     height: Option<u32>,
     #[serde(rename = "durationMs")]
     duration_ms: Option<u64>,
+    #[serde(default)]
     size: u64,
     rotation: Option<u16>,
     bitrate: Option<u64>,

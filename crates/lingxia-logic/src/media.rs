@@ -25,6 +25,21 @@ pub(crate) fn resolve_input_file(lxapp: &lxapp::LxApp, path: &str) -> JSResult<s
     Ok(resolved)
 }
 
+/// A platform failure on an input file is the input's fault when the platform cannot read
+/// it as that media at all: `probe` asks, and its `E_INVALID_DATA` replaces an internal error.
+pub(crate) fn input_failure<T>(
+    error: lingxia_error::Error,
+    probe: impl FnOnce() -> Result<T, lingxia_error::Error>,
+) -> lingxia_error::Error {
+    if !error.is(lingxia_error::code::INTERNAL) {
+        return error;
+    }
+    match probe() {
+        Err(content) if content.is(lingxia_error::code::INVALID_DATA) => content,
+        _ => error,
+    }
+}
+
 pub(crate) fn media_namespace(ctx: &JSContext) -> JSResult<JSObject> {
     let lx = ctx.global().get::<_, JSObject>("lx")?;
     match lx.get::<_, JSObject>("media") {

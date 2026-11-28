@@ -97,6 +97,9 @@ No lxapp keeps its own copy or offers its own picker.
 - `lx.supports(key)` answers whether this host has a feature; `true` is not
   permission, which surfaces at the call. Capability members are always
   present: without the feature they reject `E_NOT_SUPPORTED`.
+- `E_NOT_SUPPORTED` means this device cannot do it; input it cannot use is
+  content: a file that is not the media asked for (`lx.media.videoInfo` on an
+  image) rejects `E_INVALID_DATA`.
 - Control-app members are not features: ask `lx.app.info.role === 'control'`
   ([Control app](../app/control-app.md)).
 

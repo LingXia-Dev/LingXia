@@ -73,8 +73,17 @@ fn open_reader(path: &Path, with_processing: bool) -> Result<IMFSourceReader, Er
     } else {
         None
     };
-    unsafe { MFCreateSourceReaderFromURL(PCWSTR(wide.as_ptr()), attributes.as_ref()) }
-        .map_err(|err| Error::internal(format!("failed to open {}: {err}", path.display())))
+    unsafe { MFCreateSourceReaderFromURL(PCWSTR(wide.as_ptr()), attributes.as_ref()) }.map_err(
+        |err| {
+            // MF_E_UNSUPPORTED_BYTESTREAM_TYPE, MF_E_INVALID_FILE_FORMAT, MF_E_UNSUPPORTED_FORMAT:
+            // Media Foundation refuses the format, so the file is not a video.
+            if matches!(err.code().0 as u32, 0xC00D_36C4 | 0xC00D_3E8C | 0xC00D_5212) {
+                Error::invalid_data(format!("Not a video: {}: {err}", path.display()))
+            } else {
+                Error::internal(format!("failed to open {}: {err}", path.display()))
+            }
+        },
+    )
 }
 
 fn hundred_ns(variant: &PROPVARIANT) -> u64 {
@@ -163,7 +172,7 @@ pub(super) fn read_video_info(path: &Path) -> Result<VideoInfo, Error> {
 
     let native =
         unsafe { reader.GetNativeMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM.0 as u32, 0) }
-            .map_err(|err| Error::internal(format!("no video stream: {err}")))?;
+            .map_err(|err| Error::invalid_data(format!("Not a video: no video stream ({err})")))?;
 
     let frame = unsafe { native.GetUINT64(&MF_MT_FRAME_SIZE) }.unwrap_or(0);
     let (width, height) = ((frame >> 32) as u32, frame as u32);

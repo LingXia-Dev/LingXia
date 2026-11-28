@@ -1,4 +1,5 @@
-use crate::i18n::{js_error, js_invalid_parameter_error};
+use crate::i18n::js_error;
+use lingxia_platform::traits::media_runtime::MediaRuntime;
 use lingxia_service::media::SaveMediaRequest;
 use lxapp::LxApp;
 use rong::{JSContext, JSResult};
@@ -19,7 +20,8 @@ rong::js_api! {
 ///
 /// @supports media.saveToLibrary
 /// @throws {E_NOT_FOUND} No file at the path.
-/// @throws {E_INVALID_ARG} The file is neither, or a path the lxapp may not read.
+/// @throws {E_INVALID_ARG} A path the lxapp may not read.
+/// @throws {E_INVALID_DATA} The file is neither a picture nor a video the platform can read.
 /// @throws {E_NOT_SUPPORTED} A desktop host, which has no system photo library.
 async fn save_to_library(ctx: JSContext, path: String) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
@@ -41,17 +43,28 @@ async fn save_to_library(ctx: JSContext, path: String) -> JSResult<()> {
     } else if mime.starts_with("video/") {
         false
     } else {
-        return Err(js_invalid_parameter_error(format!(
-            "saveToLibrary takes a picture or a video; '{path}' is {mime}"
-        )));
+        return Err(rong::HostError::new(
+            rong::error::E_INVALID_DATA,
+            format!("saveToLibrary takes a picture or a video; '{path}' is {mime}"),
+        )
+        .into());
     };
+    let file_uri = resolved.to_string_lossy().into_owned();
     let request = SaveMediaRequest {
-        file_uri: resolved.to_string_lossy().into_owned(),
+        file_uri: file_uri.clone(),
     };
     let saved = if image {
         lingxia_service::media::save_image_to_photos_album(&*lxapp.runtime, request).await
     } else {
         lingxia_service::media::save_video_to_photos_album(&*lxapp.runtime, request).await
     };
-    saved.map_err(js_error)
+    saved.map_err(|error| {
+        js_error(super::input_failure(error, || {
+            if image {
+                lxapp.runtime.get_image_info(&file_uri).map(drop)
+            } else {
+                lxapp.runtime.get_video_info(&file_uri).map(drop)
+            }
+        }))
+    })
 }

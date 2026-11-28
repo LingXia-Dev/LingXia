@@ -4221,7 +4221,7 @@ declare global {
      * ```
      * @throws {E_NOT_FOUND} No file at the path.
      * @throws {E_INVALID_ARG} A path the lxapp may not read.
-     * @throws {E_INTERNAL} The file is not an image the platform can read.
+     * @throws {E_INVALID_DATA} The file is not an image the platform can decode.
      */
     imageInfo(path: ManagedPath): Promise<ImageInfo>;
     /**
@@ -4232,6 +4232,7 @@ declare global {
      * ```
      * @throws {E_NOT_FOUND} No file at the path.
      * @throws {E_INVALID_ARG} A path the lxapp may not read, or output over the temporary storage quota.
+     * @throws {E_INVALID_DATA} The file is not an image the platform can decode.
      * @throws {E_INTERNAL} The image could not be re-encoded.
      */
     compressImage(path: ManagedPath, options?: CompressImageOptions): Promise<CompressImageResult>;
@@ -4245,7 +4246,8 @@ declare global {
      * the file's extension, else its leading bytes.
      * @supports media.saveToLibrary
      * @throws {E_NOT_FOUND} No file at the path.
-     * @throws {E_INVALID_ARG} The file is neither, or a path the lxapp may not read.
+     * @throws {E_INVALID_ARG} A path the lxapp may not read.
+     * @throws {E_INVALID_DATA} The file is neither a picture nor a video the platform can read.
      * @throws {E_NOT_SUPPORTED} A desktop host, which has no system photo library.
      */
     saveToLibrary(path: ManagedPath): Promise<void>;
@@ -4261,7 +4263,7 @@ declare global {
      * ```
      * @throws {E_NOT_FOUND} No file at the path.
      * @throws {E_INVALID_ARG} A path the lxapp may not read.
-     * @throws {E_INTERNAL} The file is not a video the platform can read.
+     * @throws {E_INVALID_DATA} The file is not a video: no readable video track.
      */
     videoInfo(path: ManagedPath): Promise<VideoInfo>;
     /**
@@ -4272,6 +4274,7 @@ declare global {
      * ```
      * @throws {E_NOT_FOUND} No file at the path.
      * @throws {E_INVALID_ARG} A path the lxapp may not read, or output over the temporary storage quota.
+     * @throws {E_INVALID_DATA} The file is not a video: no readable video track.
      * @throws {E_INTERNAL} No frame could be extracted.
      */
     videoThumbnail(path: ManagedPath, options?: VideoThumbnailOptions): Promise<VideoThumbnailResult>;
@@ -4288,6 +4291,7 @@ declare global {
      * @throws {E_NOT_FOUND} No file at the path.
      * @throws {E_INVALID_ARG} A path the lxapp may not read, `to` equal to the source, or `quality` mixed with `bitrate`, `fps` or `resolution`.
      * @throws {E_ABORT} `cancel()` was called or `signal` was aborted (on `result`).
+     * @throws {E_INVALID_DATA} The file is not a video: no readable video track (on `result`).
      * @throws {E_INTERNAL} The transcode failed (on `result`).
      */
     compressVideo(path: ManagedPath, options?: CompressVideoOptions): CompressVideoTask;

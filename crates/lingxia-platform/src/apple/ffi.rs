@@ -7,6 +7,8 @@ mod bridge {
     pub struct SwiftImageInfoResult {
         pub success: bool,
         pub error: String,
+        /// The file is not that kind of media (`E_INVALID_DATA`).
+        pub invalid_data: bool,
         pub width: u32,
         pub height: u32,
         pub mime_type: String,
@@ -23,6 +25,8 @@ mod bridge {
     pub struct SwiftVideoInfoResult {
         pub success: bool,
         pub error: String,
+        /// The file is not that kind of media (`E_INVALID_DATA`).
+        pub invalid_data: bool,
         pub width: u32,
         pub height: u32,
         pub duration_ms: u64,

@@ -64,7 +64,7 @@ rong::js_api! {
 ///
 /// @throws {E_NOT_FOUND} No file at the path.
 /// @throws {E_INVALID_ARG} A path the lxapp may not read.
-/// @throws {E_INTERNAL} The file is not an image the platform can read.
+/// @throws {E_INVALID_DATA} The file is not an image the platform can decode.
 async fn get_image_info_api(ctx: JSContext, path: String) -> JSResult<ImageInfo> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let runtime = &lxapp.runtime;
@@ -113,6 +113,7 @@ async fn get_image_info_api(ctx: JSContext, path: String) -> JSResult<ImageInfo>
 ///
 /// @throws {E_NOT_FOUND} No file at the path.
 /// @throws {E_INVALID_ARG} A path the lxapp may not read, or output over the temporary storage quota.
+/// @throws {E_INVALID_DATA} The file is not an image the platform can decode.
 /// @throws {E_INTERNAL} The image could not be re-encoded.
 async fn compress_image_api(
     ctx: JSContext,
@@ -136,7 +137,11 @@ async fn compress_image_api(
         output_path,
     };
 
-    let output = runtime.compress_image(&request).map_err(js_error)?;
+    let output = runtime.compress_image(&request).map_err(|error| {
+        js_error(super::input_failure(error, || {
+            runtime.get_image_info(&request.source_uri)
+        }))
+    })?;
     ensure_temp_output_quota(&lxapp, &output)?;
 
     let path = lxapp
