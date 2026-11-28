@@ -146,6 +146,8 @@ export class GpuOverlays {
 @Component
 struct GpuOverlayPage {
   @State page: GpuPageModel | undefined = undefined;
+  /** The window's appearance: the lxapp on screen's. */
+  @StorageProp('lxAppearanceDark') dark: boolean = false;
 
   aboutToAppear(): void {
     try {
@@ -167,7 +169,7 @@ struct GpuOverlayPage {
   build() {
     Stack() {
       if (this.page !== undefined) {
-        GpuPage({ page: this.page as GpuPageModel, floor: Color.Transparent })
+        GpuPage({ page: this.page as GpuPageModel, floor: Color.Transparent, appearanceDark: this.dark })
       }
     }
     .width('100%')

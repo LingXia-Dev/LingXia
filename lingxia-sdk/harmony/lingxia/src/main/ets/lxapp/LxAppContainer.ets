@@ -51,6 +51,8 @@ const GPU_TOP_LAYER_Z = 12;
 const BAR_RAISE_FALLBACK_MS = 250;
 const BAR_TOP = 0;
 const BAR_BOTTOM = 1;
+/** AppStorage key of the on-screen lxapp's appearance; GpuOverlays reads it. */
+const APPEARANCE_NOW_KEY = 'lxAppearanceDark';
 
 const COLOR_BLACK = '#000000';
 const COLOR_TRANSPARENT = Color.Transparent;
@@ -357,7 +359,7 @@ export struct LxAppContainer {
     const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
     const hostDark = context?.config?.colorMode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK;
     this.appearanceDark = LxAppContainer.appearanceByApp.get(this.appId) ?? hostDark;
-    LxAppContainer.currentAppearanceDark = this.appearanceDark;
+    LxAppContainer.setAppearanceNow(this.appearanceDark);
     AsideRegionModel.setDark(this.appearanceDark);
 
     this.path = extractWebTag(this.targetWebTag)?.path ?? '';
@@ -705,13 +707,19 @@ export struct LxAppContainer {
     return LxAppContainer.currentAppearanceDark;
   }
 
+  /** Window overlays live in their own windows; they follow this through AppStorage. */
+  private static setAppearanceNow(dark: boolean): void {
+    LxAppContainer.currentAppearanceDark = dark;
+    AppStorage.setOrCreate<boolean>(APPEARANCE_NOW_KEY, dark);
+  }
+
   public static applyAppearance(appId: string, dark: boolean): boolean {
     LxAppContainer.appearanceByApp.set(appId, dark);
     LxAppSurface.applyAppearance(appId, dark);
     const container = LxAppContainer.activeContainers.get(appId);
     if (container) {
       container.appearanceDark = dark;
-      LxAppContainer.currentAppearanceDark = dark;
+      LxAppContainer.setAppearanceNow(dark);
       AsideRegionModel.setDark(dark);
       container.pageConfig = getNavigationBarState(appId, container.path);
       container.navbarRefreshKey++;
