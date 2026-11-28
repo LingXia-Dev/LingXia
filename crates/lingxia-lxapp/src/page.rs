@@ -3158,6 +3158,33 @@ fn keeps_query(requested_empty: bool, tab: bool) -> bool {
     requested_empty && tab
 }
 
+/// Dev sessions: each lxapp's latest type-check report, kept so a page opened or reloaded
+/// later shows it too.
+fn dev_problems() -> std::sync::MutexGuard<'static, std::collections::HashMap<String, String>> {
+    static REPORTS: std::sync::LazyLock<
+        std::sync::Mutex<std::collections::HashMap<String, String>>,
+    > = std::sync::LazyLock::new(Default::default);
+    REPORTS.lock().unwrap_or_else(|poison| poison.into_inner())
+}
+
+/// Dev sessions: show `appid`'s type-check report over its open pages and every page that
+/// opens until the next report; `None` (clean) clears it. Returns how many pages got it.
+pub fn show_dev_problems(appid: &str, report: Option<&str>) -> usize {
+    match report {
+        Some(report) => dev_problems().insert(appid.to_owned(), report.to_owned()),
+        None => dev_problems().remove(appid),
+    };
+    let pages = crate::lxapp::try_get(appid)
+        .map(|app| app.live_page_instances())
+        .unwrap_or_default();
+    for page in &pages {
+        page.push_view_environment(PageViewEnvironment::DevProblems {
+            report: report.map(str::to_owned),
+        });
+    }
+    pages.len()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -4077,31 +4104,4 @@ mod tests {
         assert_eq!(state.entry, EntryPhase::Loaded);
         assert_eq!(state.visibility, Visibility::Shown);
     }
-}
-
-/// Dev sessions: each lxapp's latest type-check report, kept so a page opened or reloaded
-/// later shows it too.
-fn dev_problems() -> std::sync::MutexGuard<'static, std::collections::HashMap<String, String>> {
-    static REPORTS: std::sync::LazyLock<
-        std::sync::Mutex<std::collections::HashMap<String, String>>,
-    > = std::sync::LazyLock::new(Default::default);
-    REPORTS.lock().unwrap_or_else(|poison| poison.into_inner())
-}
-
-/// Dev sessions: show `appid`'s type-check report over its open pages and every page that
-/// opens until the next report; `None` (clean) clears it. Returns how many pages got it.
-pub fn show_dev_problems(appid: &str, report: Option<&str>) -> usize {
-    match report {
-        Some(report) => dev_problems().insert(appid.to_owned(), report.to_owned()),
-        None => dev_problems().remove(appid),
-    };
-    let pages = crate::lxapp::try_get(appid)
-        .map(|app| app.live_page_instances())
-        .unwrap_or_default();
-    for page in &pages {
-        page.push_view_environment(PageViewEnvironment::DevProblems {
-            report: report.map(str::to_owned),
-        });
-    }
-    pages.len()
 }
