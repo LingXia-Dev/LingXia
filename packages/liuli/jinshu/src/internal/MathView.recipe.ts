@@ -15,9 +15,9 @@ export const mathRecipe = {
   bracket: {
     squareOpen: 'w-1.5 self-stretch border-y border-s border-text my-0.5',
     squareClose: 'w-1.5 self-stretch border-y border-e border-text my-0.5',
-    bar: 'w-px self-stretch bg-text/80 my-0.5 mx-1',
+    bar: 'w-px self-stretch bg-text my-0.5 mx-1',
     doubleBar: 'flex-row gap-0.5 self-stretch my-0.5 mx-1',
-    barLine: 'w-px self-stretch bg-text/80',
+    barLine: 'w-px self-stretch bg-text',
     // The container radius is the default pack's xl step, the curve these parentheses were drawn with.
     roundOpen: 'w-2 self-stretch border-s-2 border-text rounded-s-container my-0.5',
     roundClose: 'w-2 self-stretch border-e-2 border-text rounded-e-container my-0.5',
@@ -26,7 +26,7 @@ export const mathRecipe = {
   frac: {
     base: 'items-center justify-center px-1 gap-0.5',
     part: 'flex-row items-baseline justify-center',
-    bar: 'w-full h-px bg-text/80',
+    bar: 'w-full h-px bg-text',
     binomial: 'flex-row items-center px-0.5',
   },
   sqrt: {

@@ -359,6 +359,17 @@ const softFilled = (tint, names, rulesByName) => {
 };
 // A wide inset ring is a pressed fill (`active:inset-ring-[999px] inset-ring-text/7`), not an edge.
 const pressedFill = (names, rulesByName) => names.some(name => (rulesByName.get(name) ?? []).some(rule => (rule.shadow?.insetRingWidth ?? 0) >= 100));
+// A 1 px fill (`h-px bg-text/8`) is a divider drawn as a box; it takes the edge rule.
+const unconditioned = (names, rulesByName) => names.flatMap(name => (rulesByName.get(name) ?? []).filter(rule => rule && !rule.error && !Object.keys(rule.when ?? {}).length).map(rule => ({ name, rule })));
+function dividerFill(names, rulesByName) {
+  const rules = unconditioned(names, rulesByName);
+  if (!rules.some(({ rule }) => rule.style?.height === 1 || rule.style?.width === 1)) return undefined;
+  for (const { name, rule } of rules) {
+    const role = rule.style?.backgroundColor?.match?.(/^((?:app\.)?[a-z][a-z0-9-]*)\/\d+$/)?.[1];
+    if (role && !lineRoles.has(role)) return { name, tint: rule.style.backgroundColor };
+  }
+  return undefined;
+}
 const disabledEdge = (rule, name) => rule.when?.state === 'disabled' || rule.when?.state === 'hasDisabled' || /(?:^|:)aria-disabled:/.test(name);
 
 function classProblems(rule, name, tag, suggestions, grid, focusable = false) {
@@ -761,6 +772,8 @@ export async function buildPages(root, pages, output, catalogs = {}, { dev = fal
         const fill = tint && found.some(rule => rule?.shadow?.insetRingColor) && pressedFill(names, rulesByName);
         if (tint && !fill && !softFilled(tint, names, rulesByName)) problems.push(`${location}: UI_CLASS_EDGE: ${name} tints an edge ${tint}, which high contrast does not strengthen; use a line role: border-line or ring-line for a separator, border-line-strong or ring-line-strong for an interactive boundary`);
       }
+      const divider = !disabled && dividerFill(names, rulesByName);
+      if (divider) problems.push(`${location}: UI_CLASS_EDGE: ${divider.name} fills a 1 px divider ${divider.tint}, which high contrast does not strengthen; use bg-line`);
       for (const problem of gradientTextProblems(names, rulesByName, looks)) problems.push(`${location}: ${problem}`);
     }
     const ownFile = file => !file.fileName.includes(`${sep}node_modules${sep}`);

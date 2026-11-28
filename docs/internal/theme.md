@@ -15,6 +15,10 @@ in the compiler, or the environment's `palette` / `scales` keys. Authoring rules
   host refuses one with `UI_ENVIRONMENT: theme pack <name>: …`.
 - A theme change never re-runs a View. Palette changes repaint committed records; scale changes
   re-resolve them and relayout.
+- Edges come only from line roles (`line`, `line-strong`). A border, divide, ring or outline
+  coloured from another role at an opacity, or the fill of a 1 px divider (`h-px bg-text/8`), fails
+  `UI_CLASS_EDGE` at build time. Exempt: disabled edges, `on-media`, a tone's edge on its own
+  `-soft` fill, a wide inset ring used as a pressed fill.
 - The wire never carries a design system's names (`text-footnote`, `rounded-control`); the compiler
   resolves them to slots.
 

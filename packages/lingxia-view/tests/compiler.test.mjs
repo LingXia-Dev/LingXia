@@ -1005,6 +1005,27 @@ const tone = { danger: 'bg-surface border border-danger/25' };`,
   });
 });
 
+test('UI_CLASS_EDGE fails a 1 px fill tinted from a non-line role; bg-line, thicker fills and on-media pass', async () => {
+  await project({
+    'page.tsx': `export function render() {
+  return <view>
+    <view className="self-stretch h-px bg-text/8" />
+    <view className="w-px self-stretch bg-muted/20" />
+    <view className="h-px bg-line" />
+    <view className="h-px bg-on-media/40" />
+    <view className="h-1 bg-text/8" />
+    <view className="h-px bg-text" />
+  </view>;
+}`,
+  }, async (root, build) => {
+    const { message } = await build().catch(error => error);
+    const edges = message.split('\n').filter(line => line.includes('UI_CLASS_EDGE'));
+    const places = edges.map(line => line.match(/^page\.tsx:(\d+):/)[1]).sort();
+    assert.deepEqual(places, ['3', '4'], message);
+    assert.ok(edges.some(line => /bg-text\/8 fills a 1 px divider text\/8.*use bg-line/.test(line)), message);
+  });
+});
+
 test('an element its props make a keyboard stop takes focus-visible:', async () => {
   await project({
     'page.tsx': `import { useLocal } from '@lingxia/view';
